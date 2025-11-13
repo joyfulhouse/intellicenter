@@ -1,11 +1,12 @@
 """Test the IntelliCenter integration init."""
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+import pytest
 
 from custom_components.intellicenter import (
     async_setup,
@@ -69,8 +70,6 @@ async def test_async_setup_entry_connection_error(hass: HomeAssistant):
     )
 
     with patch(
-        "custom_components.intellicenter.ModelController"
-    ) as mock_controller_class, patch(
         "custom_components.intellicenter.ConnectionHandler"
     ) as mock_handler_class:
         # Setup mocks to raise ConnectionRefusedError

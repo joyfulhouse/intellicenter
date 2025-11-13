@@ -1,12 +1,8 @@
 """Common fixtures for IntelliCenter tests."""
-import asyncio
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from homeassistant.const import CONF_HOST
-from homeassistant.core import HomeAssistant
-
-from custom_components.intellicenter.const import DOMAIN
 
 
 @pytest.fixture

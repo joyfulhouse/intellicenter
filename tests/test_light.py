@@ -1,8 +1,7 @@
 """Test the IntelliCenter light platform."""
+
 from unittest.mock import MagicMock
 
-import pytest
-from homeassistant.components.light import ATTR_EFFECT
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant

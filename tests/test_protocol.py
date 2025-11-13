@@ -1,4 +1,5 @@
 """Test the IntelliCenter protocol."""
+
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 

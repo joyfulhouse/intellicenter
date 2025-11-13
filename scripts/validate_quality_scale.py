@@ -5,9 +5,9 @@ This script checks compliance with Bronze, Silver, Gold, and Platinum tier requi
 """
 
 import ast
-import sys
 from pathlib import Path
-from typing import List, Tuple
+import sys
+from typing import List
 
 
 class QualityScaleValidator:
@@ -72,7 +72,12 @@ class QualityScaleValidator:
         print("  Checking has_entity_name usage...")
 
         entity_files = list(self.integration_path.glob("*.py"))
-        entity_files = [f for f in entity_files if f.name not in ['__init__.py', 'const.py', 'config_flow.py', 'diagnostics.py']]
+        entity_files = [
+            f
+            for f in entity_files
+            if f.name
+            not in ["__init__.py", "const.py", "config_flow.py", "diagnostics.py"]
+        ]
 
         for file in entity_files:
             content = file.read_text()
@@ -81,26 +86,37 @@ class QualityScaleValidator:
             for node in ast.walk(tree):
                 if isinstance(node, ast.ClassDef):
                     # Check if class inherits from an entity type
-                    if any('Entity' in base.id if isinstance(base, ast.Name) else False for base in node.bases):
+                    if any(
+                        "Entity" in base.id if isinstance(base, ast.Name) else False
+                        for base in node.bases
+                    ):
                         # Check for has_entity_name attribute
                         has_attr = False
                         for item in node.body:
                             if isinstance(item, ast.Assign):
                                 for target in item.targets:
-                                    if isinstance(target, ast.Name) and target.id == '_attr_has_entity_name':
+                                    if (
+                                        isinstance(target, ast.Name)
+                                        and target.id == "_attr_has_entity_name"
+                                    ):
                                         has_attr = True
                                         break
 
                         if not has_attr:
                             # Check in __init__.py base class
-                            init_file = self.integration_path / '__init__.py'
+                            init_file = self.integration_path / "__init__.py"
                             if init_file.exists():
                                 init_content = init_file.read_text()
-                                if 'class PoolEntity' in init_content and '_attr_has_entity_name = True' in init_content:
+                                if (
+                                    "class PoolEntity" in init_content
+                                    and "_attr_has_entity_name = True" in init_content
+                                ):
                                     has_attr = True
 
                         if has_attr:
-                            self.passed.append(f"✓ {file.name}: Entity classes use has_entity_name")
+                            self.passed.append(
+                                f"✓ {file.name}: Entity classes use has_entity_name"
+                            )
                             return True
 
         self.passed.append("✓ has_entity_name = True found in base class")
@@ -110,10 +126,14 @@ class QualityScaleValidator:
         """Check that entities have unique_id property."""
         print("  Checking unique_id implementation...")
 
-        init_file = self.integration_path / '__init__.py'
+        init_file = self.integration_path / "__init__.py"
         if init_file.exists():
             content = init_file.read_text()
-            if 'def unique_id' in content or '@property' in content and 'unique_id' in content:
+            if (
+                "def unique_id" in content
+                or "@property" in content
+                and "unique_id" in content
+            ):
                 self.passed.append("✓ Entities implement unique_id property")
                 return True
 
@@ -124,10 +144,10 @@ class QualityScaleValidator:
         """Check usage of entry.runtime_data instead of hass.data."""
         print("  Checking runtime_data usage...")
 
-        init_file = self.integration_path / '__init__.py'
+        init_file = self.integration_path / "__init__.py"
         if init_file.exists():
             content = init_file.read_text()
-            if 'entry.runtime_data' in content:
+            if "entry.runtime_data" in content:
                 self.passed.append("✓ Uses entry.runtime_data for storing runtime data")
                 return True
 
@@ -138,7 +158,7 @@ class QualityScaleValidator:
         """Check that config_flow.py exists."""
         print("  Checking config flow...")
 
-        config_flow = self.integration_path / 'config_flow.py'
+        config_flow = self.integration_path / "config_flow.py"
         if config_flow.exists():
             self.passed.append("✓ Config flow implementation found")
             return True
@@ -150,10 +170,10 @@ class QualityScaleValidator:
         """Check that async_unload_entry is implemented."""
         print("  Checking config entry unloading...")
 
-        init_file = self.integration_path / '__init__.py'
+        init_file = self.integration_path / "__init__.py"
         if init_file.exists():
             content = init_file.read_text()
-            if 'async def async_unload_entry' in content:
+            if "async def async_unload_entry" in content:
                 self.passed.append("✓ Config entry unloading implemented")
                 return True
 
@@ -164,24 +184,28 @@ class QualityScaleValidator:
         """Check if tests directory exists."""
         print("  Checking test coverage...")
 
-        tests_dir = self.integration_path.parent.parent / 'tests'
+        tests_dir = self.integration_path.parent.parent / "tests"
         if tests_dir.exists() and any(tests_dir.iterdir()):
-            test_files = list(tests_dir.glob('test_*.py'))
+            test_files = list(tests_dir.glob("test_*.py"))
             if test_files:
-                self.passed.append(f"✓ Test framework exists ({len(test_files)} test files)")
+                self.passed.append(
+                    f"✓ Test framework exists ({len(test_files)} test files)"
+                )
                 return True
 
-        self.warnings.append("⚠ Test coverage needs to be above 95% (run pytest with coverage)")
+        self.warnings.append(
+            "⚠ Test coverage needs to be above 95% (run pytest with coverage)"
+        )
         return True  # Don't fail, just warn
 
     def _check_device_classes(self) -> bool:
         """Check that entities use appropriate device classes."""
         print("  Checking device class usage...")
 
-        sensor_file = self.integration_path / 'sensor.py'
+        sensor_file = self.integration_path / "sensor.py"
         if sensor_file.exists():
             content = sensor_file.read_text()
-            if 'SensorDeviceClass' in content or 'device_class=' in content:
+            if "SensorDeviceClass" in content or "device_class=" in content:
                 self.passed.append("✓ Sensors use device classes")
                 return True
 
@@ -192,7 +216,7 @@ class QualityScaleValidator:
         """Check that diagnostics.py exists."""
         print("  Checking diagnostics support...")
 
-        diag_file = self.integration_path / 'diagnostics.py'
+        diag_file = self.integration_path / "diagnostics.py"
         if diag_file.exists():
             self.passed.append("✓ Diagnostics support implemented")
             return True
@@ -205,16 +229,18 @@ class QualityScaleValidator:
         print("  Checking entity categories...")
 
         found_categories = False
-        for py_file in self.integration_path.glob('*.py'):
+        for py_file in self.integration_path.glob("*.py"):
             content = py_file.read_text()
-            if 'EntityCategory' in content:
+            if "EntityCategory" in content:
                 found_categories = True
                 break
 
         if found_categories:
             self.passed.append("✓ Entity categories are used")
         else:
-            self.warnings.append("⚠ Consider using EntityCategory for diagnostic/config entities")
+            self.warnings.append(
+                "⚠ Consider using EntityCategory for diagnostic/config entities"
+            )
 
         return True
 
@@ -222,10 +248,10 @@ class QualityScaleValidator:
         """Check for type annotations."""
         print("  Checking type annotations...")
 
-        init_file = self.integration_path / '__init__.py'
+        init_file = self.integration_path / "__init__.py"
         if init_file.exists():
             content = init_file.read_text()
-            if '-> ' in content or ': ' in content:  # Basic check for type hints
+            if "-> " in content or ": " in content:  # Basic check for type hints
                 self.passed.append("✓ Type annotations present")
                 return True
 
@@ -236,10 +262,10 @@ class QualityScaleValidator:
         """Check for async/await patterns."""
         print("  Checking async patterns...")
 
-        init_file = self.integration_path / '__init__.py'
+        init_file = self.integration_path / "__init__.py"
         if init_file.exists():
             content = init_file.read_text()
-            if 'async def' in content and 'await' in content:
+            if "async def" in content and "await" in content:
                 self.passed.append("✓ Async patterns used throughout")
                 return True
 
@@ -250,7 +276,7 @@ class QualityScaleValidator:
         """Check for py.typed marker."""
         print("  Checking py.typed marker...")
 
-        py_typed = self.integration_path / 'py.typed'
+        py_typed = self.integration_path / "py.typed"
         if py_typed.exists():
             self.passed.append("✓ py.typed marker present")
             return True
@@ -260,9 +286,9 @@ class QualityScaleValidator:
 
     def print_results(self):
         """Print validation results."""
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("📊 VALIDATION RESULTS")
-        print("="*60)
+        print("=" * 60)
 
         if self.passed:
             print(f"\n✅ PASSED ({len(self.passed)}):")
@@ -279,7 +305,7 @@ class QualityScaleValidator:
             for item in self.errors:
                 print(f"  {item}")
 
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
 
 
 def main():

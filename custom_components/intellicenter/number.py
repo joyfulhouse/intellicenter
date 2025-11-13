@@ -34,7 +34,7 @@ async def async_setup_entry(
 ):
     """Load pool numbers based on a config entry."""
 
-    controller: ModelController = hass.data[DOMAIN][entry.entry_id].controller
+    controller: ModelController = entry.runtime_data.controller
 
     numbers = []
 
@@ -46,7 +46,7 @@ async def async_setup_entry(
             and PRIM_ATTR in obj.attributes
         ):
             intellichlor_bodies = obj[BODY_ATTR].split(" ")
-            
+
             # Only create number entities for bodies that are actually configured
             for index, body_id in enumerate(intellichlor_bodies):
                 body = controller.model[body_id]

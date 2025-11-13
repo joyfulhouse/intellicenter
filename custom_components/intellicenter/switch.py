@@ -6,6 +6,7 @@ from typing import Any
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 
 from . import PoolEntity
 from .const import DOMAIN
@@ -32,7 +33,7 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities
 ):
     """Load a Pentair switch based on a config entry."""
-    controller: ModelController = hass.data[DOMAIN][entry.entry_id].controller
+    controller: ModelController = entry.runtime_data.controller
 
     switches = []
 
@@ -61,13 +62,12 @@ async def async_setup_entry(
             and obj.isFeatured
         ):
             switches.append(
-                PoolCircuit(entry, controller, obj, icon="mdi:alpha-f-box-outline"))
-        elif (
-            obj.objtype == CIRCUIT_TYPE
-            and obj.subtype == "CIRCGRP"
-        ):
+                PoolCircuit(entry, controller, obj, icon="mdi:alpha-f-box-outline")
+            )
+        elif obj.objtype == CIRCUIT_TYPE and obj.subtype == "CIRCGRP":
             switches.append(
-                PoolCircuit(entry, controller, obj, icon="mdi:alpha-g-box-outline"))
+                PoolCircuit(entry, controller, obj, icon="mdi:alpha-g-box-outline")
+            )
         elif obj.objtype == SYSTEM_TYPE:
             switches.append(
                 PoolCircuit(
@@ -78,6 +78,7 @@ async def async_setup_entry(
                     name="Vacation mode",
                     icon="mdi:palm-tree",
                     enabled_by_default=False,
+                    entity_category=EntityCategory.CONFIG,
                 )
             )
 

@@ -1,4 +1,5 @@
 """Pentair IntelliCenter Integration."""
+
 import asyncio
 import logging
 from typing import Any, Optional
@@ -150,9 +151,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         await handler.start()
 
-        hass.data.setdefault(DOMAIN, {})
-
-        hass.data[DOMAIN][entry.entry_id] = handler
+        # Store runtime data in entry.runtime_data
+        entry.runtime_data = handler
 
         # subscribe to Home Assistant STOP event to do some cleanup
 
@@ -181,16 +181,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
     )
 
-    # Cleanup
-    handler = hass.data[DOMAIN].pop(entry.entry_id, None)
+    # Cleanup - get handler from runtime_data
+    handler = entry.runtime_data
 
     _LOGGER.info(f"unloading integration {entry.entry_id}")
     if handler:
         handler.stop()
-
-    # if it was the last instance of this integration, clear up the DOMAIN entry
-    if not hass.data[DOMAIN]:
-        del hass.data[DOMAIN]
 
     return True
 
@@ -200,6 +196,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 class PoolEntity(Entity):
     """Representation of an Pool entity linked to an pool object."""
+
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -212,6 +210,7 @@ class PoolEntity(Entity):
         extraStateAttributes=set(),
         icon: str = None,
         unit_of_measurement: str = None,
+        entity_category=None,
     ):
         """Initialize a Pool entity."""
         self._entry_id = entry.entry_id
@@ -225,6 +224,7 @@ class PoolEntity(Entity):
         self._attr_native_unit_of_measurement = unit_of_measurement
         self._attr_icon = icon
         self._attr_should_poll = False
+        self._attr_entity_category = entity_category
 
         _LOGGER.debug(f"mapping {poolObject}")
 
@@ -342,5 +342,7 @@ class PoolEntity(Entity):
     def pentairTemperatureSettings(self):
         """Return the temperature units from the Pentair system."""
         return (
-            UnitOfTemperature.CELSIUS if self._controller.systemInfo.usesMetric else UnitOfTemperature.FAHRENHEIT
+            UnitOfTemperature.CELSIUS
+            if self._controller.systemInfo.usesMetric
+            else UnitOfTemperature.FAHRENHEIT
         )

@@ -125,7 +125,7 @@ class PoolObject:
 
         changed = {}
 
-        for (key, value) in updates.items():
+        for key, value in updates.items():
 
             if key in self._properties:
                 if self._properties[key] == value:

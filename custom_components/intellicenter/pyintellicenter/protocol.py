@@ -44,17 +44,29 @@ class ICProtocol(asyncio.Protocol):
         # and the number of unacknowledgged ping issued
         self._num_unacked_pings = 0
 
+        # heartbeat task handle
+        self._heartbeat_task = None
+
     def connection_made(self, transport):
         """Handle the callback for a successful connection."""
 
         self._transport = transport
         self._msgID = 1
+        self._num_unacked_pings = 0
+
+        # start the heartbeat task
+        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
         # and notify our controller that we are ready!
         self._controller.connection_made(self, transport)
 
     def connection_lost(self, exc):
         """Handle the callback for connection lost."""
+
+        # cancel the heartbeat task if it's running
+        if self._heartbeat_task:
+            self._heartbeat_task.cancel()
+            self._heartbeat_task = None
 
         self._controller.connection_lost(exc)
 
@@ -171,3 +183,29 @@ class ICProtocol(asyncio.Protocol):
 
         except Exception as err:
             _LOGGER.error(f"PROTOCOL: exception while receiving message {err}")
+
+    async def _heartbeat_loop(self):
+        """Send periodic ping requests and close connection if pongs are not received."""
+        try:
+            while True:
+                await asyncio.sleep(10)  # wait 10 seconds between pings
+
+                # check if we have too many unacked pings (we allow 2)
+                if self._num_unacked_pings >= 2:
+                    _LOGGER.error(
+                        "PROTOCOL: too many unacknowledged pings, closing connection"
+                    )
+                    if self._transport:
+                        self._transport.close()
+                    return
+
+                # send a ping
+                self._num_unacked_pings += 1
+                _LOGGER.debug("PROTOCOL: sending ping")
+                if self._transport:
+                    self._transport.write(b"ping\r\n")
+
+        except asyncio.CancelledError:
+            _LOGGER.debug("PROTOCOL: heartbeat loop cancelled")
+        except Exception as err:
+            _LOGGER.error(f"PROTOCOL: exception in heartbeat loop {err}")

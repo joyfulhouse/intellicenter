@@ -96,7 +96,7 @@ def prune(obj):
         return [prune(item) for item in obj]
     elif type(obj) is dict:
         result = {}
-        for (key, value) in obj.items():
+        for key, value in obj.items():
             if key != value:
                 result[key] = prune(value)
         return result

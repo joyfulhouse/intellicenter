@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - claude/**
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    name: Lint and Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install black==24.10.0 isort==5.13.2 flake8==7.1.1 flake8-docstrings==1.7.0 bandit==1.7.10 pyupgrade codespell
+
+      - name: Run pyupgrade
+        run: |
+          find custom_components/intellicenter -name "*.py" -type f -exec pyupgrade --py312-plus {} +
+
+      - name: Run black
+        run: |
+          black --check --diff custom_components/intellicenter
+
+      - name: Run isort
+        run: |
+          isort --check-only --diff custom_components/intellicenter
+
+      - name: Run flake8
+        run: |
+          flake8 custom_components/intellicenter --max-line-length=88 --extend-ignore=E203,W503,E501
+
+      - name: Run codespell
+        run: |
+          codespell custom_components/intellicenter --skip="*.pyc,*.json"
+
+      - name: Run bandit
+        run: |
+          bandit -r custom_components/intellicenter -ll
+
+  type-check:
+    name: Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install mypy==1.11.2
+          pip install homeassistant==2024.11.0
+
+      - name: Run mypy
+        run: |
+          mypy custom_components/intellicenter --ignore-missing-imports --no-strict-optional
+
+  validate:
+    name: Validate with hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run hassfest
+        uses: home-assistant/actions/hassfest@master
+
+  # Test job - will be populated as we add tests
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest==8.3.3 pytest-asyncio==0.24.0 pytest-cov==5.0.0
+          pip install homeassistant==2024.11.0
+
+      - name: Run tests
+        run: |
+          if [ -d "tests" ]; then
+            pytest tests/ --cov=custom_components/intellicenter --cov-report=xml --cov-report=term
+          else
+            echo "No tests directory found, skipping tests"
+          fi
+
+      - name: Upload coverage
+        if: always()
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false

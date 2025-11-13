@@ -9,8 +9,8 @@ from homeassistant.components.water_heater import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_TEMPERATURE, STATE_IDLE, STATE_OFF, STATE_ON
-from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import PoolEntity
 from .const import DOMAIN
@@ -38,7 +38,7 @@ async def async_setup_entry(
 ):
     """Load pool sensors based on a config entry."""
 
-    controller = hass.data[DOMAIN][entry.entry_id].controller
+    controller = entry.runtime_data.controller
 
     # here we try to figure out which heater, if any, can be used for a given
     # body of water
@@ -122,7 +122,10 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
     @property
     def supported_features(self):
         """Return the list of supported features."""
-        return WaterHeaterEntityFeature.TARGET_TEMPERATURE | WaterHeaterEntityFeature.OPERATION_MODE
+        return (
+            WaterHeaterEntityFeature.TARGET_TEMPERATURE
+            | WaterHeaterEntityFeature.OPERATION_MODE
+        )
 
     @property
     def temperature_unit(self):

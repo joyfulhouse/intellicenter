@@ -11,6 +11,7 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONCENTRATION_PARTS_PER_MILLION, UnitOfPower
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 
 from . import PoolEntity
 from .const import CONST_GPM, CONST_RPM, DOMAIN
@@ -45,7 +46,7 @@ async def async_setup_entry(
 ):
     """Load pool sensors based on a config entry."""
 
-    controller: ModelController = hass.data[DOMAIN][entry.entry_id].controller
+    controller: ModelController = entry.runtime_data.controller
 
     sensors = []
 
@@ -73,6 +74,7 @@ async def async_setup_entry(
                         attribute_key=PWR_ATTR,
                         name="+ power",
                         rounding_factor=25,
+                        entity_category=EntityCategory.DIAGNOSTIC,
                     )
                 )
             if obj[RPM_ATTR]:
@@ -85,6 +87,7 @@ async def async_setup_entry(
                         unit_of_measurement=CONST_RPM,
                         attribute_key=RPM_ATTR,
                         name="+ rpm",
+                        entity_category=EntityCategory.DIAGNOSTIC,
                     )
                 )
             if obj[GPM_ATTR]:
@@ -97,6 +100,7 @@ async def async_setup_entry(
                         unit_of_measurement=CONST_GPM,
                         attribute_key=GPM_ATTR,
                         name="+ gpm",
+                        entity_category=EntityCategory.DIAGNOSTIC,
                     )
                 )
         elif obj.objtype == BODY_TYPE:
@@ -225,7 +229,9 @@ class PoolSensor(PoolEntity, SensorEntity):
         # smoothes the curve and limits the number of updates in the log
 
         if self._rounding_factor:
-            value = str(int(round(int(value) / self._rounding_factor) * self._rounding_factor))
+            value = str(
+                int(round(int(value) / self._rounding_factor) * self._rounding_factor)
+            )
 
         return value
 

@@ -2,16 +2,17 @@
 
 import logging
 
+from homeassistant.components.binary_sensor import BinarySensorEntity
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
+
 from custom_components.intellicenter.pyintellicenter.attributes import (
     BODY_ATTR,
     CIRCUIT_TYPE,
     HEATER_TYPE,
 )
 from custom_components.intellicenter.water_heater import HEATER_ATTR, HTMODE_ATTR
-
-from homeassistant.components.binary_sensor import BinarySensorEntity
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
 
 from . import PoolEntity
 from .const import DOMAIN
@@ -25,7 +26,7 @@ async def async_setup_entry(
 ):
     """Load pool sensors based on a config entry."""
 
-    controller: ModelController = hass.data[DOMAIN][entry.entry_id].controller
+    controller: ModelController = entry.runtime_data.controller
 
     sensors = []
 
@@ -33,12 +34,7 @@ async def async_setup_entry(
     for obj in controller.model.objectList:
         if obj.objtype == CIRCUIT_TYPE and obj.subtype == "FRZ":
             sensors.append(
-                PoolBinarySensor(
-                    entry,
-                    controller,
-                    obj,
-                    icon = "mdi:snowflake"
-                )
+                PoolBinarySensor(entry, controller, obj, icon="mdi:snowflake")
             )
         elif obj.objtype == HEATER_TYPE:
             sensors.append(
@@ -58,10 +54,19 @@ async def async_setup_entry(
                     name="+ (schedule)",
                     enabled_by_default=False,
                     extraStateAttributes={"VACFLO"},
+                    entity_category=EntityCategory.DIAGNOSTIC,
                 )
             )
         elif obj.objtype == "PUMP":
-            sensors.append(PoolBinarySensor(entry, controller, obj, valueForON="10"))
+            sensors.append(
+                PoolBinarySensor(
+                    entry,
+                    controller,
+                    obj,
+                    valueForON="10",
+                    entity_category=EntityCategory.DIAGNOSTIC,
+                )
+            )
     async_add_entities(sensors)
 
 

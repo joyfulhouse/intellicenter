@@ -15,7 +15,7 @@ async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: ConfigEntry
 ) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
-    controller: ModelController = hass.data[DOMAIN][entry.entry_id].controller
+    controller: ModelController = entry.runtime_data.controller
 
     objects = [
         {
@@ -27,6 +27,4 @@ async def async_get_config_entry_diagnostics(
         for obj in controller.model.objectList
     ]
 
-    return {
-        "objects": objects
-    }
+    return {"objects": objects}

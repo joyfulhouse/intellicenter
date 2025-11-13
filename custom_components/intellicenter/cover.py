@@ -1,19 +1,13 @@
 """Pentair Intellicenter covers."""
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
-from homeassistant.components.cover import (
-    ATTR_POSITION,
-    CoverEntity,
-    CoverEntityFeature,
-)
+from homeassistant.components.cover import CoverEntity, CoverEntityFeature
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import STATE_CLOSED, STATE_OPEN
 from homeassistant.core import HomeAssistant
 
 from . import PoolEntity
-from .const import DOMAIN
 from .pyintellicenter import (
     EXTINSTR_TYPE,
     NORMAL_ATTR,

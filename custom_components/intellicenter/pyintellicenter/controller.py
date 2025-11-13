@@ -178,13 +178,13 @@ class BaseController:
         """
 
         _LOGGER.debug(f"CONTROLLER: sendCmd: {cmd} {extra} {waitForResponse}")
-        future = Future() if waitForResponse else None
+        future: Optional[Future] = Future() if waitForResponse else None
 
         if self._protocol:
             msg_id = self._protocol.sendCmd(cmd, extra)
             self._requests[msg_id] = future
         elif future:
-            future.setException(Exception("controller disconnected"))
+            future.set_exception(Exception("controller disconnected"))
 
         return future
 

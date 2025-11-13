@@ -13,10 +13,8 @@ from homeassistant.const import PERCENTAGE
 from homeassistant.core import HomeAssistant
 
 from . import PoolEntity
-from .const import DOMAIN
 from .pyintellicenter import (
     BODY_ATTR,
-    BODY_TYPE,
     CHEM_TYPE,
     PRIM_ATTR,
     SEC_ATTR,

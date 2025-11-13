@@ -15,7 +15,6 @@ from custom_components.intellicenter.pyintellicenter.attributes import (
 from custom_components.intellicenter.water_heater import HEATER_ATTR, HTMODE_ATTR
 
 from . import PoolEntity
-from .const import DOMAIN
 from .pyintellicenter import STATUS_ATTR, ModelController, PoolObject
 
 _LOGGER = logging.getLogger(__name__)

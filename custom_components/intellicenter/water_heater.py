@@ -13,7 +13,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import PoolEntity
-from .const import DOMAIN
 from .pyintellicenter import (
     BODY_ATTR,
     BODY_TYPE,

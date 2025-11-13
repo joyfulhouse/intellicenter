@@ -3,7 +3,10 @@
 import logging
 from typing import Any, Optional
 
-from homeassistant.config_entries import CONN_CLASS_LOCAL_PUSH, ConfigFlow
+from homeassistant.config_entries import (
+    CONN_CLASS_LOCAL_PUSH,
+    ConfigFlow as BaseConfigFlow,
+)
 from homeassistant.const import CONF_HOST, CONF_NAME
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.typing import ConfigType
@@ -19,7 +22,7 @@ class CannotConnect(HomeAssistantError):
     """Error to indicate we cannot connect."""
 
 
-class ConfigFlow(ConfigFlow, domain=DOMAIN):
+class ConfigFlow(BaseConfigFlow, domain=DOMAIN):
     """Pentair Intellicenter config flow."""
 
     VERSION = 1

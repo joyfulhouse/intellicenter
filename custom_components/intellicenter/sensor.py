@@ -14,7 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 
 from . import PoolEntity
-from .const import CONST_GPM, CONST_RPM, DOMAIN
+from .const import CONST_GPM, CONST_RPM
 from .pyintellicenter import (
     BODY_TYPE,
     CHEM_TYPE,

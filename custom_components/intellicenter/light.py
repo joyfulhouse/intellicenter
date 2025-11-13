@@ -14,7 +14,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from . import PoolEntity
-from .const import DOMAIN
 from .pyintellicenter import (
     ACT_ATTR,
     CIRCUIT_ATTR,

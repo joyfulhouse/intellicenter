@@ -9,7 +9,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 
 from . import PoolEntity
-from .const import DOMAIN
 from .pyintellicenter import (
     BODY_TYPE,
     CHEM_TYPE,

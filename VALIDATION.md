@@ -12,16 +12,31 @@ Bronze level compliance includes:
 
 ## Running Checks Locally
 
+### Setup
+
+First, install testing dependencies:
+
+```bash
+# Option 1: Using a virtual environment (recommended)
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements-test.txt
+
+# Option 2: Using the system (if allowed)
+pip install -r requirements-test.txt
+```
+
 ### Using Make (Recommended)
 
 ```bash
-# Run all bronze level checks
+# Run all bronze level checks (lint, format, type-check, pytest)
 make bronze
 
 # Run individual checks
 make lint          # Run linting only
 make format-check  # Check formatting only
 make type-check    # Run type checking only
+make pytest        # Run tests only
 
 # Auto-fix issues
 make lint-fix      # Fix linting issues
@@ -41,6 +56,11 @@ ruff format custom_components/          # Format
 
 # Type checking
 mypy custom_components/intellicenter/ --ignore-missing-imports --no-strict-optional
+
+# Testing
+pytest tests/ -v
+pytest tests/ -v --tb=short  # Short traceback
+pytest tests/test_config_flow.py  # Run specific test file
 ```
 
 ## CI/CD Pipeline

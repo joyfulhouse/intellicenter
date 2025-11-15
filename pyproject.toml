@@ -53,3 +53,12 @@ combine-as-imports = true
 quote-style = "double"
 indent-style = "space"
 line-ending = "auto"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+norecursedirs = [
+    ".git",
+    ".venv",
+    "venv",
+]

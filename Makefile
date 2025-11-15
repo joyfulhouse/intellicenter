@@ -1,4 +1,4 @@
-.PHONY: help lint format type-check bronze test install-hooks
+.PHONY: help lint format type-check bronze test pytest install-hooks
 
 help:
 	@echo "Available targets:"
@@ -6,8 +6,9 @@ help:
 	@echo "  format        - Format code with ruff"
 	@echo "  format-check  - Check code formatting without modifying"
 	@echo "  type-check    - Run mypy type checking"
-	@echo "  bronze        - Run all bronze level checks (lint, format, type-check)"
-	@echo "  test          - Run all tests and validation"
+	@echo "  pytest        - Run pytest test suite"
+	@echo "  bronze        - Run all bronze level checks (lint, format, type-check, pytest)"
+	@echo "  test          - Alias for bronze"
 	@echo "  install-hooks - Install pre-commit hooks"
 
 lint:
@@ -25,11 +26,13 @@ format-check:
 type-check:
 	mypy custom_components/intellicenter/ --ignore-missing-imports --no-strict-optional || true
 
-bronze: lint format-check type-check
+pytest:
+	pytest tests/ -v --tb=short
+
+bronze: lint format-check type-check pytest
 	@echo "✅ All bronze level checks passed!"
 
 test: bronze
-	@echo "All validation checks passed!"
 
 install-hooks:
 	pre-commit install

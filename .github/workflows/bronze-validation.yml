@@ -23,7 +23,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ruff mypy
+          pip install ruff mypy pytest pytest-asyncio pytest-homeassistant-custom-component
 
       - name: Run Ruff Check (Linting)
         run: |
@@ -38,24 +38,9 @@ jobs:
           mypy custom_components/intellicenter/ --ignore-missing-imports --no-strict-optional
         continue-on-error: true  # TODO: Enable strict checking once type coverage improves
 
-      - name: Check for tests directory
+      - name: Run pytest
         run: |
-          if [ ! -d "tests" ]; then
-            echo "⚠️  WARNING: No tests/ directory found - required for Bronze compliance"
-            echo "⚠️  See BRONZE_COMPLIANCE.md for details"
-            exit 1
-          fi
-        continue-on-error: true  # Warning only for now
-
-      - name: Run pytest (if tests exist)
-        run: |
-          if [ -d "tests" ]; then
-            pip install pytest pytest-homeassistant-custom-component
-            pytest tests/ -v
-          else
-            echo "Skipping tests - no tests directory found"
-          fi
-        continue-on-error: true  # TODO: Make this required once tests are added
+          pytest tests/ -v --tb=short
 
   hassfest:
     name: Validate with hassfest

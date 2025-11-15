@@ -5,7 +5,6 @@ from asyncio import Future
 from hashlib import blake2b
 import logging
 import traceback
-from typing import Optional
 
 from .attributes import (
     MODE_ATTR,
@@ -22,6 +21,9 @@ from .protocol import ICProtocol
 
 _LOGGER = logging.getLogger(__name__)
 _LOGGER.setLevel(logging.INFO)
+
+# Timeout for command responses (seconds)
+COMMAND_TIMEOUT = 10
 
 
 class CommandError(Exception):
@@ -96,7 +98,7 @@ def prune(obj):
         return [prune(item) for item in obj]
     elif type(obj) is dict:
         result = {}
-        for (key, value) in obj.items():
+        for key, value in obj.items():
             if key != value:
                 result[key] = prune(value)
         return result
@@ -142,21 +144,29 @@ class BaseController:
 
         # we start by requesting a few attributes from the SYSTEM object
         # and therefore validate that the system connected is indeed a IntelliCenter
-        msg = await self.sendCmd(
-            "GetParamList",
-            {
-                "condition": f"{OBJTYP_ATTR}={SYSTEM_TYPE}",
-                "objectList": [
+        try:
+            msg = await asyncio.wait_for(
+                self.sendCmd(
+                    "GetParamList",
                     {
-                        "objnam": "INCR",
-                        "keys": SystemInfo.ATTRIBUTES_LIST,
-                    }
-                ],
-            },
-        )
+                        "condition": f"{OBJTYP_ATTR}={SYSTEM_TYPE}",
+                        "objectList": [
+                            {
+                                "objnam": "INCR",
+                                "keys": SystemInfo.ATTRIBUTES_LIST,
+                            }
+                        ],
+                    },
+                ),
+                timeout=COMMAND_TIMEOUT,
+            )
 
-        info = msg["objectList"][0]
-        self._systemInfo = SystemInfo(info["objnam"], info["params"])
+            info = msg["objectList"][0]
+            self._systemInfo = SystemInfo(info["objnam"], info["params"])
+        except TimeoutError:
+            _LOGGER.error(f"Timeout getting system info from {self._host}")
+            self.stop()
+            raise
 
     def stop(self):
         """Stop all activities from this controller and disconnect."""
@@ -168,7 +178,7 @@ class BaseController:
             self._transport = None
             self._protocol = None
 
-    def sendCmd(self, cmd, extra=None, waitForResponse=True) -> Optional[Future]:
+    def sendCmd(self, cmd, extra=None, waitForResponse=True) -> Future | None:
         """
         Send a command with optional extra parameters to the system.
 
@@ -306,9 +316,16 @@ class ModelController(BaseController):
         await super().start()
 
         # now we retrieve all the objects type, subtype, sname and parent
-        allObjects = await self.getAllObjects(
-            [OBJTYP_ATTR, SUBTYP_ATTR, SNAME_ATTR, PARENT_ATTR]
-        )
+        try:
+            allObjects = await asyncio.wait_for(
+                self.getAllObjects([OBJTYP_ATTR, SUBTYP_ATTR, SNAME_ATTR, PARENT_ATTR]),
+                timeout=COMMAND_TIMEOUT,
+            )
+        except TimeoutError:
+            _LOGGER.error(f"Timeout retrieving objects from {self._host}")
+            self.stop()
+            raise
+
         # and process that list into our model
         self.model.addObjects(allObjects)
 
@@ -324,22 +341,62 @@ class ModelController(BaseController):
 
             query = []
             numAttributes = 0
+            successful_requests = 0
+            total_requests = 0
+
             for items in attributes:
                 query.append(items)
                 numAttributes += len(items["keys"])
                 # a query too large can choke the protocol...
                 # we split them in maximum of 50 attributes (arbitrary but seems to work)
                 if numAttributes >= 50:
-                    res = await self.sendCmd("RequestParamList", {"objectList": query})
-                    self._applyUpdates(res["objectList"])
+                    total_requests += 1
+                    try:
+                        res = await asyncio.wait_for(
+                            self.sendCmd("RequestParamList", {"objectList": query}),
+                            timeout=COMMAND_TIMEOUT,
+                        )
+                        self._applyUpdates(res["objectList"])
+                        successful_requests += 1
+                    except TimeoutError:
+                        _LOGGER.error(
+                            f"Timeout requesting attribute monitoring batch {total_requests}"
+                        )
+                        # Continue with other batches rather than failing completely
                     query = []
                     numAttributes = 0
+
             # and issue the remaining elements if any
             if query:
-                res = await self.sendCmd("RequestParamList", {"objectList": query})
-                self._applyUpdates(res["objectList"])
+                total_requests += 1
+                try:
+                    res = await asyncio.wait_for(
+                        self.sendCmd("RequestParamList", {"objectList": query}),
+                        timeout=COMMAND_TIMEOUT,
+                    )
+                    self._applyUpdates(res["objectList"])
+                    successful_requests += 1
+                except TimeoutError:
+                    _LOGGER.error(
+                        f"Timeout requesting attribute monitoring batch {total_requests}"
+                    )
+
+            # Validate that we successfully registered at least some attributes
+            if total_requests > 0 and successful_requests == 0:
+                raise Exception(
+                    f"Failed to register any attribute monitoring ({total_requests} attempts failed)"
+                )
+            elif successful_requests < total_requests:
+                _LOGGER.warning(
+                    f"Partial success registering attributes: {successful_requests}/{total_requests} batches succeeded"
+                )
+            else:
+                _LOGGER.info(
+                    f"Successfully registered all attribute monitoring ({successful_requests} batches)"
+                )
 
         except Exception as err:
+            _LOGGER.error(f"Error during ModelController start: {err}")
             traceback.print_exc()
             raise err
 
@@ -497,8 +554,13 @@ class ConnectionHandler:
         self.disconnected(controller, err)
         if not self._stopped:
             _LOGGER.error(
-                f"system disconnected  from {self._controller.host} {err if err else ''}"
+                f"system disconnected from {self._controller.host} {err if err else ''}"
             )
+            # Cancel any existing reconnection task before creating a new one
+            if self._starterTask and not self._starterTask.done():
+                _LOGGER.debug("Cancelling existing reconnection task")
+                self._starterTask.cancel()
+
             self._starterTask = asyncio.create_task(
                 self._starter(self._timeBetweenReconnects)
             )

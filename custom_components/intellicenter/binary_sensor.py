@@ -2,16 +2,16 @@
 
 import logging
 
+from homeassistant.components.binary_sensor import BinarySensorEntity
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+
 from custom_components.intellicenter.pyintellicenter.attributes import (
     BODY_ATTR,
     CIRCUIT_TYPE,
     HEATER_TYPE,
 )
 from custom_components.intellicenter.water_heater import HEATER_ATTR, HTMODE_ATTR
-
-from homeassistant.components.binary_sensor import BinarySensorEntity
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
 
 from . import PoolEntity
 from .const import DOMAIN
@@ -33,12 +33,7 @@ async def async_setup_entry(
     for obj in controller.model.objectList:
         if obj.objtype == CIRCUIT_TYPE and obj.subtype == "FRZ":
             sensors.append(
-                PoolBinarySensor(
-                    entry,
-                    controller,
-                    obj,
-                    icon = "mdi:snowflake"
-                )
+                PoolBinarySensor(entry, controller, obj, icon="mdi:snowflake")
             )
         elif obj.objtype == HEATER_TYPE:
             sensors.append(

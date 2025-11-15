@@ -64,7 +64,10 @@ async def async_setup_entry(
         elif obj.isALightShow:
             supportColorEffects = reduce(
                 lambda x, y: x and y,
-                (controller.model[obj[CIRCUIT_ATTR]].supportColorEffects for obj in controller.model.getChildren(obj)),
+                (
+                    controller.model[obj[CIRCUIT_ATTR]].supportColorEffects
+                    for obj in controller.model.getChildren(obj)
+                ),
                 True,
             )
             lights.append(

@@ -1,4 +1,5 @@
 """Pentair IntelliCenter Integration."""
+
 import asyncio
 import logging
 from typing import Any, Optional
@@ -105,12 +106,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     controller = ModelController(entry.data[CONF_HOST], model, loop=hass.loop)
 
     class Handler(ConnectionHandler):
-
         UPDATE_SIGNAL = DOMAIN + "_UPDATE_" + entry.entry_id
         CONNECTION_SIGNAL = DOMAIN + "_CONNECTION_" + entry.entry_id
 
         def started(self, controller):
-
             _LOGGER.info(f"connected to system: '{controller.systemInfo.propName}'")
 
             for object in controller.model:
@@ -145,7 +144,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             dispatcher.async_dispatcher_send(hass, self.UPDATE_SIGNAL, updates)
 
     try:
-
         handler = Handler(controller)
 
         await handler.start()
@@ -163,7 +161,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, on_hass_stop)
 
         return True
-    except ConnectionRefusedError as err:
+    except (ConnectionRefusedError, ConnectionError, OSError, TimeoutError) as err:
+        # Network-related errors that should trigger retry
+        _LOGGER.error(
+            f"Failed to connect to IntelliCenter at {entry.data[CONF_HOST]}: {err}"
+        )
+        raise ConfigEntryNotReady from err
+    except Exception as err:
+        # Log unexpected errors but still raise ConfigEntryNotReady to allow retry
+        _LOGGER.error(
+            f"Unexpected error setting up IntelliCenter integration: {err}",
+            exc_info=True,
+        )
         raise ConfigEntryNotReady from err
 
 
@@ -209,7 +218,7 @@ class PoolEntity(Entity):
         attribute_key=STATUS_ATTR,
         name=None,
         enabled_by_default=True,
-        extraStateAttributes=set(),
+        extraStateAttributes=None,
         icon: str = None,
         unit_of_measurement: str = None,
     ):
@@ -218,7 +227,9 @@ class PoolEntity(Entity):
         self._controller = controller
         self._poolObject = poolObject
         self._attr_available = True
-        self._extra_state_attributes = extraStateAttributes
+        self._extra_state_attributes = (
+            extraStateAttributes if extraStateAttributes is not None else set()
+        )
         self._attr_name = name
         self._attribute_key = attribute_key
         self._attr_entity_registry_enabled_default = enabled_by_default
@@ -284,7 +295,7 @@ class PoolEntity(Entity):
         }
 
     @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return the state attributes of the entity."""
 
         object = self._poolObject
@@ -331,16 +342,32 @@ class PoolEntity(Entity):
     def _connection_callback(self, is_connected):
         """Mark the entity as unavailable after being disconnected from the server."""
         if is_connected:
-            self._poolObject = self._controller.model[self._poolObject.objnam]
-            if not self._poolObject:
-                # this is for the rare case where the object the entity is mapped to
+            # Try to refresh the pool object reference from the model
+            updated_object = self._controller.model[self._poolObject.objnam]
+            if not updated_object:
+                # This is for the rare case where the object the entity is mapped to
                 # had been removed from the Pentair system while we were disconnected
+                _LOGGER.warning(
+                    f"Entity {self.unique_id} object {self._poolObject.objnam} "
+                    f"no longer exists in pool model after reconnection - marking unavailable"
+                )
+                self._attr_available = False
+                self.async_write_ha_state()
                 return
+
+            # Successfully found the object, update reference and mark available
+            self._poolObject = updated_object
+            _LOGGER.debug(
+                f"Entity {self.unique_id} refreshed pool object reference after reconnection"
+            )
+
         self._attr_available = is_connected
         self.async_write_ha_state()
 
     def pentairTemperatureSettings(self):
         """Return the temperature units from the Pentair system."""
         return (
-            UnitOfTemperature.CELSIUS if self._controller.systemInfo.usesMetric else UnitOfTemperature.FAHRENHEIT
+            UnitOfTemperature.CELSIUS
+            if self._controller.systemInfo.usesMetric
+            else UnitOfTemperature.FAHRENHEIT
         )

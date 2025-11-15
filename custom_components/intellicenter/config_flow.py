@@ -1,7 +1,7 @@
 """Config flow for Pentair Intellicenter integration."""
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from homeassistant.config_entries import CONN_CLASS_LOCAL_PUSH, ConfigFlow
 from homeassistant.const import CONF_HOST, CONF_NAME
@@ -31,7 +31,7 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
         pass
 
     async def async_step_user(
-        self, user_input: Optional[ConfigType] = None
+        self, user_input: ConfigType | None = None
     ) -> dict[str, Any]:
         """Handle a flow initiated by the user."""
         if user_input is None:
@@ -108,7 +108,7 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
             title=system_info.propName, data={CONF_HOST: self.context.get(CONF_HOST)}
         )
 
-    def _show_setup_form(self, errors: Optional[dict] = None) -> dict[str, Any]:
+    def _show_setup_form(self, errors: dict | None = None) -> dict[str, Any]:
         """Show the setup form to the user."""
         return self.async_show_form(
             step_id="user",

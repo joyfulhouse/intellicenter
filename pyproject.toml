@@ -1,0 +1,51 @@
+[project]
+name = "intellicenter"
+version = "2.0.0"
+description = "Home Assistant custom integration for Pentair IntelliCenter"
+readme = "README.md"
+requires-python = ">=3.11"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "C",  # flake8-comprehensions
+    "B",  # flake8-bugbear
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by black/formatter)
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+    "E203",  # whitespace before ':'
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]  # unused imports in __init__.py
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+known-first-party = ["custom_components", "tests"]
+forced-separate = ["tests"]
+combine-as-imports = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B101"]  # Use of assert detected
+
+[tool.codespell]
+ignore-words-list = "hass,timout"
+skip = ".git,*.json,*.csv"
+quiet-level = 2

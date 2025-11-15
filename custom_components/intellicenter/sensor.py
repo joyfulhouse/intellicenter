@@ -1,7 +1,6 @@
 """Pentair Intellicenter sensors."""
 
 import logging
-from typing import Optional
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -204,7 +203,7 @@ class PoolSensor(PoolEntity, SensorEntity):
         entry: ConfigEntry,
         controller: ModelController,
         poolObject: PoolObject,
-        device_class: Optional[SensorDeviceClass],
+        device_class: SensorDeviceClass | None,
         rounding_factor: int = 0,
         **kwargs,
     ):
@@ -225,12 +224,14 @@ class PoolSensor(PoolEntity, SensorEntity):
         # smoothes the curve and limits the number of updates in the log
 
         if self._rounding_factor:
-            value = str(int(round(int(value) / self._rounding_factor) * self._rounding_factor))
+            value = str(
+                int(round(int(value) / self._rounding_factor) * self._rounding_factor)
+            )
 
         return value
 
     @property
-    def native_unit_of_measurement(self) -> Optional[str]:
+    def native_unit_of_measurement(self) -> str | None:
         """Return the unit of measurement of this entity, if any."""
         if self._attr_device_class == SensorDeviceClass.TEMPERATURE:
             return self.pentairTemperatureSettings()

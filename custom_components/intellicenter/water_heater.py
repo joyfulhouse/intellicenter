@@ -1,7 +1,7 @@
 """Pentair Intellicenter water heaters."""
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from homeassistant.components.water_heater import (
     WaterHeaterEntity,
@@ -9,8 +9,8 @@ from homeassistant.components.water_heater import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_TEMPERATURE, STATE_IDLE, STATE_OFF, STATE_ON
-from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import PoolEntity
 from .const import DOMAIN
@@ -94,7 +94,7 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
         self._attr_icon = "mdi:thermometer"
 
     @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return the state attributes of the entity."""
 
         state_attributes = super().extra_state_attributes
@@ -122,7 +122,10 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
     @property
     def supported_features(self):
         """Return the list of supported features."""
-        return WaterHeaterEntityFeature.TARGET_TEMPERATURE | WaterHeaterEntityFeature.OPERATION_MODE
+        return (
+            WaterHeaterEntityFeature.TARGET_TEMPERATURE
+            | WaterHeaterEntityFeature.OPERATION_MODE
+        )
 
     @property
     def temperature_unit(self):

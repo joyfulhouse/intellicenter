@@ -1,7 +1,6 @@
 """Model class for storing a Pentair system."""
 
 import logging
-from typing import List
 
 from .attributes import (
     ALL_ATTRIBUTES_BY_TYPE,
@@ -106,7 +105,7 @@ class PoolObject:
         for key in sorted(set(self._properties.keys())):
             value = self._properties[key]
             if type(value) is list:
-                value = "[" + ",".join(map(lambda v: f"{  {str(v)} }", value)) + "]"
+                value = "[" + ",".join(f"{ {str(v)} }" for v in value) + "]"
             result += f" {key}: {value}"
         return result
 
@@ -125,8 +124,7 @@ class PoolObject:
 
         changed = {}
 
-        for (key, value) in updates.items():
-
+        for key, value in updates.items():
             if key in self._properties:
                 if self._properties[key] == value:
                     # ignore unchanged existing value
@@ -179,7 +177,7 @@ class PoolModel:
         """Return an object based on its objnam."""
         return self._objects.get(key)
 
-    def getByType(self, type: str, subtype: str = None) -> List[PoolObject]:
+    def getByType(self, type: str, subtype: str = None) -> list[PoolObject]:
         """Return all the object which match the type and the optional subtype.
 
         examples:
@@ -194,7 +192,7 @@ class PoolModel:
             )
         )
 
-    def getChildren(self, object: PoolObject) -> List[PoolObject]:
+    def getChildren(self, object: PoolObject) -> list[PoolObject]:
         """Return the children of a given object."""
         return list(filter(lambda v: v[PARENT_ATTR] == object.objnam, self))
 

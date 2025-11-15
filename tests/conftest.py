@@ -4,8 +4,13 @@ from collections.abc import Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.intellicenter.const import DOMAIN
 from custom_components.intellicenter.pyintellicenter import SystemInfo
+
+# Enable custom integrations
+pytest_plugins = "pytest_homeassistant_custom_component"
 
 
 @pytest.fixture

@@ -52,7 +52,7 @@ async def test_async_setup_entry_success(
             mock_handler_class.return_value = mock_handler
 
             with patch.object(
-                hass.config_entries, "async_forward_entry_setups", return_value=None
+                hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock
             ) as mock_forward:
                 result = await async_setup_entry(hass, entry)
 
@@ -105,7 +105,7 @@ async def test_async_unload_entry(hass: HomeAssistant) -> None:
     with patch.object(
         hass.config_entries,
         "async_forward_entry_unload",
-        return_value=True,
+        new_callable=lambda: AsyncMock(return_value=True),
     ) as mock_unload:
         result = await async_unload_entry(hass, entry)
 
@@ -135,7 +135,7 @@ async def test_async_unload_entry_platforms_fail(hass: HomeAssistant) -> None:
     with patch.object(
         hass.config_entries,
         "async_forward_entry_unload",
-        return_value=False,  # Simulate platform unload failure
+        new_callable=lambda: AsyncMock(return_value=False),  # Simulate platform unload failure
     ):
         result = await async_unload_entry(hass, entry)
 

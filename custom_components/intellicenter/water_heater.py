@@ -202,7 +202,7 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
 
         myUpdates = updates.get(self._poolObject.objnam, {})
 
-        updated = (
+        updated = bool(
             myUpdates
             and {STATUS_ATTR, HEATER_ATTR, HTMODE_ATTR, LOTMP_ATTR, LSTTMP_ATTR}
             & myUpdates.keys()

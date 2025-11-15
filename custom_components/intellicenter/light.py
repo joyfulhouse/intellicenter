@@ -101,8 +101,8 @@ class PoolLight(PoolEntity, LightEntity):
         self._extra_state_attributes = [USE_ATTR]
 
         self._lightEffects = colorEffects
-        self._reversedLightEffects = (
-            dict(map(reversed, colorEffects.items())) if colorEffects else None
+        self._reversedLightEffects: dict[str, str] | None = (
+            dict(map(reversed, colorEffects.items())) if colorEffects else None  # type: ignore[arg-type]
         )
 
         if self._lightEffects:
@@ -145,4 +145,4 @@ class PoolLight(PoolEntity, LightEntity):
 
         myUpdates = updates.get(self._poolObject.objnam, {})
 
-        return myUpdates and {STATUS_ATTR, USE_ATTR} & myUpdates.keys()
+        return bool(myUpdates and {STATUS_ATTR, USE_ATTR} & myUpdates.keys())

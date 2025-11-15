@@ -22,11 +22,11 @@ class CannotConnect(HomeAssistantError):
     """Error to indicate we cannot connect."""
 
 
-class ConfigFlow(BaseConfigFlow, domain=DOMAIN):
+class ConfigFlow(BaseConfigFlow):
     """Pentair Intellicenter config flow."""
 
     VERSION = 1
-
+    DOMAIN = DOMAIN
     CONNECTION_CLASS = CONN_CLASS_LOCAL_PUSH
 
     def __init__(self):

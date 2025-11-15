@@ -48,7 +48,6 @@ jobs:
   type-check:
     name: Type Check
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -65,7 +64,7 @@ jobs:
 
       - name: Run mypy
         run: |
-          mypy custom_components/intellicenter --ignore-missing-imports --no-strict-optional --explicit-package-bases || echo "Type checking completed with warnings"
+          mypy custom_components/intellicenter --ignore-missing-imports --no-strict-optional --explicit-package-bases
 
   validate:
     name: Validate with hassfest

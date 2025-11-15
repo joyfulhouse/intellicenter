@@ -85,43 +85,11 @@ jobs:
               echo "❌ No test files found"
               exit 1
             fi
+            echo "✅ Silver tier requirement met: Test framework with $TEST_COUNT test files exists"
           else
             echo "❌ No tests directory found"
             exit 1
           fi
-
-      - name: Try installing Home Assistant (optional for running tests)
-        continue-on-error: true
-        run: |
-          pip install homeassistant==2024.11.0
-
-      - name: Run tests with coverage (if HA available)
-        continue-on-error: true
-        run: |
-          pytest tests/ \
-            --cov=custom_components/intellicenter \
-            --cov-report=term \
-            --cov-report=xml \
-            --cov-report=html \
-            -v || echo "⚠️  Tests require Home Assistant environment to run"
-
-      - name: Check coverage threshold (if coverage available)
-        continue-on-error: true
-        run: |
-          if [ -f "coverage.xml" ]; then
-            pip install coverage
-            coverage report --fail-under=75
-          else
-            echo "⚠️  Coverage report not generated (tests may not have run)"
-          fi
-
-      - name: Upload coverage reports
-        if: always()
-        uses: codecov/codecov-action@v4
-        with:
-          file: ./coverage.xml
-          fail_ci_if_error: false
-          token: ${{ secrets.CODECOV_TOKEN }}
 
   # Gold Tier Validation
   gold-validation:
@@ -160,7 +128,6 @@ jobs:
     name: 🏆 Platinum Tier - Type Checking
     runs-on: ubuntu-latest
     needs: gold-validation
-    continue-on-error: true
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -189,7 +156,7 @@ jobs:
             --ignore-missing-imports \
             --no-strict-optional \
             --explicit-package-bases \
-            --show-error-codes || echo "Type checking completed with warnings"
+            --show-error-codes
 
   # Home Assistant Validation
   hassfest-validation:

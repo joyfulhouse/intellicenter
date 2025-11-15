@@ -86,4 +86,4 @@ class PoolCover(PoolEntity, CoverEntity):
     def isUpdated(self, updates: dict[str, dict[str, str]]) -> bool:
         """Return true if the entity is updated by the updates from Intellicenter."""
         myUpdates = updates.get(self._poolObject.objnam, {})
-        return myUpdates and {STATUS_ATTR, NORMAL_ATTR} & myUpdates.keys()
+        return bool(myUpdates and {STATUS_ATTR, NORMAL_ATTR} & myUpdates.keys())

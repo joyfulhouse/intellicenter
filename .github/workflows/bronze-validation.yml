@@ -36,7 +36,26 @@ jobs:
       - name: Run mypy (Type Checking)
         run: |
           mypy custom_components/intellicenter/ --ignore-missing-imports --no-strict-optional
-        continue-on-error: true
+        continue-on-error: true  # TODO: Enable strict checking once type coverage improves
+
+      - name: Check for tests directory
+        run: |
+          if [ ! -d "tests" ]; then
+            echo "⚠️  WARNING: No tests/ directory found - required for Bronze compliance"
+            echo "⚠️  See BRONZE_COMPLIANCE.md for details"
+            exit 1
+          fi
+        continue-on-error: true  # Warning only for now
+
+      - name: Run pytest (if tests exist)
+        run: |
+          if [ -d "tests" ]; then
+            pip install pytest pytest-homeassistant-custom-component
+            pytest tests/ -v
+          else
+            echo "Skipping tests - no tests directory found"
+          fi
+        continue-on-error: true  # TODO: Make this required once tests are added
 
   hassfest:
     name: Validate with hassfest

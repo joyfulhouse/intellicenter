@@ -5,7 +5,7 @@ from asyncio import Future
 from hashlib import blake2b
 import logging
 import traceback
-from typing import Optional
+from typing import ClassVar
 
 from .attributes import (
     MODE_ATTR,
@@ -43,7 +43,12 @@ class CommandError(Exception):
 class SystemInfo:
     """Represents minimal information about a Pentair system."""
 
-    ATTRIBUTES_LIST = [PROPNAME_ATTR, VER_ATTR, MODE_ATTR, SNAME_ATTR]
+    ATTRIBUTES_LIST: ClassVar[list[str]] = [
+        PROPNAME_ATTR,
+        VER_ATTR,
+        MODE_ATTR,
+        SNAME_ATTR,
+    ]
 
     def __init__(self, objnam: str, params: dict):
         """Initialize from a dictionary."""
@@ -96,7 +101,7 @@ def prune(obj):
         return [prune(item) for item in obj]
     elif type(obj) is dict:
         result = {}
-        for (key, value) in obj.items():
+        for key, value in obj.items():
             if key != value:
                 result[key] = prune(value)
         return result
@@ -168,7 +173,7 @@ class BaseController:
             self._transport = None
             self._protocol = None
 
-    def sendCmd(self, cmd, extra=None, waitForResponse=True) -> Optional[Future]:
+    def sendCmd(self, cmd, extra=None, waitForResponse=True) -> Future | None:
         """
         Send a command with optional extra parameters to the system.
 
@@ -260,7 +265,7 @@ class BaseController:
             f"CONTROLLER: receivedMessage: {msg_id} {command} {response} {future}"
         )
 
-        if not future == 0:
+        if future != 0:
             if future:
                 if response == "200":
                     future.set_result(msg)

@@ -82,7 +82,7 @@ class ICProtocol(asyncio.Protocol):
                 # and process each line individually
                 self.processMessage(line)
 
-    def sendCmd(self, cmd: str, extra: dict = None) -> str:
+    def sendCmd(self, cmd: str, extra: dict | None = None) -> str:
         """Send a command and return a generated msg id."""
         msg_id = str(self._msgID)
         dict = {"messageID": msg_id, "command": cmd}

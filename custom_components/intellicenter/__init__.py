@@ -1,4 +1,5 @@
 """Pentair IntelliCenter Integration."""
+
 import asyncio
 import logging
 from typing import Any, Optional
@@ -105,12 +106,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     controller = ModelController(entry.data[CONF_HOST], model, loop=hass.loop)
 
     class Handler(ConnectionHandler):
-
         UPDATE_SIGNAL = DOMAIN + "_UPDATE_" + entry.entry_id
         CONNECTION_SIGNAL = DOMAIN + "_CONNECTION_" + entry.entry_id
 
         def started(self, controller):
-
             _LOGGER.info(f"connected to system: '{controller.systemInfo.propName}'")
 
             for object in controller.model:
@@ -145,7 +144,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             dispatcher.async_dispatcher_send(hass, self.UPDATE_SIGNAL, updates)
 
     try:
-
         handler = Handler(controller)
 
         await handler.start()
@@ -209,11 +207,13 @@ class PoolEntity(Entity):
         attribute_key=STATUS_ATTR,
         name=None,
         enabled_by_default=True,
-        extraStateAttributes=set(),
-        icon: str = None,
-        unit_of_measurement: str = None,
+        extraStateAttributes=None,
+        icon: str | None = None,
+        unit_of_measurement: str | None = None,
     ):
         """Initialize a Pool entity."""
+        if extraStateAttributes is None:
+            extraStateAttributes = set()
         self._entry_id = entry.entry_id
         self._controller = controller
         self._poolObject = poolObject
@@ -284,7 +284,7 @@ class PoolEntity(Entity):
         }
 
     @property
-    def extra_state_attributes(self) -> Optional[dict[str, Any]]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return the state attributes of the entity."""
 
         object = self._poolObject
@@ -342,5 +342,7 @@ class PoolEntity(Entity):
     def pentairTemperatureSettings(self):
         """Return the temperature units from the Pentair system."""
         return (
-            UnitOfTemperature.CELSIUS if self._controller.systemInfo.usesMetric else UnitOfTemperature.FAHRENHEIT
+            UnitOfTemperature.CELSIUS
+            if self._controller.systemInfo.usesMetric
+            else UnitOfTemperature.FAHRENHEIT
         )

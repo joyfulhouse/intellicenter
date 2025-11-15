@@ -1,15 +1,13 @@
 """Pentair Intellicenter covers."""
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from homeassistant.components.cover import (
     CoverEntity,
     CoverEntityFeature,
-    ATTR_POSITION,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import STATE_CLOSED, STATE_OPEN
 from homeassistant.core import HomeAssistant
 
 from . import PoolEntity
@@ -26,6 +24,7 @@ _LOGGER = logging.getLogger(__name__)
 
 # -------------------------------------------------------------------------------------
 
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities
 ):
@@ -41,7 +40,9 @@ async def async_setup_entry(
 
     async_add_entities(covers)
 
+
 # -------------------------------------------------------------------------------------
+
 
 class PoolCover(PoolEntity, CoverEntity):
     """Representation of a Pentair pool cover."""
@@ -89,4 +90,4 @@ class PoolCover(PoolEntity, CoverEntity):
     def isUpdated(self, updates: dict[str, dict[str, str]]) -> bool:
         """Return true if the entity is updated by the updates from Intellicenter."""
         myUpdates = updates.get(self._poolObject.objnam, {})
-        return myUpdates and {STATUS_ATTR, NORMAL_ATTR} & myUpdates.keys() 
+        return myUpdates and {STATUS_ATTR, NORMAL_ATTR} & myUpdates.keys()

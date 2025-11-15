@@ -27,6 +27,4 @@ async def async_get_config_entry_diagnostics(
         for obj in controller.model.objectList
     ]
 
-    return {
-        "objects": objects
-    }
+    return {"objects": objects}

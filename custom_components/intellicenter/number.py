@@ -16,7 +16,6 @@ from . import PoolEntity
 from .const import DOMAIN
 from .pyintellicenter import (
     BODY_ATTR,
-    BODY_TYPE,
     CHEM_TYPE,
     PRIM_ATTR,
     SEC_ATTR,
@@ -46,7 +45,7 @@ async def async_setup_entry(
             and PRIM_ATTR in obj.attributes
         ):
             intellichlor_bodies = obj[BODY_ATTR].split(" ")
-            
+
             # Only create number entities for bodies that are actually configured
             for index, body_id in enumerate(intellichlor_bodies):
                 body = controller.model[body_id]

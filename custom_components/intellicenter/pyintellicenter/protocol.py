@@ -10,6 +10,11 @@ _LOGGER = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 
+# Heartbeat configuration constants
+HEARTBEAT_INTERVAL = 10  # Send ping every 10 seconds
+MAX_MISSED_PINGS = 2  # Close connection after 2 missed pongs
+FLOW_CONTROL_TIMEOUT = 30  # Reset flow control if stuck for 30 seconds
+
 
 class ICProtocol(asyncio.Protocol):
     """The ICProtocol handles the low level protocol with a Pentair system.
@@ -40,21 +45,35 @@ class ICProtocol(asyncio.Protocol):
         # see sendRequest and responseReceived for details
         self._out_pending = 0
         self._out_queue = SimpleQueue()
+        self._last_flow_control_activity = None
 
         # and the number of unacknowledgged ping issued
         self._num_unacked_pings = 0
+
+        # heartbeat task for monitoring connection health
+        self._heartbeat_task = None
 
     def connection_made(self, transport):
         """Handle the callback for a successful connection."""
 
         self._transport = transport
         self._msgID = 1
+        self._num_unacked_pings = 0
+        self._last_flow_control_activity = asyncio.get_event_loop().time()
+
+        # Start the heartbeat monitoring task
+        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
         # and notify our controller that we are ready!
         self._controller.connection_made(self, transport)
 
     def connection_lost(self, exc):
         """Handle the callback for connection lost."""
+
+        # Cancel the heartbeat task
+        if self._heartbeat_task and not self._heartbeat_task.done():
+            self._heartbeat_task.cancel()
+            self._heartbeat_task = None
 
         self._controller.connection_lost(exc)
 
@@ -116,6 +135,7 @@ class ICProtocol(asyncio.Protocol):
 
         # and count the new request as pending
         self._out_pending += 1
+        self._last_flow_control_activity = asyncio.get_event_loop().time()
 
     def responseReceived(self) -> None:
         """Handle the flow control part of a received rsponse."""
@@ -130,6 +150,9 @@ class ICProtocol(asyncio.Protocol):
         if self._out_pending:
             self._out_pending -= 1
 
+        # Track flow control activity
+        self._last_flow_control_activity = asyncio.get_event_loop().time()
+
     def processMessage(self, message: str) -> None:
         """Process a given message from IntelliCenter."""
 
@@ -139,8 +162,11 @@ class ICProtocol(asyncio.Protocol):
         # do nothing except noting a response was received
         if message == "pong":
             self.responseReceived()
-            self._num_unacked_pings -= 1
-            _LOGGER.debug("ping acknowledged")
+            if self._num_unacked_pings > 0:
+                self._num_unacked_pings -= 1
+            _LOGGER.debug(
+                f"ping acknowledged (remaining unacked: {self._num_unacked_pings})"
+            )
             return
 
         # a number of issues could be happening in this code section
@@ -169,5 +195,80 @@ class ICProtocol(asyncio.Protocol):
             # let's pass our message back to the controller for handling its semantic...
             self._controller.receivedMessage(msg_id, command, response, msg)
 
+        except json.JSONDecodeError as err:
+            _LOGGER.error(f"PROTOCOL: invalid JSON received: {message[:100]} - {err}")
+            # JSON errors are recoverable, continue processing
+        except KeyError as err:
+            _LOGGER.error(
+                f"PROTOCOL: message missing required field {err}: {message[:100]}"
+            )
+            # Missing fields are recoverable, continue processing
         except Exception as err:
-            _LOGGER.error(f"PROTOCOL: exception while receiving message {err}")
+            _LOGGER.error(
+                f"PROTOCOL: unexpected exception while receiving message: {err}",
+                exc_info=True,
+            )
+            # For unexpected errors, close the connection to trigger reconnection
+            if self._transport:
+                _LOGGER.warning("PROTOCOL: closing connection due to unexpected error")
+                self._transport.close()
+
+    async def _heartbeat_loop(self):
+        """Periodically send ping messages and monitor connection health."""
+        try:
+            while True:
+                await asyncio.sleep(HEARTBEAT_INTERVAL)
+
+                if not self._transport or self._transport.is_closing():
+                    _LOGGER.debug("PROTOCOL: heartbeat stopped - transport closed")
+                    break
+
+                # Check for flow control deadlock
+                if self._last_flow_control_activity:
+                    time_since_activity = (
+                        asyncio.get_event_loop().time()
+                        - self._last_flow_control_activity
+                    )
+                    if (
+                        self._out_pending > 0
+                        and time_since_activity > FLOW_CONTROL_TIMEOUT
+                    ):
+                        _LOGGER.warning(
+                            f"PROTOCOL: flow control deadlock detected "
+                            f"({self._out_pending} pending, {time_since_activity:.1f}s since activity) - resetting"
+                        )
+                        # Reset flow control state
+                        self._out_pending = 0
+                        # Clear the queue
+                        while not self._out_queue.empty():
+                            try:
+                                self._out_queue.get_nowait()
+                            except Exception:
+                                break
+
+                # Check if too many pings have been missed
+                if self._num_unacked_pings >= MAX_MISSED_PINGS:
+                    _LOGGER.error(
+                        f"PROTOCOL: missed {self._num_unacked_pings} pings - connection appears dead, closing"
+                    )
+                    if self._transport:
+                        self._transport.close()
+                    break
+
+                # Send ping
+                _LOGGER.debug(
+                    f"PROTOCOL: sending ping (unacked: {self._num_unacked_pings})"
+                )
+                self._num_unacked_pings += 1
+                try:
+                    self._transport.write(b"ping\r\n")
+                except Exception as err:
+                    _LOGGER.error(f"PROTOCOL: failed to send ping: {err}")
+                    if self._transport:
+                        self._transport.close()
+                    break
+
+        except asyncio.CancelledError:
+            _LOGGER.debug("PROTOCOL: heartbeat task cancelled")
+        except Exception as err:
+            _LOGGER.error(f"PROTOCOL: heartbeat loop error: {err}", exc_info=True)

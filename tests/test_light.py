@@ -1,21 +1,20 @@
 """Test the Pentair IntelliCenter light platform."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from homeassistant.components.light import ATTR_EFFECT
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
 import pytest
 
 from custom_components.intellicenter import DOMAIN
-from custom_components.intellicenter.light import PoolLight, LIGHTS_EFFECTS
+from custom_components.intellicenter.light import LIGHTS_EFFECTS, PoolLight
 from custom_components.intellicenter.pyintellicenter import (
     ACT_ATTR,
+    STATUS_ATTR,
     PoolModel,
     PoolObject,
-    STATUS_ATTR,
 )
 
 pytestmark = pytest.mark.asyncio

@@ -14,8 +14,8 @@ from custom_components.intellicenter.pyintellicenter import (
 )
 from custom_components.intellicenter.pyintellicenter.attributes import (
     BODY_TYPE,
-    CIRCUIT_TYPE,
     CHEM_TYPE,
+    CIRCUIT_TYPE,
     HEATER_TYPE,
     PUMP_TYPE,
     SCHED_TYPE,
@@ -292,7 +292,9 @@ def pool_object_body() -> PoolObject:
 
 
 @pytest.fixture
-def mock_model_controller(pool_model: PoolModel) -> Generator[ModelController, None, None]:
+def mock_model_controller(
+    pool_model: PoolModel,
+) -> Generator[ModelController, None, None]:
     """Return a mock ModelController for integration tests."""
     with patch(
         "custom_components.intellicenter.ModelController"
@@ -306,10 +308,18 @@ def mock_model_controller(pool_model: PoolModel) -> Generator[ModelController, N
         # Add system info properties
         system_obj = pool_model["SYS01"]
         mock_instance.systemInfo = MagicMock()
-        type(mock_instance.systemInfo).uniqueID = property(lambda self: "test-unique-id-123")
-        type(mock_instance.systemInfo).propName = property(lambda self: system_obj.properties.get("PROPNAME", "Test Pool System"))
-        type(mock_instance.systemInfo).swVersion = property(lambda self: system_obj.properties.get("VER", "2.0.0"))
-        type(mock_instance.systemInfo).usesMetric = property(lambda self: system_obj.properties.get("MODE") == "METRIC")
+        type(mock_instance.systemInfo).uniqueID = property(
+            lambda self: "test-unique-id-123"
+        )
+        type(mock_instance.systemInfo).propName = property(
+            lambda self: system_obj.properties.get("PROPNAME", "Test Pool System")
+        )
+        type(mock_instance.systemInfo).swVersion = property(
+            lambda self: system_obj.properties.get("VER", "2.0.0")
+        )
+        type(mock_instance.systemInfo).usesMetric = property(
+            lambda self: system_obj.properties.get("MODE") == "METRIC"
+        )
 
         mock_controller_class.return_value = mock_instance
         yield mock_instance

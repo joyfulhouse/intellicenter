@@ -2,9 +2,6 @@
 
 from typing import Any
 
-import pytest
-
-from custom_components.intellicenter.pyintellicenter.model import PoolModel, PoolObject
 from custom_components.intellicenter.pyintellicenter.attributes import (
     BODY_TYPE,
     CIRCUIT_TYPE,
@@ -15,6 +12,7 @@ from custom_components.intellicenter.pyintellicenter.attributes import (
     STATUS_ATTR,
     SUBTYP_ATTR,
 )
+from custom_components.intellicenter.pyintellicenter.model import PoolModel, PoolObject
 
 
 class TestPoolObject:
@@ -113,13 +111,17 @@ class TestPoolObject:
 
         assert changed == {}
 
-    def test_pool_object_update_multiple_attributes(self, pool_object_light: PoolObject):
+    def test_pool_object_update_multiple_attributes(
+        self, pool_object_light: PoolObject
+    ):
         """Test updating multiple attributes at once."""
-        changed = pool_object_light.update({
-            STATUS_ATTR: "ON",
-            "USE": "PARTY",
-            "NEW_FIELD": "test",
-        })
+        changed = pool_object_light.update(
+            {
+                STATUS_ATTR: "ON",
+                "USE": "PARTY",
+                "NEW_FIELD": "test",
+            }
+        )
 
         assert len(changed) == 3
         assert pool_object_light.status == "ON"
@@ -305,9 +307,10 @@ class TestPoolModel:
             assert "keys" in query
             assert isinstance(query["keys"], list)
 
-    def test_pool_model_add_existing_object_updates(self, pool_model: PoolModel, pool_model_data):
+    def test_pool_model_add_existing_object_updates(
+        self, pool_model: PoolModel, pool_model_data
+    ):
         """Test adding an object that already exists updates it."""
-        original_sname = pool_model["LIGHT1"].sname
         original_count = pool_model.numObjects
 
         # Add same object with different attributes

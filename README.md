@@ -2,7 +2,7 @@
 
 [![hacs][hacsbadge]][hacs]
 [![GitHub Release][releases-shield]][releases]
-[![Quality Scale](https://img.shields.io/badge/quality_scale-gold-ffd700)](https://www.home-assistant.io/docs/quality_scale/)
+[![Quality Scale](https://img.shields.io/badge/quality_scale-platinum-e5e4e2)](https://www.home-assistant.io/docs/quality_scale/)
 [![Quality Validation](https://github.com/joyfulhouse/intellicenter/actions/workflows/quality-validation.yml/badge.svg)](https://github.com/joyfulhouse/intellicenter/actions/workflows/quality-validation.yml)
 
 Home Assistant integration for Pentair IntelliCenter pool control systems. Monitor and control your pool equipment directly from Home Assistant with real-time local push updates.

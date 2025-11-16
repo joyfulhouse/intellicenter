@@ -8,13 +8,13 @@ from homeassistant.core import HomeAssistant
 import pytest
 
 from custom_components.intellicenter import DOMAIN
-from custom_components.intellicenter.switch import PoolCircuit, PoolBody
 from custom_components.intellicenter.pyintellicenter import (
-    PoolModel,
-    PoolObject,
     STATUS_ATTR,
     VACFLO_ATTR,
+    PoolModel,
+    PoolObject,
 )
+from custom_components.intellicenter.switch import PoolBody, PoolCircuit
 
 pytestmark = pytest.mark.asyncio
 
@@ -277,7 +277,8 @@ async def test_non_featured_circuit_not_created(
 
     # CIRC02 is not featured, should not be in switches
     circ02_switches = [
-        e for e in entities_added
-        if hasattr(e, '_poolObject') and e._poolObject.objnam == "CIRC02"
+        e
+        for e in entities_added
+        if hasattr(e, "_poolObject") and e._poolObject.objnam == "CIRC02"
     ]
     assert len(circ02_switches) == 0

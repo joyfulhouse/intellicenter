@@ -311,7 +311,10 @@ jobs:
       - name: Check troubleshooting content depth
         run: |
           # Count lines in troubleshooting section (should be substantial)
-          lines=$(sed -n '/## Troubleshooting/,/## /p' README.md | wc -l)
+          start=$(grep -n "^## Troubleshooting" README.md | cut -d: -f1)
+          end=$(tail -n +$((start + 1)) README.md | grep -n "^## " | \
+                head -1 | cut -d: -f1)
+          lines=$((end - 1))
           if [ "$lines" -lt 50 ]; then
             echo "❌ Troubleshooting section too short ($lines lines)"
             exit 1

@@ -2,7 +2,7 @@
 
 [![hacs][hacsbadge]][hacs]
 [![GitHub Release][releases-shield]][releases]
-[![Quality Scale](https://img.shields.io/badge/quality_scale-bronze-cd7f32)](https://www.home-assistant.io/docs/quality_scale/)
+[![Quality Scale](https://img.shields.io/badge/quality_scale-silver-c0c0c0)](https://www.home-assistant.io/docs/quality_scale/)
 
 Home Assistant integration for Pentair IntelliCenter pool control systems. Monitor and control your pool equipment directly from Home Assistant with real-time local push updates.
 
@@ -120,30 +120,103 @@ The integration automatically creates entities for all your pool equipment:
 
 If your IntelliCenter isn't automatically discovered:
 
-1. **Check Network**: Ensure Home Assistant and IntelliCenter are on the same network
-2. **Multicast Traffic**: Some networks block mDNS/Zeroconf traffic needed for discovery
+1. **Check Network**: Ensure Home Assistant and IntelliCenter are on the same network/VLAN
+   - IntelliCenter uses mDNS (Zeroconf) for auto-discovery
+   - Some routers/firewalls block multicast traffic between VLANs
+2. **Multicast Traffic**: Enable mDNS reflection or IGMP snooping on your router if devices are on different VLANs
 3. **Use Manual Setup**: Add the integration manually using your IntelliCenter's IP address
+   - Go to **Settings** → **Devices & Services** → **+ Add Integration**
+   - Search for "Pentair IntelliCenter"
+   - Enter the IP address when prompted
+
+**Finding Your IntelliCenter IP Address:**
+- Check your router's DHCP client list for "Pentair" devices
+- Use the Pentair mobile app: **Settings** → **System Information**
+- Check the IntelliCenter display panel under network settings
+- Assign a static IP or DHCP reservation to prevent address changes
 
 ### Connection Failed
 
-If you see "Failed to connect" errors:
+If you see "Failed to connect" or "Cannot connect" errors during setup:
 
-1. Verify the IP address is correct
-2. Check your firewall isn't blocking the connection
-3. Restart your IntelliCenter (power cycle)
-4. Ensure your IntelliCenter firmware is up to date
+1. **Verify IP Address**: Double-check the IP address is correct
+2. **Port Accessibility**: Ensure port 6681 (TCP) is not blocked by firewalls
+   - Test connectivity: `telnet <intellicenter-ip> 6681` from Home Assistant host
+3. **Network Routing**: Verify routing between Home Assistant and IntelliCenter
+   - Test ping: `ping <intellicenter-ip>`
+4. **IntelliCenter Status**:
+   - Ensure the IntelliCenter is powered on and fully booted
+   - Check that the IntelliCenter's network cable is connected
+   - Restart your IntelliCenter (power cycle) if network seems unresponsive
+5. **Firmware**: Ensure your IntelliCenter firmware is up to date
+   - Update via the Pentair mobile app or directly on the device
 
-### Entities Not Updating
+### Entities Showing "Unavailable"
 
-If entities show "unavailable" or don't update:
+If entities show "unavailable" or stop updating:
 
-1. Check Home Assistant logs for connection errors:
-   - **Settings** → **System** → **Logs**
-2. Reload the integration:
+1. **Check Connection Status**:
+   - Go to **Settings** → **Devices & Services** → **IntelliCenter**
+   - Look for connection status messages
+2. **Review Logs**:
+   - Go to **Settings** → **System** → **Logs**
+   - Look for errors from `custom_components.intellicenter`
+   - Common issues: network timeouts, connection refused, protocol errors
+3. **Reload Integration**:
    - **Settings** → **Devices & Services** → **IntelliCenter** → ⋮ → **Reload**
-3. Verify network connectivity between Home Assistant and IntelliCenter
+   - This will reconnect to the IntelliCenter without losing configuration
+4. **Network Connectivity**:
+   - Verify Home Assistant can still reach the IntelliCenter IP
+   - Check if the IntelliCenter IP address changed (reassign static IP/DHCP reservation)
+5. **Automatic Recovery**:
+   - The integration automatically attempts to reconnect with exponential backoff
+   - Initial retry: 30 seconds, then 45s, 67s, 100s, etc.
+   - No action needed - entities will recover when connection is restored
+
+### Incorrect Values or Entities
+
+If entities show wrong values or unexpected behavior:
+
+1. **Temperature Units**:
+   - The integration respects the IntelliCenter's temperature unit setting (Metric/English)
+   - If you change units on IntelliCenter, reload the integration to update
+2. **Missing Equipment**:
+   - Not all equipment types may be supported (see Supported Entities)
+   - Check logs for warnings about unrecognized equipment
+   - Report missing equipment types via GitHub Issues
+3. **Equipment Configuration Changes**:
+   - After adding/removing equipment on IntelliCenter, reload the integration
+   - New equipment should appear automatically
+4. **Entity Names**:
+   - Entity names come from IntelliCenter's "Short Name" (sname) attribute
+   - Change names in the Pentair app or IntelliCenter UI, then reload integration
+
+### Performance Issues
+
+If the integration causes performance problems:
+
+1. **Too Many Entities**:
+   - Disable unused entities: **Settings** → **Devices & Services** → **IntelliCenter** → device → entity → ⚙️ → disable
+   - Schedule entities are disabled by default (enable only if needed)
+2. **Network Latency**:
+   - Ensure Home Assistant and IntelliCenter have low-latency connection (<10ms ping)
+   - Avoid WiFi for IntelliCenter if possible - use wired Ethernet
+3. **CPU Usage**:
+   - Integration uses async I/O and minimal polling
+   - High CPU usage likely indicates network issues causing frequent reconnects
+
+### Authentication and Security
+
+**Note**: This integration connects locally to IntelliCenter via TCP port 6681. It does NOT use cloud services or require authentication credentials.
+
+- No username/password needed
+- Works independently of IntelliCenter's password protection settings
+- Entirely local communication - no internet required
+- Network-level security recommended (VLAN isolation, firewall rules)
 
 ### Enable Debug Logging
+
+To diagnose issues, enable detailed debug logging:
 
 Add to your `configuration.yaml`:
 
@@ -155,6 +228,25 @@ logger:
 ```
 
 Then restart Home Assistant and check **Settings** → **System** → **Logs**.
+
+**What to look for in debug logs:**
+- Connection establishment messages
+- Protocol-level communication (request/response pairs)
+- Entity update notifications
+- Reconnection attempts and delays
+- Error messages with stack traces
+
+### Still Having Issues?
+
+1. **Check Known Limitations**: See the Known Limitations section below
+2. **Search Existing Issues**: [GitHub Issues](https://github.com/joyfulhouse/intellicenter/issues)
+3. **Ask for Help**: [GitHub Discussions](https://github.com/joyfulhouse/intellicenter/discussions)
+4. **Report Bugs**: Include:
+   - Home Assistant version
+   - IntelliCenter model and firmware version
+   - Integration version
+   - Debug logs showing the issue
+   - Steps to reproduce
 
 ## Automation Examples
 

@@ -91,7 +91,7 @@ class PoolObject:
         return self[FEATR_ATTR] == "ON"
 
     def __getitem__(self, key):
-        """Return the value for attribure 'key'."""
+        """Return the value for attribute 'key'."""
         return self._properties.get(key)
 
     def __str__(self):

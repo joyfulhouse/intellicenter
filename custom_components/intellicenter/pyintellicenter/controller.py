@@ -1,11 +1,12 @@
 """Controller classes for Pentair Intellicenter."""
 
 import asyncio
-from asyncio import Future
+from asyncio import AbstractEventLoop, Future, Transport
+from collections.abc import Callable
 from hashlib import blake2b
 import logging
 import traceback
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from .attributes import (
     MODE_ATTR,
@@ -27,12 +28,12 @@ _LOGGER.setLevel(logging.INFO)
 class CommandError(Exception):
     """Represents an error in response to a Pentair request."""
 
-    def __init__(self, errorCode):
+    def __init__(self, errorCode: str) -> None:
         """Initialize from a Pentair errorCode."""
         self._errorCode = errorCode
 
     @property
-    def errorCode(self):
+    def errorCode(self) -> str:
         """Return the error code."""
         return self._errorCode
 
@@ -50,39 +51,39 @@ class SystemInfo:
         SNAME_ATTR,
     ]
 
-    def __init__(self, objnam: str, params: dict):
+    def __init__(self, objnam: str, params: dict[str, Any]) -> None:
         """Initialize from a dictionary."""
         self._objnam = objnam
-        self._propName = params[PROPNAME_ATTR]
-        self._sw_version = params[VER_ATTR]
-        self._mode = params[MODE_ATTR]
+        self._propName: str = params[PROPNAME_ATTR]
+        self._sw_version: str = params[VER_ATTR]
+        self._mode: str = params[MODE_ATTR]
         # here we compute what is expected to be a unique_id
         # from the internal name of the system object
         h = blake2b(digest_size=8)
         h.update(params[SNAME_ATTR].encode())
-        self._unique_id = h.hexdigest()
+        self._unique_id: str = h.hexdigest()
 
     @property
-    def propName(self):
+    def propName(self) -> str:
         """Return the name of the 'property' where the system is."""
         return self._propName
 
     @property
-    def swVersion(self):
+    def swVersion(self) -> str:
         """Return the software version of the system."""
         return self._sw_version
 
     @property
-    def usesMetric(self):
+    def usesMetric(self) -> bool:
         """Return True if the system uses metric for temperature units."""
         return self._mode == "METRIC"
 
     @property
-    def uniqueID(self):
+    def uniqueID(self) -> str:
         """Return a unique id for that system."""
         return self._unique_id
 
-    def update(self, updates):
+    def update(self, updates: dict[str, Any]) -> None:
         """Update the object from a set of key/value pairs."""
         _LOGGER.debug(f"updating system info with {updates}")
         self._propName = updates.get(PROPNAME_ATTR, self._propName)
@@ -93,9 +94,18 @@ class SystemInfo:
 # -------------------------------------------------------------------------------------
 
 
-def prune(obj):
-    """Cleanup a full object tree from undefined parameters."""
+def prune(obj: Any) -> Any:
+    """Cleanup a full object tree from undefined parameters.
 
+    Pentair returns undefined parameters as key==value pairs.
+    This function recursively removes such entries from dictionaries.
+
+    Args:
+        obj: The object to prune (dict, list, or primitive value)
+
+    Returns:
+        The pruned object with undefined parameters removed
+    """
     # undefined meaning key == value which is what Pentair returns
     if type(obj) is list:
         return [prune(item) for item in obj]
@@ -109,20 +119,39 @@ def prune(obj):
 
 
 class BaseController:
-    """A basic controller connecting to a Pentair system."""
+    """A basic controller connecting to a Pentair system.
 
-    def __init__(self, host, port=6681, loop=None):
-        """Initialize the controller."""
+    This controller manages the TCP connection to the IntelliCenter and handles
+    request/response correlation. It provides basic command sending capabilities
+    and retrieves system information.
+    """
+
+    def __init__(
+        self,
+        host: str,
+        port: int = 6681,
+        loop: AbstractEventLoop | None = None,
+    ) -> None:
+        """Initialize the controller.
+
+        Args:
+            host: IP address or hostname of the IntelliCenter
+            port: TCP port for connection (default: 6681)
+            loop: Event loop to use (default: current event loop)
+        """
         self._host = host
         self._port = port
         self._loop = loop
 
-        self._transport = None
-        self._protocol = None
+        self._transport: Transport | None = None
+        self._protocol: ICProtocol | None = None
+        self._systemInfo: SystemInfo | None = None
 
-        self._diconnectedCallback = None
+        self._diconnectedCallback: (
+            Callable[[BaseController, Exception | None], None] | None
+        ) = None
 
-        self._requests = {}
+        self._requests: dict[str, Future | None] = {}
 
     @property
     def host(self) -> str:
@@ -531,7 +560,7 @@ class ConnectionHandler:
         """Handle the controller being disconnected.
 
         exc will contain the underlying exception except if
-        the hearbeat has been missed, in this case exc is None
+        the heartbeat has been missed, in this case exc is None
         """
         pass
 

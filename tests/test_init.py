@@ -2,11 +2,11 @@
 
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
-import pytest
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+import pytest
 
 from custom_components.intellicenter import (
     DOMAIN,
@@ -46,13 +46,14 @@ async def test_async_setup_entry_success(
         # Create a MockConnectionHandler class with async methods
         class MockConnectionHandler:
             """Mock ConnectionHandler for testing."""
+
             def __init__(self, controller, *args, **kwargs):
                 self.controller = controller
 
             async def start(self):
                 """Mock async start method that calls started callback."""
                 # Call the started callback to trigger platform setup
-                if hasattr(self, 'started'):
+                if hasattr(self, "started"):
                     self.started(self.controller)
 
             def stop(self):
@@ -71,7 +72,9 @@ async def test_async_setup_entry_success(
             "custom_components.intellicenter.ConnectionHandler", MockConnectionHandler
         ):
             with patch.object(
-                hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock
+                hass.config_entries,
+                "async_forward_entry_setups",
+                new_callable=AsyncMock,
             ) as mock_forward:
                 result = await async_setup_entry(hass, entry)
 
@@ -101,6 +104,7 @@ async def test_async_setup_entry_connection_failed(hass: HomeAssistant) -> None:
         # Create a MockConnectionHandler class that raises ConnectionRefusedError
         class MockConnectionHandler:
             """Mock ConnectionHandler that fails to connect."""
+
             def __init__(self, controller, *args, **kwargs):
                 self.controller = controller
 
@@ -159,7 +163,9 @@ async def test_async_unload_entry_platforms_fail(hass: HomeAssistant) -> None:
     with patch.object(
         hass.config_entries,
         "async_forward_entry_unload",
-        new_callable=lambda: AsyncMock(return_value=False),  # Simulate platform unload failure
+        new_callable=lambda: AsyncMock(
+            return_value=False
+        ),  # Simulate platform unload failure
     ):
         result = await async_unload_entry(hass, entry)
 

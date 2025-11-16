@@ -2,11 +2,10 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
+import pytest
 
 from custom_components.intellicenter import DOMAIN
 

@@ -1,15 +1,14 @@
 """Test the Pentair IntelliCenter config flow."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
 from homeassistant import config_entries
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.intellicenter.config_flow import CannotConnect
 from custom_components.intellicenter.const import DOMAIN
 
 pytestmark = pytest.mark.asyncio
@@ -76,7 +75,9 @@ async def test_user_flow_unexpected_exception(
     assert result["errors"] == {"base": "cannot_connect"}
 
 
-@pytest.mark.xfail(reason="Duplicate detection with MockConfigEntry needs investigation")
+@pytest.mark.xfail(
+    reason="Duplicate detection with MockConfigEntry needs investigation"
+)
 async def test_user_flow_already_configured(
     hass: HomeAssistant, mock_controller: MagicMock
 ) -> None:
@@ -181,7 +182,9 @@ async def test_zeroconf_flow_cannot_connect(
     assert result["reason"] == "cannot_connect"
 
 
-@pytest.mark.xfail(reason="Duplicate detection with MockConfigEntry needs investigation")
+@pytest.mark.xfail(
+    reason="Duplicate detection with MockConfigEntry needs investigation"
+)
 async def test_zeroconf_flow_updates_existing_entry(
     hass: HomeAssistant, mock_controller: MagicMock
 ) -> None:

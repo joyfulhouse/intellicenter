@@ -3,62 +3,97 @@ name: Claude Code Review
 
 on:
   workflow_run:
-    workflows: ["Quality Scale Validation"]
+    workflows: ["Home Assistant Validation", "Quality Scale Validation"]
     types:
       - completed
-    branches:
-      - '**'
 
 jobs:
-  claude:
-    name: Claude Code Review
-    # Only run on PRs and only if quality validation succeeded
-    if: |
-      github.event.workflow_run.event == 'pull_request' &&
-      github.event.workflow_run.conclusion == 'success'
+  check-validation:
+    name: Check Validation Status
     runs-on: ubuntu-latest
+    if: |
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
+    outputs:
+      pr_number: ${{ steps.get_pr.outputs.pr_number }}
+      pr_head_sha: ${{ steps.get_pr.outputs.pr_head_sha }}
+    steps:
+      - name: Get PR information
+        id: get_pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pulls = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              head: `${context.repo.owner}:${context.payload.workflow_run.head_branch}`
+            });
+            if (pulls.data.length > 0) {
+              core.setOutput('pr_number', pulls.data[0].number);
+              core.setOutput('pr_head_sha', pulls.data[0].head.sha);
+            }
+
+  claude-code-review:
+    name: 🤖 Claude Code Review
+    runs-on: ubuntu-latest
+    needs: check-validation
+    if: needs.check-validation.outputs.pr_number != ''
+    timeout-minutes: 10
     permissions:
       contents: read
-      pull-requests: write
-      issues: write
+      pull-requests: read
+      issues: read
       id-token: write
-      actions: read
     steps:
-      - name: Checkout repository
+      - name: Checkout PR code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ needs.check-validation.outputs.pr_head_sha }}
+          fetch-depth: 1
 
-      - name: Get PR number
-        id: pr
-        run: |
-          PR_NUMBER=$(gh pr view ${{ github.event.workflow_run.head_sha }} \
-            --json number --jq '.number' || echo "")
-          if [ -z "$PR_NUMBER" ]; then
-            echo "No PR found for this commit"
-            exit 0
-          fi
-          echo "number=$PR_NUMBER" >> $GITHUB_OUTPUT
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Quality validation status
-        if: steps.pr.outputs.number != ''
-        run: |
-          echo "=================================================="
-          echo "✅ Quality Validation Passed"
-          echo "=================================================="
-          echo ""
-          echo "Bronze and Silver tier validation completed successfully."
-          echo "Running automatic Claude Code review for PR #${{ steps.pr.outputs.number }}..."
-          echo ""
-
-      - name: Run Claude Code
-        if: steps.pr.outputs.number != ''
-        id: claude
+      - name: Run Claude Code Review
         uses: anthropics/claude-code-action@v1
+        timeout-minutes: 10
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          additional_permissions: |
-            actions: read
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),
+            Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),
+            Bash(gh pr view:*),Bash(gh pr list:*)"'
+          prompt: |
+            Review PR #${{ needs.check-validation.outputs.pr_number }} focusing on:
+
+            **Code Quality:**
+            - Code structure, readability, and maintainability
+            - Error handling and edge cases
+            - Performance considerations (async/await patterns, connection pooling)
+            - Security concerns (command injection, data validation, sanitization)
+
+            **Home Assistant Integration Best Practices:**
+            - Entity lifecycle management (setup, update, unload)
+            - Proper use of async patterns and event loops
+            - Config flow implementation and validation
+            - State management and updates via dispatcher signals
+            - Device and entity registry usage
+
+            **IntelliCenter Integration Specifics:**
+            - Protocol handling (TCP message framing, request queuing, heartbeat)
+            - Connection reliability (reconnection logic, exponential backoff)
+            - PoolModel state synchronization with IntelliCenter hardware
+            - Attribute tracking and NotifyList processing
+
+            **Quality Scale Requirements (Target: Platinum):**
+            - Type annotations completeness and accuracy
+            - Code comments explaining complex logic (protocol, controller, entity creation)
+            - Test coverage for new/modified code
+            - Documentation updates (README, docstrings, type hints)
+
+            **Protocol & Network Layer:**
+            - Asyncio protocol implementation correctness
+            - Flow control (one-request-at-a-time enforcement)
+            - Message correlation and error recovery
+            - Network resilience and timeout handling
+
+            Use repository's CLAUDE.md and quality scale requirements for guidance.
+            Post comprehensive review via `gh pr comment` command with specific
+            line-by-line feedback where applicable.

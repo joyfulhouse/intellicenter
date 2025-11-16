@@ -1,0 +1,59 @@
+---
+name: Home Assistant Validation
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hassfest:
+    name: Hassfest Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Hassfest
+        uses: home-assistant/actions/hassfest@master
+
+  hacs-validation:
+    name: HACS Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run HACS Action
+        uses: hacs/action@main
+        with:
+          category: integration
+
+  validation-summary:
+    name: ✅ Validation Summary
+    runs-on: ubuntu-latest
+    needs: [hassfest, hacs-validation]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Display summary
+        run: |
+          echo "========================================"
+          echo " HOME ASSISTANT VALIDATION COMPLETE"
+          echo "========================================"
+          echo ""
+          echo "✅ Hassfest validation passed"
+          echo "✅ HACS validation passed"
+          echo ""
+          echo "Version: $(grep -o '"version": "[^"]*"' custom_components/intellicenter/manifest.json | cut -d'"' -f4)"
+          echo "Domain: $(grep -o '"domain": "[^"]*"' custom_components/intellicenter/manifest.json | cut -d'"' -f4)"
+          echo ""
+          echo "Integration is ready for Home Assistant and HACS!"

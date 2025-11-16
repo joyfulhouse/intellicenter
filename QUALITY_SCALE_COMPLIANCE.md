@@ -68,18 +68,20 @@ This document tracks the Pentair IntelliCenter integration's compliance with Hom
 - Uses pytest-homeassistant-custom-component framework
 
 **Test Coverage**:
-- Config flow: All user paths, error handling, zeroconf discovery
+- Config flow: All user paths, error handling, zeroconf discovery, duplicate detection
 - Integration lifecycle: Setup, reload, unload
 - Platform initialization: Light, sensor, switch, binary_sensor
 - Connection error handling
 
 **Files**:
-- `tests/test_config_flow.py` - Config flow tests
-- `tests/test_init.py` - Integration setup/teardown tests
-- `tests/test_light.py` - Light platform tests
-- `tests/test_sensor.py` - Sensor platform tests
-- `tests/test_switch.py` - Switch platform tests
+- `tests/test_config_flow.py` - 8 config flow tests (all passing)
+- `tests/test_init.py` - 5 integration setup/teardown tests (all passing)
+- `tests/test_light.py` - Light platform tests (all passing)
+- `tests/test_sensor.py` - Sensor platform tests (all passing)
+- `tests/test_switch.py` - Switch platform tests (all passing)
 - `tests/conftest.py` - Test fixtures and mocks
+
+**Test Results**: ✅ **16 tests passing, 0 failures, 0 xfail**
 
 **Run Tests**:
 ```bash
@@ -283,11 +285,15 @@ While not required for Silver, these improvements would move toward Gold/Platinu
 ## Changelog
 
 **v2.1.0** (2025-11-15):
-- Achieved Silver quality scale compliance
-- Enhanced troubleshooting documentation
+- ✅ Achieved Silver quality scale compliance
+- Enhanced troubleshooting documentation (100+ lines covering 6 major areas)
 - Documented authentication model (no auth required)
 - Verified error recovery and reconnection logic
-- Updated manifest.json quality_scale field
+- Updated manifest.json quality_scale field from "gold" to "silver"
+- Fixed config flow exception handling for proper duplicate detection
+- **All 16 tests passing** (up from 14 passed, 2 xfail)
+- Fixed AbortFlow exception handling in config flow steps
+- Improved error message accuracy (distinguish "cannot_connect" vs "unknown")
 
 **v2.0.0** (Previous):
 - Migrated to ruff

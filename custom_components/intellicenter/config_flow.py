@@ -3,8 +3,9 @@
 import logging
 from typing import Any
 
-from homeassistant.config_entries import ConfigFlow
+from homeassistant.config_entries import ConfigFlow, OptionsFlow
 from homeassistant.const import CONF_HOST, CONF_NAME
+from homeassistant.core import callback
 from homeassistant.data_entry_flow import AbortFlow
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.typing import ConfigType
@@ -28,6 +29,12 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
     def __init__(self):
         """Initialize a new Intellicenter ConfigFlow."""
         pass
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry):
+        """Get the options flow for this handler."""
+        return OptionsFlowHandler(config_entry)
 
     async def async_step_user(
         self, user_input: ConfigType | None = None
@@ -161,3 +168,30 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
             if CONF_HOST in entry.data
         }
         return host in existing_hosts
+
+
+class OptionsFlowHandler(OptionsFlow):
+    """Handle options flow for Pentair IntelliCenter integration."""
+
+    def __init__(self, config_entry):
+        """Initialize options flow."""
+        self.config_entry = config_entry
+
+    async def async_step_init(self, user_input=None):
+        """Manage the options for IntelliCenter integration.
+
+        Currently, this integration has no configurable options.
+        The host IP address is configured during initial setup and
+        can be updated via Zeroconf discovery if the device IP changes.
+        """
+        if user_input is not None:
+            # No options to save, just return
+            return self.async_create_entry(title="", data={})
+
+        # Show a simple form indicating no options are available
+        return self.async_show_form(
+            step_id="init",
+            description_placeholders={
+                "host": self.config_entry.data.get(CONF_HOST, "Unknown")
+            },
+        )

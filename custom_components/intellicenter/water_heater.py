@@ -152,7 +152,7 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
         """Return the temperature we try to reach."""
         return float(self._poolObject[LOTMP_ATTR])
 
-    def set_temperature(self, **kwargs):
+    async def async_set_temperature(self, **kwargs):
         """Set new target temperatures."""
         target_temperature = kwargs.get(ATTR_TEMPERATURE)
         self.requestChanges({LOTMP_ATTR: str(int(target_temperature))})
@@ -172,7 +172,7 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
             self._controller.model[heater].sname for heater in self._heater_list
         ]
 
-    def set_operation_mode(self, operation_mode):
+    async def async_set_operation_mode(self, operation_mode):
         """Set new target operation mode."""
         if operation_mode == STATE_OFF:
             self._turnOff()

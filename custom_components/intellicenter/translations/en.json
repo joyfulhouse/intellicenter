@@ -18,7 +18,15 @@
         "unknown": "Unexpected Error"
       },
       "abort": {
-        "already_configured": "Device is alreay configured"
+        "already_configured": "Device is already configured"
+      }
+    },
+    "options": {
+      "step": {
+        "init": {
+          "title": "IntelliCenter Options",
+          "description": "This integration currently has no configurable options.\n\nConnected to: {host}\n\nThe host IP address is configured during initial setup and will be automatically updated if your IntelliCenter's IP address changes (via Zeroconf discovery)."
+        }
       }
     }
   }

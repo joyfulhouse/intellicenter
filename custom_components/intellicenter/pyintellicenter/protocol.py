@@ -1,9 +1,21 @@
-"""Protocol for communicating with a Pentair system."""
+"""Protocol for communicating with a Pentair system.
+
+This module implements the low-level TCP protocol for communicating with
+Pentair IntelliCenter pool control systems. It handles:
+- JSON message framing over TCP (messages terminated with \\r\\n)
+- Flow control to prevent overwhelming the IntelliCenter (one request at a time)
+- Connection health monitoring via keepalive queries
+- Automatic detection and recovery from flow control deadlocks
+"""
 
 import asyncio
 import json
 import logging
 from queue import SimpleQueue
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .controller import BaseController
 
 _LOGGER = logging.getLogger(__name__)
 # _LOGGER.setLevel(logging.DEBUG)
@@ -33,38 +45,59 @@ class ICProtocol(asyncio.Protocol):
     - relying on IntelliCenter's NotifyList push updates to detect active connections
     """
 
-    def __init__(self, controller):
-        """Initialize a protocol for a IntelliCenter system."""
+    def __init__(self, controller: "BaseController") -> None:
+        """Initialize a protocol for a IntelliCenter system.
 
-        self._controller = controller
+        Args:
+            controller: The controller instance that manages this protocol.
+                       The controller receives callbacks for connection events
+                       and message processing.
+        """
 
-        self._transport = None
+        self._controller: BaseController = controller
+
+        self._transport: asyncio.Transport | None = None
 
         # counter used to generate messageIDs
-        self._msgID = 1
+        # IntelliCenter expects each request to have a unique incrementing ID
+        self._msgID: int = 1
 
         # buffer used to accumulate data received before splitting into lines
-        self._lineBuffer = ""
+        # Messages from IntelliCenter are JSON terminated with \r\n
+        # We may receive partial messages, so we buffer until complete
+        self._lineBuffer: str = ""
 
-        # state variable and queue for flow control
-        # see sendRequest and responseReceived for details
-        self._out_pending = 0
-        self._out_queue = SimpleQueue()
-        self._last_flow_control_activity = None
+        # Flow control state: ensures only one request is on the wire at a time
+        # IntelliCenter struggles to parse concurrent requests, so we queue them
+        # _out_pending: count of requests sent but not yet responded to
+        # _out_queue: queue of requests waiting to be sent
+        self._out_pending: int = 0
+        self._out_queue: SimpleQueue[str] = SimpleQueue()
+        self._last_flow_control_activity: float | None = None
 
         # Track last data received time for connection health monitoring
-        self._last_data_received = None
+        # Used to detect idle connections and trigger reconnection
+        self._last_data_received: float | None = None
 
         # Track last keepalive sent time
-        self._last_keepalive_sent = None
+        # We send periodic queries to keep the connection alive
+        self._last_keepalive_sent: float | None = None
 
         # heartbeat task for monitoring connection health
-        self._heartbeat_task = None
+        # Runs periodically to send keepalives and detect deadlocks
+        self._heartbeat_task: asyncio.Task | None = None
 
-    def connection_made(self, transport):
-        """Handle the callback for a successful connection."""
+    def connection_made(self, transport: asyncio.BaseTransport) -> None:
+        """Handle the callback for a successful connection.
 
-        self._transport = transport
+        Called by asyncio when the TCP connection is established.
+        Initializes protocol state and notifies the controller.
+
+        Args:
+            transport: The transport instance for this connection.
+        """
+
+        self._transport = transport  # type: ignore[assignment]
         self._msgID = 1
         current_time = asyncio.get_event_loop().time()
         self._last_flow_control_activity = current_time
@@ -77,8 +110,17 @@ class ICProtocol(asyncio.Protocol):
         # and notify our controller that we are ready!
         self._controller.connection_made(self, transport)
 
-    def connection_lost(self, exc):
-        """Handle the callback for connection lost."""
+    def connection_lost(self, exc: Exception | None) -> None:
+        """Handle the callback for connection lost.
+
+        Called by asyncio when the TCP connection is lost (either
+        intentionally or due to error). Cleans up resources and
+        notifies the controller.
+
+        Args:
+            exc: The exception that caused the connection loss, or None
+                if the connection was closed normally.
+        """
 
         # Cancel the heartbeat task
         if self._heartbeat_task and not self._heartbeat_task.done():
@@ -87,125 +129,198 @@ class ICProtocol(asyncio.Protocol):
 
         self._controller.connection_lost(exc)
 
-    def data_received(self, data) -> None:
-        """Handle the callback for data received."""
+    def data_received(self, data: bytes) -> None:
+        """Handle the callback for data received.
 
-        # Update last data received timestamp
+        Called by asyncio when data is received from the TCP connection.
+        Buffers incoming data until complete lines (messages) are received,
+        then processes each message individually.
+
+        The IntelliCenter sends JSON messages terminated with \\r\\n.
+        We may receive partial messages or multiple messages in one chunk,
+        so we buffer and split appropriately.
+
+        Args:
+            data: Raw bytes received from the connection.
+        """
+
+        # Update last data received timestamp for connection health monitoring
         self._last_data_received = asyncio.get_event_loop().time()
 
-        data = data.decode()
-        _LOGGER.debug(f"PROTOCOL: received from transport: {data}")
+        decoded_data = data.decode()
+        _LOGGER.debug(f"PROTOCOL: received from transport: {decoded_data}")
 
-        # "packets" from Pentair are organized by lines
+        # "packets" from Pentair are organized by lines (terminated with \r\n)
         # so wait until at least a full line is received
-        self._lineBuffer += data
+        self._lineBuffer += decoded_data
 
+        # If we don't have a complete message yet, wait for more data
         if not self._lineBuffer.endswith("\r\n"):
             return
 
-        # there might have been more than one "packet" in our current buffer
-        # so let's split them
-
+        # Split buffer into individual messages (there might be multiple)
+        # The split will create an empty string at the end due to trailing \r\n
         lines = str.split(self._lineBuffer, "\r\n")
         self._lineBuffer = ""
 
+        # Process each complete message
         for line in lines:
-            if line:
-                # and process each line individually
+            if line:  # Skip empty strings from split
                 self.processMessage(line)
 
-    def sendCmd(self, cmd: str, extra: dict | None = None) -> str:
-        """Send a command and return a generated msg id."""
+    def sendCmd(self, cmd: str, extra: dict[str, Any] | None = None) -> str:
+        """Send a command and return a generated message ID.
+
+        Constructs a JSON command message with a unique message ID and
+        sends it to the IntelliCenter. The message ID can be used to
+        correlate responses.
+
+        Args:
+            cmd: The command name (e.g., "GetParamList", "SetParamList").
+            extra: Optional dictionary of additional parameters to include
+                  in the command message.
+
+        Returns:
+            The message ID assigned to this command (as a string).
+        """
         msg_id = str(self._msgID)
-        dict = {"messageID": msg_id, "command": cmd}
+        message_dict: dict[str, Any] = {"messageID": msg_id, "command": cmd}
         if extra:
-            dict.update(extra)
+            message_dict.update(extra)
         self._msgID = self._msgID + 1
-        packet = json.dumps(dict)
+        packet = json.dumps(message_dict)
         self.sendRequest(packet)
 
         return str(msg_id)
 
-    def _writeToTransport(self, request):
+    def _writeToTransport(self, request: str) -> None:
+        """Write a request to the transport.
+
+        Internal method that handles the actual transmission of data
+        over the TCP connection.
+
+        Args:
+            request: The request string to send (will be encoded to bytes).
+        """
         _LOGGER.debug(
             f"PROTOCOL: writing to transport: (size {len(request)}): {request}"
         )
-        self._transport.write(request.encode())
+        if self._transport:
+            self._transport.write(request.encode())
 
     def sendRequest(self, request: str) -> None:
-        """Either send the request to the wire or queue it for later."""
+        """Send a request, enforcing flow control.
+
+        The IntelliCenter struggles to parse concurrent requests, so this
+        method implements a "one request on the wire at a time" policy.
+        If a request is already pending, new requests are queued and sent
+        when the previous response is received.
+
+        Flow control prevents overwhelming the IntelliCenter and ensures
+        reliable message delivery.
+
+        Args:
+            request: The JSON request string to send.
+        """
 
         # IntelliCenter seems to struggle to parse requests coming too fast
         # so we throttle back to one request on the wire at a time
         # see responseReceived() for the other side of the flow control
 
         if self._out_pending == 0:
-            # nothing is progress, we can transmit the packet
+            # Nothing in progress, we can transmit the packet immediately
             self._writeToTransport(request)
         else:
-            # there is already something on the wire, let's queue the request
+            # There is already something on the wire, queue the request
+            # It will be sent when we receive the next response
             self._out_queue.put(request)
 
-        # and count the new request as pending
+        # Count the new request as pending (whether queued or sent)
         self._out_pending += 1
         self._last_flow_control_activity = asyncio.get_event_loop().time()
 
     def responseReceived(self) -> None:
-        """Handle the flow control part of a received rsponse."""
+        """Handle flow control when a response is received.
 
-        # we know that a response has been received
-        # so, if we have a pending request in the queue
-        # we can write it to our transport
+        This method is called when we receive a response from the IntelliCenter.
+        It implements the "other side" of the flow control mechanism by:
+        1. Sending the next queued request (if any)
+        2. Decrementing the pending request counter
+
+        This ensures only one request is on the wire at a time.
+        """
+
+        # We know that a response has been received, so if we have a
+        # pending request in the queue, we can write it to our transport
         if not self._out_queue.empty():
             request = self._out_queue.get()
             self._writeToTransport(request)
-        # no matter what, we have now one less request pending
+
+        # No matter what, we have now one less request pending
         if self._out_pending:
             self._out_pending -= 1
 
-        # Track flow control activity
+        # Track flow control activity for deadlock detection
         self._last_flow_control_activity = asyncio.get_event_loop().time()
 
     def processMessage(self, message: str) -> None:
-        """Process a given message from IntelliCenter."""
+        """Process a given message from IntelliCenter.
+
+        Parses the JSON message and extracts the message ID, command, and
+        response code. Handles both responses (to our requests) and
+        notifications (unsolicited messages from IntelliCenter).
+
+        Messages are expected to be JSON objects with at minimum:
+        - messageID: A string identifier
+        - command: The command name
+        - response: (optional) Response code, present only for responses
+                   "200" indicates success, other values are error codes
+
+        NOTE: There's a bug in IntelliCenter where the message_id in error
+        responses may not match the request message_id, so we don't rely
+        on strict correlation.
+
+        Args:
+            message: A complete JSON message string from IntelliCenter.
+        """
 
         _LOGGER.debug(f"PROTOCOL: processMessage {message}")
 
-        # a number of issues could be happening in this code section
-        # let's wrap the whole thing in a broad catch statement
+        # Various errors can occur when parsing/processing messages
+        # We handle them gracefully to avoid disrupting the protocol
 
         try:
-            # the message is excepted to be a JSON object
+            # Parse the JSON message
+            msg: dict[str, Any] = json.loads(message)
 
-            msg = json.loads(message)
-
-            # with a minimum of a messageID and a command
+            # Extract required fields: messageID and command
             # NOTE: there seems to be a bug in IntelliCenter where
             # the message_id is different from the one matching the request
             # if an error occurred.. therefore the message_id is not really used
+            msg_id: str = msg["messageID"]
+            command: str = msg["command"]
+            response: str | None = msg.get("response")
 
-            msg_id = msg["messageID"]
-            command = msg["command"]
-            response = msg.get("response")
-
-            # the response field is only present when the message is a response to
-            # a request (as opposed to a 'notification')
-            # if so, we also not that a response was received
+            # The response field is only present when the message is a response
+            # to a request (as opposed to a 'notification' like NotifyList).
+            # If it's a response, handle flow control
             if response:
                 self.responseReceived()
 
-            # let's pass our message back to the controller for handling its semantic...
+            # Pass the message to the controller for semantic processing
+            # The controller will handle command-specific logic
             self._controller.receivedMessage(msg_id, command, response, msg)
 
         except json.JSONDecodeError as err:
+            # Invalid JSON - log and continue (recoverable error)
             _LOGGER.error(f"PROTOCOL: invalid JSON received: {message[:100]} - {err}")
-            # JSON errors are recoverable, continue processing
         except KeyError as err:
+            # Missing required field - log and continue (recoverable error)
             _LOGGER.error(
                 f"PROTOCOL: message missing required field {err}: {message[:100]}"
             )
-            # Missing fields are recoverable, continue processing
         except Exception as err:
+            # Unexpected error - close connection to trigger reconnection
             _LOGGER.error(
                 f"PROTOCOL: unexpected exception while receiving message: {err}",
                 exc_info=True,
@@ -215,7 +330,7 @@ class ICProtocol(asyncio.Protocol):
                 _LOGGER.warning("PROTOCOL: closing connection due to unexpected error")
                 self._transport.close()
 
-    async def _heartbeat_loop(self):
+    async def _heartbeat_loop(self) -> None:
         """Monitor connection health and send keepalive queries.
 
         IntelliCenter does not support ping/pong protocol. Instead, we:
@@ -223,6 +338,21 @@ class ICProtocol(asyncio.Protocol):
         2. Monitor for flow control deadlocks
         3. Detect idle connections (no data received for extended period)
         4. Rely on IntelliCenter's NotifyList push updates for state changes
+
+        This task runs continuously while the connection is active and
+        handles three types of monitoring:
+
+        - Keepalive: Sends lightweight queries every KEEPALIVE_INTERVAL seconds
+          to maintain the connection and detect if the system is responsive.
+
+        - Flow Control Deadlock: If requests are pending but no activity
+          occurs for FLOW_CONTROL_TIMEOUT seconds, resets flow control state.
+          This recovers from situations where the IntelliCenter failed to
+          respond to a request.
+
+        - Idle Timeout: If no data is received for CONNECTION_IDLE_TIMEOUT
+          seconds, closes the connection. This should never happen with
+          keepalives, but provides a safety net.
         """
         try:
             while True:

@@ -5,6 +5,7 @@ import asyncio
 import json
 import sys
 
+
 # Simple protocol to communicate with IntelliCenter
 class SimpleICProtocol(asyncio.Protocol):
     """Simple protocol to query IntelliCenter."""
@@ -21,10 +22,28 @@ class SimpleICProtocol(asyncio.Protocol):
         print("Connected to IntelliCenter")
 
         # Request all objects with all attributes
-        self.send_command("GetParamList", {
-            "condition": "",
-            "objectList": [{"objnam": "INCR", "keys": ["OBJTYP", "SUBTYP", "SNAME", "ASSIGN", "DLY", "PARENT", "CIRCUIT", "STATIC", "HNAME"]}]
-        })
+        self.send_command(
+            "GetParamList",
+            {
+                "condition": "",
+                "objectList": [
+                    {
+                        "objnam": "INCR",
+                        "keys": [
+                            "OBJTYP",
+                            "SUBTYP",
+                            "SNAME",
+                            "ASSIGN",
+                            "DLY",
+                            "PARENT",
+                            "CIRCUIT",
+                            "STATIC",
+                            "HNAME",
+                        ],
+                    }
+                ],
+            },
+        )
 
     def data_received(self, data):
         """Data received from IntelliCenter."""
@@ -43,10 +62,7 @@ class SimpleICProtocol(asyncio.Protocol):
 
     def send_command(self, command, extra=None):
         """Send a command to IntelliCenter."""
-        msg = {
-            "messageID": str(self._msg_id),
-            "command": command
-        }
+        msg = {"messageID": str(self._msg_id), "command": command}
         if extra:
             msg.update(extra)
 
@@ -100,9 +116,7 @@ class IntelliCenterExplorer:
         try:
             print(f"Connecting to {self.host}:{self.port}...")
             transport, protocol = await loop.create_connection(
-                lambda: SimpleICProtocol(self.on_data),
-                self.host,
-                self.port
+                lambda: SimpleICProtocol(self.on_data), self.host, self.port
             )
 
             # Wait for data
@@ -126,12 +140,19 @@ class IntelliCenterExplorer:
                     print(json.dumps(valve, indent=2))
 
                 # Save to file
-                with open("/Users/bryanli/Projects/joyfulhouse/homeassistant-dev/intellicenter/valve_objects.json", "w") as f:
-                    json.dump({
-                        "valve_count": len(self.valve_objects),
-                        "valves": self.valve_objects,
-                        "all_objects": self.objects
-                    }, f, indent=2)
+                with open(
+                    "/Users/bryanli/Projects/joyfulhouse/homeassistant-dev/intellicenter/valve_objects.json",
+                    "w",
+                ) as f:
+                    json.dump(
+                        {
+                            "valve_count": len(self.valve_objects),
+                            "valves": self.valve_objects,
+                            "all_objects": self.objects,
+                        },
+                        f,
+                        indent=2,
+                    )
                 print("\n✅ Saved valve data to valve_objects.json")
             else:
                 print("\n⚠️  No VALVE objects found in system")
@@ -147,6 +168,7 @@ class IntelliCenterExplorer:
         except Exception as e:
             print(f"Error: {e}")
             import traceback
+
             traceback.print_exc()
 
 

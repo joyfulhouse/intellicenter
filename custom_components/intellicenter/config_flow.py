@@ -5,6 +5,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigFlow
 from homeassistant.const import CONF_HOST, CONF_NAME
+from homeassistant.data_entry_flow import AbortFlow
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.typing import ConfigType
 import voluptuous as vol
@@ -35,6 +36,8 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is None:
             return self._show_setup_form()
 
+        errors = {}
+
         try:
             system_info = await self._get_system_info(user_input[CONF_HOST])
 
@@ -45,10 +48,15 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_create_entry(
                 title=system_info.propName, data={CONF_HOST: user_input[CONF_HOST]}
             )
+        except AbortFlow:
+            raise  # Re-raise abort flow to properly abort
         except CannotConnect:
-            return self._show_setup_form({"base": "cannot_connect"})
+            errors["base"] = "cannot_connect"
         except Exception:  # pylint: disable=broad-except
-            return self._show_setup_form({"base": "cannot_connect"})
+            _LOGGER.exception("Unexpected exception")
+            errors["base"] = "unknown"
+
+        return self._show_setup_form(errors)
 
     async def async_step_zeroconf(self, discovery_info: ConfigType) -> dict[str, Any]:
         """Handle device found via zeroconf."""
@@ -78,9 +86,12 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
 
             return self._show_confirm_dialog()
 
+        except AbortFlow:
+            raise  # Re-raise abort flow to properly abort
         except CannotConnect:
             return self.async_abort(reason="cannot_connect")
         except Exception:  # pylint: disable=broad-except
+            _LOGGER.exception("Unexpected exception")
             return self.async_abort(reason="unknown")
 
     async def async_step_zeroconf_confirm(
@@ -97,9 +108,12 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id(system_info.uniqueID)
             self._abort_if_unique_id_configured()
 
+        except AbortFlow:
+            raise  # Re-raise abort flow to properly abort
         except CannotConnect:
             return self.async_abort(reason="cannot_connect")
         except Exception:  # pylint: disable=broad-except
+            _LOGGER.exception("Unexpected exception")
             return self.async_abort(reason="unknown")
 
         return self.async_create_entry(

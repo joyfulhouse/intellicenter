@@ -4,18 +4,30 @@ from collections.abc import Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.intellicenter.const import DOMAIN
 from custom_components.intellicenter.pyintellicenter import SystemInfo
+
+# Enable custom integrations
+pytest_plugins = "pytest_homeassistant_custom_component"
+
+
+@pytest.fixture(autouse=True)
+def auto_enable_custom_integrations(enable_custom_integrations):
+    """Enable custom integrations for all tests."""
+    yield
 
 
 @pytest.fixture
 def mock_system_info() -> SystemInfo:
     """Return a mock SystemInfo object."""
     mock_info = MagicMock(spec=SystemInfo)
-    mock_info.uniqueID = "test-unique-id-123"
-    mock_info.propName = "Test Pool System"
-    mock_info.sw_version = "2.0.0"
-    mock_info.mode = "AUTO"
+    # Configure property return values using PropertyMock
+    type(mock_info).uniqueID = property(lambda self: "test-unique-id-123")
+    type(mock_info).propName = property(lambda self: "Test Pool System")
+    type(mock_info).swVersion = property(lambda self: "2.0.0")
+    type(mock_info).usesMetric = property(lambda self: False)
     return mock_info
 
 

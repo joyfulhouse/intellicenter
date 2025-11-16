@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **IMPORTANT**: This repository is `joyfulhouse/intellicenter`. It was forked from upstream repositories, but we maintain our own independent development.
 
-**NEVER submit pull requests to**:
-- `https://github.com/dwradcliffe/intellicenter`
-- `https://github.com/jlvaillant/intellicenter`
+**NEVER submit pull requests to upstream repositories**:
+- `https://github.com/dwradcliffe/intellicenter` (original upstream)
+- `https://github.com/jlvaillant/intellicenter` (another fork)
 
 All development, pull requests, and collaboration should happen within the `joyfulhouse/intellicenter` repository only.
 

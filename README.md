@@ -21,7 +21,7 @@ Home Assistant integration for Pentair IntelliCenter pool control systems. Monit
 3. Click on "Integrations"
 4. Click the three dots menu (⋮) in the top right
 5. Select "Custom repositories"
-6. Add repository URL: `https://github.com/dwradcliffe/intellicenter`
+6. Add repository URL: `https://github.com/joyfulhouse/intellicenter`
 7. Select category: "Integration"
 8. Click "Add"
 9. Find "Pentair IntelliCenter" in HACS and click "Download"
@@ -30,7 +30,7 @@ Home Assistant integration for Pentair IntelliCenter pool control systems. Monit
 
 ### Method 2: Manual Installation
 
-1. Download the [latest release](https://github.com/dwradcliffe/intellicenter/releases)
+1. Download the [latest release](https://github.com/joyfulhouse/intellicenter/releases)
 2. Extract the `custom_components/intellicenter` folder
 3. Copy to your Home Assistant `config/custom_components/` directory
 4. Restart Home Assistant
@@ -219,10 +219,10 @@ make bronze  # Run all quality checks
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/dwradcliffe/intellicenter/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/dwradcliffe/intellicenter/discussions)
+- **Issues**: [GitHub Issues](https://github.com/joyfulhouse/intellicenter/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/joyfulhouse/intellicenter/discussions)
 
 [hacs]: https://github.com/hacs/integration
 [hacsbadge]: https://img.shields.io/badge/HACS-Custom-orange
-[releases-shield]: https://img.shields.io/github/v/release/dwradcliffe/intellicenter
-[releases]: https://github.com/dwradcliffe/intellicenter/releases
+[releases-shield]: https://img.shields.io/github/v/release/joyfulhouse/intellicenter
+[releases]: https://github.com/joyfulhouse/intellicenter/releases

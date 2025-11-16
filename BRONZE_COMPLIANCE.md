@@ -120,7 +120,7 @@ This document analyzes the Pentair IntelliCenter integration against the [Home A
 **Status**: ✅ PASS
 
 **Current State**:
-- ✅ `manifest.json` points to documentation: `https://github.com/dwradcliffe/intellicenter`
+- ✅ `manifest.json` points to documentation: `https://github.com/joyfulhouse/intellicenter`
 - ✅ HACS integration configured (`hacs.json` with `render_readme: true`)
 - ✅ Comprehensive `README.md` with step-by-step setup guide
 - ✅ Clear installation instructions (HACS + manual)

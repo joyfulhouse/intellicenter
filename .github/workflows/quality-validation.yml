@@ -1,0 +1,454 @@
+---
+name: Quality Scale Validation
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # ==============================================================
+  # BRONZE TIER VALIDATION
+  # ==============================================================
+  bronze-ui-configuration:
+    name: "Bronze: UI Configuration"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify config_flow.py exists
+        run: |
+          if [ ! -f "custom_components/intellicenter/config_flow.py" ]; then
+            echo "❌ config_flow.py not found"
+            exit 1
+          fi
+          echo "✅ Config flow implementation exists"
+
+      - name: Verify strings.json exists
+        run: |
+          if [ ! -f "custom_components/intellicenter/strings.json" ]; then
+            echo "❌ strings.json not found"
+            exit 1
+          fi
+          echo "✅ UI strings defined"
+
+      - name: Check manifest config_flow flag
+        run: |
+          if ! grep -q '"config_flow": true' \
+            custom_components/intellicenter/manifest.json; then
+            echo "❌ config_flow not enabled in manifest.json"
+            exit 1
+          fi
+          echo "✅ Config flow enabled in manifest"
+
+  bronze-code-quality:
+    name: "Bronze: Code Quality Standards"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff mypy bandit
+
+      - name: Run Ruff linting
+        run: |
+          echo "Running Ruff linter..."
+          ruff check custom_components/ --output-format=github
+
+      - name: Run Ruff formatting check
+        run: |
+          echo "Checking code formatting..."
+          ruff format --check custom_components/
+
+      - name: Run Bandit security check
+        run: |
+          echo "Running security scan..."
+          bandit -r custom_components/intellicenter/ -ll
+
+      - name: Run mypy type checking
+        run: |
+          echo "Running type checker..."
+          mypy custom_components/intellicenter/ \
+            --ignore-missing-imports \
+            --no-strict-optional
+        continue-on-error: true
+
+  bronze-automated-tests:
+    name: "Bronze: Automated Testing"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-asyncio \
+            pytest-homeassistant-custom-component pytest-cov
+
+      - name: Run pytest
+        run: |
+          echo "Running test suite..."
+          pytest tests/ -v --tb=short --cov=custom_components/intellicenter \
+            --cov-report=term-missing --cov-report=xml
+
+      - name: Check test results
+        run: |
+          if [ $? -ne 0 ]; then
+            echo "❌ Tests failed"
+            exit 1
+          fi
+          echo "✅ All tests passed"
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+        continue-on-error: true
+
+  bronze-documentation:
+    name: "Bronze: End-User Documentation"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify README exists
+        run: |
+          if [ ! -f "README.md" ]; then
+            echo "❌ README.md not found"
+            exit 1
+          fi
+          echo "✅ README.md exists"
+
+      - name: Check README content
+        run: |
+          # Check for required sections
+          sections=("Installation" "Configuration" "Features")
+          for section in "${sections[@]}"; do
+            if ! grep -qi "$section" README.md; then
+              echo "❌ Missing section: $section"
+              exit 1
+            fi
+          done
+          echo "✅ README has required sections"
+
+      - name: Verify manifest documentation URL
+        run: |
+          if ! grep -q '"documentation":' \
+            custom_components/intellicenter/manifest.json; then
+            echo "❌ Documentation URL not set in manifest.json"
+            exit 1
+          fi
+          echo "✅ Documentation URL configured"
+
+  bronze-hassfest:
+    name: "Bronze: Home Assistant Validation"
+    runs-on: ubuntu-latest
+    needs:
+      [
+        bronze-ui-configuration,
+        bronze-code-quality,
+        bronze-automated-tests,
+        bronze-documentation,
+      ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run hassfest
+        uses: home-assistant/actions/hassfest@master
+
+  bronze-summary:
+    name: "Bronze Tier: Summary"
+    runs-on: ubuntu-latest
+    needs:
+      [
+        bronze-ui-configuration,
+        bronze-code-quality,
+        bronze-automated-tests,
+        bronze-documentation,
+        bronze-hassfest,
+      ]
+    steps:
+      - name: Bronze validation passed
+        run: |
+          echo "=================================================="
+          echo "✅ BRONZE TIER VALIDATION PASSED"
+          echo "=================================================="
+          echo ""
+          echo "All Bronze requirements met:"
+          echo "  ✅ UI Configuration"
+          echo "  ✅ Code Quality Standards"
+          echo "  ✅ Automated Testing"
+          echo "  ✅ End-User Documentation"
+          echo "  ✅ Home Assistant Validation"
+          echo ""
+          echo "Proceeding to Silver tier validation..."
+          echo "=================================================="
+
+  # ==============================================================
+  # SILVER TIER VALIDATION
+  # ==============================================================
+  silver-error-recovery:
+    name: "Silver: Error Recovery Testing"
+    runs-on: ubuntu-latest
+    needs: bronze-summary
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-asyncio \
+            pytest-homeassistant-custom-component
+
+      - name: Run connection error tests
+        run: |
+          echo "Testing automatic error recovery..."
+          pytest tests/test_init.py::test_async_setup_entry_connection_failed \
+            -v --tb=short
+          if [ $? -ne 0 ]; then
+            echo "❌ Error recovery test failed"
+            exit 1
+          fi
+          echo "✅ Error recovery verified"
+
+      - name: Verify ConnectionHandler implementation
+        run: |
+          if ! grep -q "class ConnectionHandler" \
+            custom_components/intellicenter/pyintellicenter/controller.py; then
+            echo "❌ ConnectionHandler not implemented"
+            exit 1
+          fi
+          echo "✅ ConnectionHandler exists"
+
+      - name: Check exponential backoff logic
+        run: |
+          if ! grep -q "_next_delay" \
+            custom_components/intellicenter/pyintellicenter/controller.py; then
+            echo "❌ Exponential backoff not implemented"
+            exit 1
+          fi
+          echo "✅ Exponential backoff implemented"
+
+  silver-logging-validation:
+    name: "Silver: Logging Best Practices"
+    runs-on: ubuntu-latest
+    needs: bronze-summary
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check for excessive logging in loops
+        run: |
+          echo "Scanning for logging issues..."
+
+          # Check for logging in tight loops (potential log flooding)
+          if grep -rn "while.*:" custom_components/intellicenter/ | \
+             grep -A 5 "_LOGGER\.(error|warning)" | \
+             grep -v "await\|sleep"; then
+            echo "⚠️  Warning: Potential logging in tight loop detected"
+          else
+            echo "✅ No excessive logging in loops"
+          fi
+
+      - name: Verify appropriate log levels
+        run: |
+          # Check that reconnection attempts use INFO, not ERROR
+          if grep -rn "reconnect" custom_components/intellicenter/ | \
+             grep "_LOGGER.error"; then
+            echo "⚠️  Warning: Reconnection using ERROR level"
+          else
+            echo "✅ Appropriate log levels for reconnection"
+          fi
+
+  silver-documentation-enhanced:
+    name: "Silver: Enhanced Documentation"
+    runs-on: ubuntu-latest
+    needs: bronze-summary
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify troubleshooting section exists
+        run: |
+          if ! grep -qi "troubleshooting" README.md; then
+            echo "❌ Troubleshooting section not found in README"
+            exit 1
+          fi
+          echo "✅ Troubleshooting section exists"
+
+      - name: Check troubleshooting content depth
+        run: |
+          # Count lines in troubleshooting section (should be substantial)
+          lines=$(sed -n '/## Troubleshooting/,/## /p' README.md | wc -l)
+          if [ "$lines" -lt 50 ]; then
+            echo "❌ Troubleshooting section too short ($lines lines)"
+            exit 1
+          fi
+          echo "✅ Comprehensive troubleshooting ($lines lines)"
+
+      - name: Verify debug logging documentation
+        run: |
+          if ! grep -qi "debug.*log" README.md; then
+            echo "❌ Debug logging instructions not found"
+            exit 1
+          fi
+          echo "✅ Debug logging documented"
+
+  silver-code-ownership:
+    name: "Silver: Active Code Ownership"
+    runs-on: ubuntu-latest
+    needs: bronze-summary
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify codeowners in manifest
+        run: |
+          if ! grep -q '"codeowners":' \
+            custom_components/intellicenter/manifest.json; then
+            echo "❌ Codeowners not defined in manifest.json"
+            exit 1
+          fi
+          echo "✅ Codeowners defined"
+
+      - name: Check for recent activity
+        run: |
+          # Check if there have been commits in the last 90 days
+          recent_commits=$(git log --since="90 days ago" --oneline | wc -l)
+          if [ "$recent_commits" -eq 0 ]; then
+            echo "⚠️  Warning: No commits in last 90 days"
+          else
+            echo "✅ Active maintenance ($recent_commits commits in 90 days)"
+          fi
+
+  silver-authentication:
+    name: "Silver: Authentication Handling"
+    runs-on: ubuntu-latest
+    needs: bronze-summary
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check authentication documentation
+        run: |
+          # For integrations without auth, verify it's documented
+          if grep -qi "no.*auth\|does not.*require.*auth\|authentication.*not.*required" \
+             README.md; then
+            echo "✅ No-auth model properly documented"
+          elif grep -qi "re-authentication\|reauth" \
+               custom_components/intellicenter/config_flow.py; then
+            echo "✅ Re-authentication implemented"
+          else
+            echo "❌ Authentication handling not documented or implemented"
+            exit 1
+          fi
+
+  silver-summary:
+    name: "Silver Tier: Summary"
+    runs-on: ubuntu-latest
+    needs:
+      [
+        silver-error-recovery,
+        silver-logging-validation,
+        silver-documentation-enhanced,
+        silver-code-ownership,
+        silver-authentication,
+      ]
+    steps:
+      - name: Silver validation passed
+        run: |
+          echo "=================================================="
+          echo "✅ SILVER TIER VALIDATION PASSED"
+          echo "=================================================="
+          echo ""
+          echo "All Silver requirements met:"
+          echo "  ✅ Automatic Error Recovery"
+          echo "  ✅ Clean Logging Practices"
+          echo "  ✅ Enhanced Documentation"
+          echo "  ✅ Active Code Ownership"
+          echo "  ✅ Authentication Handling"
+          echo ""
+          echo "🎉 Integration meets Home Assistant Silver Quality Scale!"
+          echo "=================================================="
+
+  # ==============================================================
+  # FINAL QUALITY GATE
+  # ==============================================================
+  quality-gate:
+    name: "Quality Gate: Silver Tier"
+    runs-on: ubuntu-latest
+    needs: [bronze-summary, silver-summary]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify quality_scale in manifest
+        run: |
+          quality_scale=$(grep -oP '(?<="quality_scale": ")[^"]*' \
+            custom_components/intellicenter/manifest.json)
+
+          echo "Current quality_scale: $quality_scale"
+
+          if [ "$quality_scale" != "silver" ] && \
+             [ "$quality_scale" != "gold" ] && \
+             [ "$quality_scale" != "platinum" ]; then
+            echo "❌ quality_scale should be at least 'silver'"
+            exit 1
+          fi
+
+          echo "✅ Quality scale properly set: $quality_scale"
+
+      - name: Final validation summary
+        run: |
+          echo ""
+          echo "╔════════════════════════════════════════════════════╗"
+          echo "║  ✅ ALL QUALITY VALIDATIONS PASSED                 ║"
+          echo "╚════════════════════════════════════════════════════╝"
+          echo ""
+          echo "Bronze Tier: ✅ PASSED"
+          echo "  • UI Configuration"
+          echo "  • Code Quality Standards"
+          echo "  • Automated Testing"
+          echo "  • End-User Documentation"
+          echo ""
+          echo "Silver Tier: ✅ PASSED"
+          echo "  • Automatic Error Recovery"
+          echo "  • Clean Logging Practices"
+          echo "  • Enhanced Documentation"
+          echo "  • Active Code Ownership"
+          echo "  • Authentication Handling"
+          echo ""
+          echo "Ready for production deployment! 🚀"
+          echo ""

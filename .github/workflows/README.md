@@ -126,7 +126,22 @@ Runs Home Assistant's official validation tool on a daily schedule.
 
 Claude Code integration for AI-assisted code reviews on pull requests.
 
-**Triggers:** Pull requests with `@claude` in title or body
+**Important:** Claude Code review only runs when:
+1. ✅ Quality validation (Bronze + Silver) passes first
+2. ✅ Only on pull request contexts (not pushes)
+3. ✅ Only when explicitly mentioned with `@claude`
+
+**Triggers:**
+- PR comment with `@claude`
+- PR review comment with `@claude`
+- PR review body with `@claude`
+
+**Workflow:**
+```
+PR Comment (@claude) → Quality Validation → Claude Review
+```
+
+This ensures code quality is validated before AI review, saving resources and providing Claude with validation context.
 
 ---
 

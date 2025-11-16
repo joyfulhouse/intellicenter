@@ -2,65 +2,63 @@
 name: Claude Code Review
 
 on:
-  issue_comment:
-    types: [created]
-  pull_request_review_comment:
-    types: [created]
-  pull_request_review:
-    types: [submitted]
+  workflow_run:
+    workflows: ["Quality Scale Validation"]
+    types:
+      - completed
+    branches:
+      - '**'
 
 jobs:
-  # Wait for quality validation to complete before running Claude Code review
-  # This ensures Bronze and Silver validation pass before Claude reviews
-  quality-validation:
-    # Only run on pull request events, not push
-    if: |
-      github.event_name == 'pull_request_review_comment' ||
-      github.event_name == 'pull_request_review' ||
-      (github.event_name == 'issue_comment' && github.event.issue.pull_request)
-    uses: ./.github/workflows/quality-validation.yml
-    secrets: inherit
-
   claude:
     name: Claude Code Review
-    needs: [quality-validation]
-    # Only trigger Claude when explicitly mentioned with @claude
-    # AND only on pull request contexts
+    # Only run on PRs and only if quality validation succeeded
     if: |
-      (github.event_name == 'issue_comment' &&
-       github.event.issue.pull_request &&
-       contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' &&
-       contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review' &&
-       contains(github.event.review.body, '@claude'))
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
-      issues: read
+      pull-requests: write
+      issues: write
       id-token: write
       actions: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Get PR number
+        id: pr
+        run: |
+          PR_NUMBER=$(gh pr view ${{ github.event.workflow_run.head_sha }} \
+            --json number --jq '.number' || echo "")
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No PR found for this commit"
+            exit 0
+          fi
+          echo "number=$PR_NUMBER" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Quality validation status
+        if: steps.pr.outputs.number != ''
         run: |
           echo "=================================================="
           echo "✅ Quality Validation Passed"
           echo "=================================================="
           echo ""
           echo "Bronze and Silver tier validation completed successfully."
-          echo "Proceeding with Claude Code review..."
+          echo "Running automatic Claude Code review for PR #${{ steps.pr.outputs.number }}..."
           echo ""
 
       - name: Run Claude Code
+        if: steps.pr.outputs.number != ''
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           additional_permissions: |
             actions: read
+          github_token: ${{ secrets.GITHUB_TOKEN }}

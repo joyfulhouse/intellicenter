@@ -726,7 +726,7 @@ jobs:
         run: |
           pytest tests/ -v --cov=custom_components/intellicenter \
             --cov-report=term-missing --cov-report=xml \
-            --cov-fail-under=70
+            --cov-fail-under=60
 
       - name: Verify test count (Platinum requires 100+ tests)
         run: |

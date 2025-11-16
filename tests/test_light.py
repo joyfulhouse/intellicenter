@@ -92,7 +92,7 @@ async def test_light_turn_on_basic(
     light = PoolLight(entry, mock_controller, pool_object_light, LIGHTS_EFFECTS)
 
     await hass.async_block_till_done()
-    light.turn_on()
+    await light.async_turn_on()
 
     # Should request status change to ON
     mock_controller.requestChanges.assert_called_once()
@@ -116,7 +116,7 @@ async def test_light_turn_on_with_effect(
     light = PoolLight(entry, mock_controller, pool_object_light, LIGHTS_EFFECTS)
 
     await hass.async_block_till_done()
-    light.turn_on(**{ATTR_EFFECT: "Party Mode"})
+    await light.async_turn_on(**{ATTR_EFFECT: "Party Mode"})
 
     # Should request status ON and effect PARTY
     mock_controller.requestChanges.assert_called_once()
@@ -147,7 +147,7 @@ async def test_light_turn_off(
     assert light.is_on is True
 
     await hass.async_block_till_done()
-    light.turn_off()
+    await light.async_turn_off()
 
     # Should request status change to OFF
     mock_controller.requestChanges.assert_called_once()

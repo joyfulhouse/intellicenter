@@ -124,11 +124,11 @@ class PoolLight(PoolEntity, LightEntity):
         """Return the state of the light."""
         return self._poolObject.status == self._poolObject.onStatus
 
-    def turn_off(self, **kwargs: Any) -> None:
+    async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the light."""
         self.requestChanges({STATUS_ATTR: "OFF"})
 
-    def turn_on(self, **kwargs: Any) -> None:
+    async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on the light."""
 
         changes = {STATUS_ATTR: self._poolObject.onStatus}

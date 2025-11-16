@@ -92,7 +92,7 @@ async def test_circuit_switch_turn_on(
     switch = PoolCircuit(entry, mock_controller, pool_object_switch)
 
     await hass.async_block_till_done()
-    switch.turn_on()
+    await switch.async_turn_on()
 
     mock_controller.requestChanges.assert_called_once()
     args = mock_controller.requestChanges.call_args[0]
@@ -120,7 +120,7 @@ async def test_circuit_switch_turn_off(
     assert switch.is_on is True
 
     await hass.async_block_till_done()
-    switch.turn_off()
+    await switch.async_turn_off()
 
     mock_controller.requestChanges.assert_called_once()
     args = mock_controller.requestChanges.call_args[0]
@@ -163,7 +163,7 @@ async def test_body_switch_turn_on(
     body_switch = PoolBody(entry, mock_controller, pool_object_body)
 
     await hass.async_block_till_done()
-    body_switch.turn_on()
+    await body_switch.async_turn_on()
 
     mock_controller.requestChanges.assert_called_once()
     args = mock_controller.requestChanges.call_args[0]
@@ -186,7 +186,7 @@ async def test_body_switch_turn_off(
     body_switch = PoolBody(entry, mock_controller, pool_object_body)
 
     await hass.async_block_till_done()
-    body_switch.turn_off()
+    await body_switch.async_turn_off()
 
     mock_controller.requestChanges.assert_called_once()
     args = mock_controller.requestChanges.call_args[0]

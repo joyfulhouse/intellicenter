@@ -94,12 +94,12 @@ class PoolCircuit(PoolEntity, SwitchEntity):
         """Return the state of the circuit."""
         return self._poolObject[self._attribute_key] == self._poolObject.onStatus
 
-    def turn_off(self, **kwargs: Any) -> None:
+    async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the switch."""
         self.requestChanges({self._attribute_key: self._poolObject.offStatus})
 
-    def turn_on(self, **kwargs: Any) -> None:
-        """Turn off the switch."""
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn on the switch."""
         self.requestChanges({self._attribute_key: self._poolObject.onStatus})
 
 

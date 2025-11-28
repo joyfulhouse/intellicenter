@@ -70,6 +70,7 @@ from pyintellicenter import (
     TIME_ATTR,
     USE_ATTR,
     VACFLO_ATTR,
+    VALVE_TYPE,
     VER_ATTR,
     VOL_ATTR,
     ICBaseController,
@@ -104,7 +105,7 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
         TIME_ATTR,  # Egg timer duration
         FREEZE_ATTR,  # Freeze protection status
     },
-    CIRCGRP_TYPE: {CIRCUIT_ATTR},
+    CIRCGRP_TYPE: {SNAME_ATTR, STATUS_ATTR, USE_ATTR, CIRCUIT_ATTR},  # Circuit groups
     CHEM_TYPE: {
         SNAME_ATTR,
         BODY_ATTR,
@@ -149,6 +150,7 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
     SENSE_TYPE: {SNAME_ATTR, SOURCE_ATTR},
     SCHED_TYPE: {SNAME_ATTR, ACT_ATTR, VACFLO_ATTR},
     SYSTEM_TYPE: {MODE_ATTR, VACFLO_ATTR, VER_ATTR},  # VER_ATTR for firmware version
+    VALVE_TYPE: {SNAME_ATTR, STATUS_ATTR},  # Valve actuators for water features
 }
 
 

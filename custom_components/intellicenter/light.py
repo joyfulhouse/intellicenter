@@ -18,7 +18,6 @@ from homeassistant.components.light import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyintellicenter import (
-    ACT_ATTR,
     CIRCUIT_ATTR,
     LIGHT_EFFECTS,
     STATUS_ATTR,
@@ -147,15 +146,21 @@ class PoolLight(PoolEntity, LightEntity):
         self._optimistic_state = True
         self.async_write_ha_state()
 
-        changes: dict[str, Any] = {STATUS_ATTR: self._pool_object.on_status}
-
+        # Handle light effect using convenience method if specified
         if ATTR_EFFECT in kwargs and self._reversed_light_effects:
             effect = kwargs[ATTR_EFFECT]
             new_use = self._reversed_light_effects.get(effect)
             if new_use:
-                changes[ACT_ATTR] = new_use
+                try:
+                    # Use convenience method with validation
+                    await self._controller.set_light_effect(
+                        self._pool_object.objnam, new_use
+                    )
+                except ValueError:
+                    _LOGGER.warning("Invalid light effect: %s", effect)
 
-        self.request_changes(changes)
+        # Turn on the light
+        self.request_changes({STATUS_ATTR: self._pool_object.on_status})
 
     def _clear_optimistic_state(self) -> None:
         """Clear optimistic state when real update is received."""

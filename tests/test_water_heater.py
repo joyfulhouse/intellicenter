@@ -270,14 +270,7 @@ async def test_water_heater_set_temperature(
     pool_object_body_with_heater: PoolObject,
     mock_coordinator: MagicMock,
 ) -> None:
-    """Test setting target temperature."""
-
-    mock_coordinator.controller.request_changes = AsyncMock()
-    mock_coordinator.controller.system_info = MagicMock()
-    type(mock_coordinator.controller.system_info).uses_metric = property(
-        lambda self: False
-    )
-
+    """Test setting target temperature uses convenience method."""
     water_heater = PoolWaterHeater(
         mock_coordinator,
         pool_object_body_with_heater,
@@ -287,11 +280,8 @@ async def test_water_heater_set_temperature(
 
     await water_heater.async_set_temperature(**{ATTR_TEMPERATURE: 80})
 
-    mock_coordinator.controller.request_changes.assert_called_once()
-    args = mock_coordinator.controller.request_changes.call_args[0]
-    assert args[0] == "POOL1"
-    assert LOTMP_ATTR in args[1]
-    assert args[1][LOTMP_ATTR] == "80"
+    # Should use set_setpoint convenience method
+    mock_coordinator.controller.set_setpoint.assert_called_once_with("POOL1", 80)
 
 
 async def test_water_heater_set_temperature_invalid(

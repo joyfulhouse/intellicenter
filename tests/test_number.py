@@ -1,6 +1,6 @@
 """Test the Pentair IntelliCenter number platform."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 from homeassistant.const import PERCENTAGE
 from homeassistant.core import HomeAssistant
@@ -184,10 +184,7 @@ async def test_number_set_value(
     pool_object_intellichlor: PoolObject,
     mock_coordinator: MagicMock,
 ) -> None:
-    """Test setting number value."""
-
-    mock_coordinator.controller.request_changes = AsyncMock()
-
+    """Test setting number value uses convenience method."""
     number = PoolNumber(
         mock_coordinator,
         pool_object_intellichlor,
@@ -197,11 +194,10 @@ async def test_number_set_value(
 
     await number.async_set_native_value(75)
 
-    mock_coordinator.controller.request_changes.assert_called_once()
-    args = mock_coordinator.controller.request_changes.call_args[0]
-    assert args[0] == "ICHLOR1"
-    assert PRIM_ATTR in args[1]
-    assert args[1][PRIM_ATTR] == "75"
+    # Primary chlorinator output uses set_chlorinator_output convenience method
+    mock_coordinator.controller.set_chlorinator_output.assert_called_once_with(
+        "ICHLOR1", 75
+    )
 
 
 async def test_number_set_value_secondary(
@@ -209,10 +205,7 @@ async def test_number_set_value_secondary(
     pool_object_intellichlor: PoolObject,
     mock_coordinator: MagicMock,
 ) -> None:
-    """Test setting secondary number value."""
-
-    mock_coordinator.controller.request_changes = AsyncMock()
-
+    """Test setting secondary number value uses convenience method."""
     number = PoolNumber(
         mock_coordinator,
         pool_object_intellichlor,
@@ -222,11 +215,12 @@ async def test_number_set_value_secondary(
 
     await number.async_set_native_value(40)
 
-    mock_coordinator.controller.request_changes.assert_called_once()
-    args = mock_coordinator.controller.request_changes.call_args[0]
-    assert args[0] == "ICHLOR1"
-    assert SEC_ATTR in args[1]
-    assert args[1][SEC_ATTR] == "40"
+    # Secondary uses set_chlorinator_output with current primary preserved
+    mock_coordinator.controller.set_chlorinator_output.assert_called_once_with(
+        "ICHLOR1",
+        50,
+        40,  # 50 is the mocked current primary value
+    )
 
 
 async def test_number_set_value_converts_to_int(
@@ -235,9 +229,6 @@ async def test_number_set_value_converts_to_int(
     mock_coordinator: MagicMock,
 ) -> None:
     """Test setting number value converts float to int."""
-
-    mock_coordinator.controller.request_changes = AsyncMock()
-
     number = PoolNumber(
         mock_coordinator,
         pool_object_intellichlor,
@@ -247,10 +238,10 @@ async def test_number_set_value_converts_to_int(
 
     await number.async_set_native_value(75.5)
 
-    mock_coordinator.controller.request_changes.assert_called_once()
-    args = mock_coordinator.controller.request_changes.call_args[0]
-    # Should convert 75.5 to "75"
-    assert args[1][PRIM_ATTR] == "75"
+    # Should convert 75.5 to 75 (integer)
+    mock_coordinator.controller.set_chlorinator_output.assert_called_once_with(
+        "ICHLOR1", 75
+    )
 
 
 async def test_number_unique_id(

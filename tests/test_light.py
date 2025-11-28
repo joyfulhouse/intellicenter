@@ -104,14 +104,17 @@ async def test_light_turn_on_with_effect(
     await hass.async_block_till_done()
     await light.async_turn_on(**{ATTR_EFFECT: "Party Mode"})
 
-    # Should request status ON and effect PARTY
+    # Effect is set via convenience method
+    mock_coordinator.controller.set_light_effect.assert_called_once_with(
+        "LIGHT1", "PARTY"
+    )
+
+    # Light is turned on via request_changes
     mock_coordinator.controller.request_changes.assert_called_once()
     args = mock_coordinator.controller.request_changes.call_args[0]
     assert args[0] == "LIGHT1"
     assert STATUS_ATTR in args[1]
     assert args[1][STATUS_ATTR] == "ON"
-    assert ACT_ATTR in args[1]
-    assert args[1][ACT_ATTR] == "PARTY"
 
 
 async def test_light_turn_off(
@@ -351,11 +354,15 @@ async def test_light_turn_on_with_each_effect(
     await hass.async_block_till_done()
     await light.async_turn_on(**{ATTR_EFFECT: effect_name})
 
-    # Verify the correct effect code was sent
+    # Effect is set via convenience method with correct code
+    mock_coordinator.controller.set_light_effect.assert_called_once_with(
+        "LIGHT1", expected_code
+    )
+
+    # Light is turned on via request_changes
     mock_coordinator.controller.request_changes.assert_called_once()
     args = mock_coordinator.controller.request_changes.call_args[0]
     assert args[0] == "LIGHT1"
-    assert args[1][ACT_ATTR] == expected_code
     assert args[1][STATUS_ATTR] == "ON"
 
 

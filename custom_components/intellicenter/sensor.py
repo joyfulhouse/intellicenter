@@ -4,7 +4,9 @@ This module provides sensor entities for various pool measurements including:
 - Temperature sensors (air, water)
 - Pump sensors (power, RPM, GPM)
 - Chemistry sensors (pH, ORP, salt level, water quality)
-- IntelliChem water chemistry settings (alkalinity, calcium hardness, cyanuric acid)
+
+Note: IntelliChem configuration values (ALK, CALC, CYACID) are in number.py
+as they are user-entered configuration, not sensor readings.
 """
 
 from __future__ import annotations
@@ -25,11 +27,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyintellicenter import (
-    ALK_ATTR,
     BODY_TYPE,
-    CALC_ATTR,
     CHEM_TYPE,
-    CYACID_ATTR,
     GPM_ATTR,
     LOTMP_ATTR,
     LSTTMP_ATTR,
@@ -256,43 +255,8 @@ async def async_setup_entry(
                             entity_category=EntityCategory.DIAGNOSTIC,
                         )
                     )
-                # Water chemistry configuration sensors (read-only)
-                if ALK_ATTR in obj.attribute_keys:
-                    sensors.append(
-                        PoolSensor(
-                            coordinator,
-                            obj,
-                            device_class=None,
-                            attribute_key=ALK_ATTR,
-                            name="+ (Alkalinity)",
-                            unit_of_measurement=CONCENTRATION_PARTS_PER_MILLION,
-                            icon="mdi:flask-outline",
-                        )
-                    )
-                if CALC_ATTR in obj.attribute_keys:
-                    sensors.append(
-                        PoolSensor(
-                            coordinator,
-                            obj,
-                            device_class=None,
-                            attribute_key=CALC_ATTR,
-                            name="+ (Calcium Hardness)",
-                            unit_of_measurement=CONCENTRATION_PARTS_PER_MILLION,
-                            icon="mdi:flask-outline",
-                        )
-                    )
-                if CYACID_ATTR in obj.attribute_keys:
-                    sensors.append(
-                        PoolSensor(
-                            coordinator,
-                            obj,
-                            device_class=None,
-                            attribute_key=CYACID_ATTR,
-                            name="+ (Cyanuric Acid)",
-                            unit_of_measurement=CONCENTRATION_PARTS_PER_MILLION,
-                            icon="mdi:flask-outline",
-                        )
-                    )
+                # Note: ALK, CALC, CYACID are configuration values (user-entered)
+                # and are handled as number entities in number.py
             elif obj.subtype == "ICHLOR":
                 if SALT_ATTR in obj.attribute_keys:
                     sensors.append(

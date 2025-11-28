@@ -164,12 +164,15 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
         return self._safe_float_conversion(self._pool_object[LOTMP_ATTR])
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
-        """Set new target temperatures."""
+        """Set new target temperatures using convenience method."""
         target_temperature = kwargs.get(ATTR_TEMPERATURE)
         if target_temperature is not None:
             try:
                 temp_value = int(target_temperature)
-                self.request_changes({LOTMP_ATTR: str(temp_value)})
+                # Use pyintellicenter convenience method
+                await self._controller.set_setpoint(
+                    self._pool_object.objnam, temp_value
+                )
             except (ValueError, TypeError):
                 _LOGGER.exception("Invalid temperature value '%s'", target_temperature)
 

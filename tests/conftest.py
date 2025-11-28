@@ -16,6 +16,7 @@ from pyintellicenter import (
     SCHED_TYPE,
     SENSE_TYPE,
     SYSTEM_TYPE,
+    VALVE_TYPE,
     ICModelController,
     ICSystemInfo,
     PoolModel,
@@ -219,6 +220,16 @@ def pool_model_data() -> list[dict[str, Any]]:
                 "ENABLE": "ON",
             },
         },
+        # Valve actuator
+        {
+            "objnam": "VAL01",
+            "params": {
+                "OBJTYP": VALVE_TYPE,
+                "SUBTYP": "LEGACY",
+                "SNAME": "Spillover Valve",
+                "STATUS": "OFF",
+            },
+        },
     ]
 
 
@@ -350,9 +361,29 @@ def mock_coordinator(
     # Configure model
     mock_coord.model = pool_model
 
-    # Configure controller
+    # Configure controller with all convenience methods
     mock_controller = MagicMock()
     mock_controller.request_changes = AsyncMock()
+    # Convenience methods from pyintellicenter v0.1.2
+    mock_controller.set_valve_state = AsyncMock()
+    mock_controller.set_vacation_mode = AsyncMock()
+    mock_controller.set_ph_setpoint = AsyncMock()
+    mock_controller.set_orp_setpoint = AsyncMock()
+    mock_controller.set_chlorinator_output = AsyncMock()
+    mock_controller.set_light_effect = AsyncMock()
+    mock_controller.set_setpoint = AsyncMock()
+    mock_controller.set_heat_mode = AsyncMock()
+    mock_controller.get_chlorinator_output = MagicMock(
+        return_value={"primary": 50, "secondary": 50}
+    )
+    mock_controller.is_vacation_mode = MagicMock(return_value=False)
+    # Convenience methods from pyintellicenter v0.1.3
+    mock_controller.set_alkalinity = AsyncMock()
+    mock_controller.set_calcium_hardness = AsyncMock()
+    mock_controller.set_cyanuric_acid = AsyncMock()
+    mock_controller.get_alkalinity = MagicMock(return_value=100)
+    mock_controller.get_calcium_hardness = MagicMock(return_value=300)
+    mock_controller.get_cyanuric_acid = MagicMock(return_value=40)
     mock_coord.controller = mock_controller
 
     # Configure system info
@@ -399,3 +430,17 @@ def mock_write_ha_state() -> Generator[MagicMock]:
         "homeassistant.helpers.entity.Entity.async_write_ha_state"
     ) as mock_write:
         yield mock_write
+
+
+@pytest.fixture
+def pool_object_valve() -> PoolObject:
+    """Return a PoolObject representing a valve actuator."""
+    return PoolObject(
+        "VAL01",
+        {
+            "OBJTYP": VALVE_TYPE,
+            "SUBTYP": "LEGACY",
+            "SNAME": "Spillover Valve",
+            "STATUS": "OFF",
+        },
+    )

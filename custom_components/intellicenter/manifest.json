@@ -8,8 +8,8 @@
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/joyfulhouse/intellicenter/issues",
   "quality_scale": "platinum",
-  "requirements": ["pyintellicenter>=0.1.4"],
-  "version": "3.5.4",
+  "requirements": ["pyintellicenter>=0.1.5"],
+  "version": "3.5.5",
   "zeroconf": [
     {"type": "_http._tcp.local.", "name": "pentair*"}
   ]

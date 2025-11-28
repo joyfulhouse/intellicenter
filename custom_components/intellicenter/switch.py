@@ -1,7 +1,7 @@
 """Pentair Intellicenter switches.
 
 This module provides switch entities for pool circuits, bodies of water,
-superchlorinate mode, vacation mode, and valve actuators.
+superchlorinate mode, and vacation mode.
 """
 
 from __future__ import annotations
@@ -23,7 +23,6 @@ from pyintellicenter import (
     SUPER_ATTR,
     SYSTEM_TYPE,
     VACFLO_ATTR,
-    VALVE_TYPE,
     VOL_ATTR,
     PoolObject,
 )
@@ -80,9 +79,6 @@ async def async_setup_entry(
         elif pool_obj.objtype == SYSTEM_TYPE:
             # Vacation mode uses convenience method
             switches.append(PoolVacation(coordinator, pool_obj))
-        elif pool_obj.objtype == VALVE_TYPE:
-            # Valve actuators use convenience method
-            switches.append(PoolValve(coordinator, pool_obj))
 
     async_add_entities(switches)
 
@@ -129,49 +125,6 @@ class PoolBody(PoolCircuit):
         """Initialize a Pool body from the underlying circuit."""
         super().__init__(coordinator, pool_object)
         self._extra_state_attrs = {VOL_ATTR, HEATER_ATTR, HTMODE_ATTR}
-
-
-class PoolValve(PoolEntity, SwitchEntity):
-    """Representation of a valve actuator using convenience methods.
-
-    Uses pyintellicenter set_valve_state() for control operations.
-    """
-
-    _attr_device_class = SwitchDeviceClass.SWITCH
-    _attr_icon = "mdi:pipe-valve"
-    _optimistic_state: bool | None = None
-
-    def __init__(
-        self,
-        coordinator: IntelliCenterCoordinator,
-        pool_object: PoolObject,
-    ) -> None:
-        """Initialize a valve switch."""
-        super().__init__(coordinator, pool_object)
-
-    @property
-    def is_on(self) -> bool:
-        """Return true if the valve is on."""
-        if self._optimistic_state is not None:
-            return self._optimistic_state
-        return bool(self._pool_object[STATUS_ATTR] == self._pool_object.on_status)
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn on the valve using convenience method."""
-        self._optimistic_state = True
-        self.async_write_ha_state()
-        await self._controller.set_valve_state(self._pool_object.objnam, True)
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn off the valve using convenience method."""
-        self._optimistic_state = False
-        self.async_write_ha_state()
-        await self._controller.set_valve_state(self._pool_object.objnam, False)
-
-    @callback
-    def _clear_optimistic_state(self) -> None:
-        """Clear optimistic state when real update is received."""
-        self._optimistic_state = None
 
 
 class PoolVacation(PoolEntity, SwitchEntity):

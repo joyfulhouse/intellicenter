@@ -16,7 +16,6 @@ from pyintellicenter import (
     SCHED_TYPE,
     SENSE_TYPE,
     SYSTEM_TYPE,
-    VALVE_TYPE,
     ICModelController,
     ICSystemInfo,
     PoolModel,
@@ -220,16 +219,6 @@ def pool_model_data() -> list[dict[str, Any]]:
                 "ENABLE": "ON",
             },
         },
-        # Valve actuator
-        {
-            "objnam": "VAL01",
-            "params": {
-                "OBJTYP": VALVE_TYPE,
-                "SUBTYP": "LEGACY",
-                "SNAME": "Spillover Valve",
-                "STATUS": "OFF",
-            },
-        },
     ]
 
 
@@ -365,7 +354,6 @@ def mock_coordinator(
     mock_controller = MagicMock()
     mock_controller.request_changes = AsyncMock()
     # Convenience methods from pyintellicenter v0.1.2
-    mock_controller.set_valve_state = AsyncMock()
     mock_controller.set_vacation_mode = AsyncMock()
     mock_controller.set_ph_setpoint = AsyncMock()
     mock_controller.set_orp_setpoint = AsyncMock()
@@ -430,17 +418,3 @@ def mock_write_ha_state() -> Generator[MagicMock]:
         "homeassistant.helpers.entity.Entity.async_write_ha_state"
     ) as mock_write:
         yield mock_write
-
-
-@pytest.fixture
-def pool_object_valve() -> PoolObject:
-    """Return a PoolObject representing a valve actuator."""
-    return PoolObject(
-        "VAL01",
-        {
-            "OBJTYP": VALVE_TYPE,
-            "SUBTYP": "LEGACY",
-            "SNAME": "Spillover Valve",
-            "STATUS": "OFF",
-        },
-    )

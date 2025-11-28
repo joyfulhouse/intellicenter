@@ -205,11 +205,6 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
         return self.coordinator.controller
 
     @property
-    def _poolObject(self) -> PoolObject:
-        """Return the pool object (backwards compatibility)."""
-        return self._pool_object
-
-    @property
     def available(self) -> bool:
         """Return True if entity is available."""
         return bool(self.coordinator.connected)
@@ -330,11 +325,6 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
                 self._pool_object.objnam,
                 changes,
             )
-
-    # Backwards compatibility alias
-    def requestChanges(self, changes: dict[str, Any]) -> None:
-        """Request changes (backwards compatibility alias)."""
-        self.request_changes(changes)
 
     def _check_attributes_updated(
         self, updates: dict[str, dict[str, Any]], *attributes: str

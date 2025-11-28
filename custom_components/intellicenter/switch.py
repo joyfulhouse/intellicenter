@@ -137,6 +137,7 @@ class PoolVacation(PoolEntity, SwitchEntity):
     _attr_device_class = SwitchDeviceClass.SWITCH
     _attr_icon = "mdi:palm-tree"
     _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = True
     _optimistic_state: bool | None = None
 
     def __init__(

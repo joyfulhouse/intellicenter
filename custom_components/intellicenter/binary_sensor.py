@@ -84,7 +84,8 @@ async def async_setup_entry(
                     obj,
                     attribute_key="ACT",
                     name="+ (schedule)",
-                    enabled_by_default=False,
+                    icon="mdi:clock-outline",
+                    entity_category=EntityCategory.CONFIG,
                     extra_state_attributes=["VACFLO"],
                 )
             )

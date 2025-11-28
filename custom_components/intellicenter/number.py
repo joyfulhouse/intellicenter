@@ -110,6 +110,7 @@ async def async_setup_entry(
                                 unit_of_measurement=PERCENTAGE,
                                 attribute_key=attribute_key,
                                 name=f"+ Output % ({body.sname})",
+                                mode=NumberMode.BOX,
                                 entity_category=EntityCategory.CONFIG,
                                 integer_only=True,
                             )
@@ -129,7 +130,7 @@ async def async_setup_entry(
                             name="+ pH Setpoint",
                             icon="mdi:ph",
                             device_class=NumberDeviceClass.PH,
-                            mode=NumberMode.SLIDER,
+                            mode=NumberMode.BOX,
                             entity_category=EntityCategory.CONFIG,
                         )
                     )
@@ -147,7 +148,7 @@ async def async_setup_entry(
                             name="+ ORP Setpoint",
                             icon="mdi:test-tube",
                             unit_of_measurement="mV",
-                            mode=NumberMode.SLIDER,
+                            mode=NumberMode.BOX,
                             entity_category=EntityCategory.CONFIG,
                             integer_only=True,
                         )
@@ -223,7 +224,7 @@ async def async_setup_entry(
                     name="+ Max Temperature",
                     icon="mdi:thermometer-high",
                     device_class=NumberDeviceClass.TEMPERATURE,
-                    mode=NumberMode.SLIDER,
+                    mode=NumberMode.BOX,
                     entity_category=EntityCategory.CONFIG,
                     integer_only=True,
                 )

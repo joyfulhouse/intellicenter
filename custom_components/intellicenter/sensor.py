@@ -27,11 +27,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyintellicenter import (
-    BODY_TYPE,
     CHEM_TYPE,
     GPM_ATTR,
-    LOTMP_ATTR,
-    LSTTMP_ATTR,
     MAX_ATTR,
     MAXF_ATTR,
     MIN_ATTR,
@@ -181,25 +178,6 @@ async def async_setup_entry(
                         entity_category=EntityCategory.DIAGNOSTIC,
                     )
                 )
-        elif obj.objtype == BODY_TYPE:
-            sensors.append(
-                PoolSensor(
-                    coordinator,
-                    obj,
-                    device_class=SensorDeviceClass.TEMPERATURE,
-                    attribute_key=LSTTMP_ATTR,
-                    name="+ last temp",
-                )
-            )
-            sensors.append(
-                PoolSensor(
-                    coordinator,
-                    obj,
-                    device_class=SensorDeviceClass.TEMPERATURE,
-                    attribute_key=LOTMP_ATTR,
-                    name="+ desired temp",
-                )
-            )
         elif obj.objtype == CHEM_TYPE:
             if obj.subtype == "ICHEM":
                 if PHVAL_ATTR in obj.attribute_keys:
@@ -220,6 +198,7 @@ async def async_setup_entry(
                             device_class=None,
                             attribute_key=ORPVAL_ATTR,
                             name="+ (ORP)",
+                            icon="mdi:react",
                             unit_of_measurement="mV",
                         )
                     )
@@ -231,6 +210,7 @@ async def async_setup_entry(
                             device_class=None,
                             attribute_key=QUALTY_ATTR,
                             name="+ (Water Quality)",
+                            icon="mdi:test-tube",
                         )
                     )
                 if PHTNK_ATTR in obj.attribute_keys:
@@ -241,6 +221,7 @@ async def async_setup_entry(
                             device_class=None,
                             attribute_key=PHTNK_ATTR,
                             name="+ (pH Tank Level)",
+                            icon="mdi:barrel",
                             entity_category=EntityCategory.DIAGNOSTIC,
                         )
                     )
@@ -252,6 +233,7 @@ async def async_setup_entry(
                             device_class=None,
                             attribute_key=ORPTNK_ATTR,
                             name="+ (ORP Tank Level)",
+                            icon="mdi:barrel",
                             entity_category=EntityCategory.DIAGNOSTIC,
                         )
                     )
@@ -267,6 +249,7 @@ async def async_setup_entry(
                             unit_of_measurement=CONCENTRATION_PARTS_PER_MILLION,
                             attribute_key=SALT_ATTR,
                             name="+ (Salt)",
+                            icon="mdi:shaker-outline",
                         )
                     )
         elif obj.objtype == SYSTEM_TYPE:

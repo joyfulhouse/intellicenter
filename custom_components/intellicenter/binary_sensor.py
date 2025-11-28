@@ -56,7 +56,7 @@ async def async_setup_entry(
     """Load pool binary sensors based on a config entry."""
     coordinator = entry.runtime_data
 
-    sensors: list[PoolBinarySensor | HeaterBinarySensor] = []
+    sensors: list[PoolBinarySensor | HeaterBinarySensor | ScheduleBinarySensor] = []
 
     obj: PoolObject
     for obj in coordinator.model:
@@ -79,14 +79,9 @@ async def async_setup_entry(
             )
         elif obj.objtype == SCHED_TYPE:
             sensors.append(
-                PoolBinarySensor(
+                ScheduleBinarySensor(
                     coordinator,
                     obj,
-                    attribute_key="ACT",
-                    name="+ (schedule)",
-                    icon="mdi:clock-outline",
-                    entity_category=EntityCategory.CONFIG,
-                    extra_state_attributes=["VACFLO"],
                 )
             )
         elif obj.objtype == PUMP_TYPE:
@@ -107,7 +102,7 @@ async def async_setup_entry(
                         obj,
                         attribute_key=PHHI_ATTR,
                         name="+ (pH High Alarm)",
-                        icon="mdi:alert-circle",
+                        icon="mdi:alert-plus-outline",
                         device_class=BinarySensorDeviceClass.PROBLEM,
                         entity_category=EntityCategory.DIAGNOSTIC,
                     )
@@ -119,7 +114,7 @@ async def async_setup_entry(
                         obj,
                         attribute_key=PHLO_ATTR,
                         name="+ (pH Low Alarm)",
-                        icon="mdi:alert-circle",
+                        icon="mdi:alert-minus-outline",
                         device_class=BinarySensorDeviceClass.PROBLEM,
                         entity_category=EntityCategory.DIAGNOSTIC,
                     )
@@ -131,7 +126,7 @@ async def async_setup_entry(
                         obj,
                         attribute_key=ORPHI_ATTR,
                         name="+ (ORP High Alarm)",
-                        icon="mdi:alert-circle",
+                        icon="mdi:alert-plus-outline",
                         device_class=BinarySensorDeviceClass.PROBLEM,
                         entity_category=EntityCategory.DIAGNOSTIC,
                     )
@@ -143,7 +138,7 @@ async def async_setup_entry(
                         obj,
                         attribute_key=ORPLO_ATTR,
                         name="+ (ORP Low Alarm)",
-                        icon="mdi:alert-circle",
+                        icon="mdi:alert-minus-outline",
                         device_class=BinarySensorDeviceClass.PROBLEM,
                         entity_category=EntityCategory.DIAGNOSTIC,
                     )
@@ -261,3 +256,42 @@ class HeaterBinarySensor(PoolEntity, BinarySensorEntity):
             return True
 
         return False
+
+
+# -------------------------------------------------------------------------------------
+
+
+class ScheduleBinarySensor(PoolEntity, BinarySensorEntity):
+    """Representation of a schedule status sensor.
+
+    Shows whether a schedule is currently active (running).
+    Named as "Schedule (Object Name)" for grouping in the UI.
+    """
+
+    _attr_device_class = BinarySensorDeviceClass.RUNNING
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:calendar-clock"
+
+    def __init__(
+        self,
+        coordinator: IntelliCenterCoordinator,
+        pool_object: PoolObject,
+    ) -> None:
+        """Initialize a schedule binary sensor."""
+        super().__init__(
+            coordinator,
+            pool_object,
+            attribute_key="ACT",
+            extra_state_attributes=["VACFLO"],
+        )
+
+    @property
+    def name(self) -> str:
+        """Return the name as 'Schedule (Object Name)'."""
+        sname = self._pool_object.sname or "Unknown"
+        return f"Schedule ({sname})"
+
+    @property
+    def is_on(self) -> bool:
+        """Return true if the schedule is currently active."""
+        return bool(self._pool_object[self._attribute_key] == STATUS_ON)

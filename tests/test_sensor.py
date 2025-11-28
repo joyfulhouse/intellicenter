@@ -13,8 +13,6 @@ from pyintellicenter import (
     BODY_TYPE,
     CHEM_TYPE,
     GPM_ATTR,
-    LOTMP_ATTR,
-    LSTTMP_ATTR,
     ORPTNK_ATTR,
     ORPVAL_ATTR,
     PHTNK_ATTR,
@@ -140,9 +138,9 @@ async def test_sensor_setup_creates_entities(
     # Should create sensors for:
     # - SENSE1 (air temp)
     # - PUMP1 (power, RPM, GPM = 3)
-    # - POOL1 and SPA01 (last temp, desired temp = 4)
     # - CHEM1 (pH, ORP, pH tank, ORP tank = 4)
-    assert len(entities_added) >= 10
+    # Note: Body temps (POOL1/SPA01) are in water_heater, not sensors
+    assert len(entities_added) >= 8
 
 
 async def test_temperature_sensor_properties(
@@ -270,36 +268,6 @@ async def test_pump_gpm_sensor(
 
     assert sensor.native_value == 55
     assert sensor.native_unit_of_measurement == CONST_GPM
-
-
-async def test_body_temperature_sensors(
-    hass: HomeAssistant,
-    pool_object_body: PoolObject,
-    mock_coordinator: MagicMock,
-) -> None:
-    """Test body temperature sensors."""
-    # Last temp sensor
-    last_temp = PoolSensor(
-        mock_coordinator,
-        pool_object_body,
-        device_class=SensorDeviceClass.TEMPERATURE,
-        attribute_key=LSTTMP_ATTR,
-        name="+ last temp",
-    )
-
-    assert last_temp.native_value == 78
-    assert last_temp.native_unit_of_measurement == str(UnitOfTemperature.FAHRENHEIT)
-
-    # Desired temp sensor
-    desired_temp = PoolSensor(
-        mock_coordinator,
-        pool_object_body,
-        device_class=SensorDeviceClass.TEMPERATURE,
-        attribute_key=LOTMP_ATTR,
-        name="+ desired temp",
-    )
-
-    assert desired_temp.native_value == 72
 
 
 async def test_intellichem_ph_sensor(

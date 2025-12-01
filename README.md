@@ -69,11 +69,13 @@ Before installing this integration, you need:
 
 ### HACS (Recommended)
 
-1. Open HACS → Integrations → ⋮ → Custom repositories
-2. Add URL: `https://github.com/joyfulhouse/intellicenter`
-3. Category: Integration
-4. Search for "Pentair IntelliCenter" and install
-5. Restart Home Assistant
+1. Open HACS → Integrations
+2. Search for "Pentair IntelliCenter"
+3. Click Install
+4. Restart Home Assistant
+
+> **Note:** If you don't find the integration, you can add it as a custom repository:
+> HACS → ⋮ → Custom repositories → Add `https://github.com/joyfulhouse/intellicenter` as Integration
 
 ### Manual Installation
 
@@ -384,7 +386,7 @@ We extend our sincere gratitude for their foundational work that made this integ
 [releases]: https://github.com/joyfulhouse/intellicenter/releases
 [license-shield]: https://img.shields.io/github/license/joyfulhouse/intellicenter?style=for-the-badge
 [hacs]: https://hacs.xyz
-[hacsbadge]: https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge
+[hacsbadge]: https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=for-the-badge
 [ci-badge]: https://img.shields.io/github/actions/workflow/status/joyfulhouse/intellicenter/ci.yml?branch=main&label=CI&style=for-the-badge
 [ci-workflow]: https://github.com/joyfulhouse/intellicenter/actions/workflows/ci.yml
 [quality-badge]: https://img.shields.io/badge/quality_scale-platinum-e5e4e2?style=for-the-badge

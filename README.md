@@ -350,7 +350,7 @@ See [docs/](docs/) for architecture documentation and development guidelines.
 
 ## License
 
-Apache License 2.0 - see [LICENSE](LICENSE) file for details.
+GNU GENERAL PUBLIC LICENSE v3.0 - see [LICENSE](LICENSE) file for details.
 
 ## Quality Tier: Platinum Certified
 

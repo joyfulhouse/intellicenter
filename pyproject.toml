@@ -1,11 +1,12 @@
 [project]
 name = "intellicenter"
-version = "3.5.0"
+version = "3.6.0"
 description = "Home Assistant custom integration for Pentair IntelliCenter"
 readme = "README.md"
 requires-python = ">=3.13.2"
 dependencies = [
     "homeassistant>=2025.11.3",
+    "pyintellicenter>=0.1.7",
 ]
 
 [tool.ruff]

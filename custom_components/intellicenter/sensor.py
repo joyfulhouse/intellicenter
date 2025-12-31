@@ -4,6 +4,7 @@ This module provides sensor entities for various pool measurements including:
 - Temperature sensors (air, water)
 - Pump sensors (power, RPM, GPM)
 - Chemistry sensors (pH, ORP, salt level, water quality)
+- Dosing volume sensors (cumulative pH and ORP chemical volumes in mL)
 
 Note: IntelliChem configuration values (ALK, CALC, CYACID) are in number.py
 as they are user-entered configuration, not sensor readings.
@@ -35,8 +36,10 @@ from pyintellicenter import (
     MINF_ATTR,
     ORPTNK_ATTR,
     ORPVAL_ATTR,
+    ORPVOL_ATTR,
     PHTNK_ATTR,
     PHVAL_ATTR,
+    PHVOL_ATTR,
     PUMP_TYPE,
     PWR_ATTR,
     QUALTY_ATTR,
@@ -235,6 +238,35 @@ async def async_setup_entry(
                             name="+ (ORP Tank Level)",
                             icon="mdi:barrel",
                             entity_category=EntityCategory.DIAGNOSTIC,
+                        )
+                    )
+                # Cumulative dosing volume sensors (mL)
+                if PHVOL_ATTR in obj.attribute_keys:
+                    sensors.append(
+                        PoolSensor(
+                            coordinator,
+                            obj,
+                            device_class=None,
+                            attribute_key=PHVOL_ATTR,
+                            name="+ (pH Dosing Volume)",
+                            icon="mdi:beaker-outline",
+                            unit_of_measurement="mL",
+                            entity_category=EntityCategory.DIAGNOSTIC,
+                            state_class=SensorStateClass.TOTAL_INCREASING,
+                        )
+                    )
+                if ORPVOL_ATTR in obj.attribute_keys:
+                    sensors.append(
+                        PoolSensor(
+                            coordinator,
+                            obj,
+                            device_class=None,
+                            attribute_key=ORPVOL_ATTR,
+                            name="+ (ORP Dosing Volume)",
+                            icon="mdi:beaker-outline",
+                            unit_of_measurement="mL",
+                            entity_category=EntityCategory.DIAGNOSTIC,
+                            state_class=SensorStateClass.TOTAL_INCREASING,
                         )
                     )
                 # Note: ALK, CALC, CYACID are configuration values (user-entered)

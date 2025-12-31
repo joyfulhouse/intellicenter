@@ -15,8 +15,10 @@ from pyintellicenter import (
     GPM_ATTR,
     ORPTNK_ATTR,
     ORPVAL_ATTR,
+    ORPVOL_ATTR,
     PHTNK_ATTR,
     PHVAL_ATTR,
+    PHVOL_ATTR,
     PUMP_TYPE,
     PWR_ATTR,
     RPM_ATTR,
@@ -94,6 +96,8 @@ def pool_object_intellichem() -> PoolObject:
             "QUALTY": "85",
             "PHTNK": "5",
             "ORPTNK": "3",
+            "PHVOL": "1250",
+            "ORPVOL": "30208",
         },
     )
 
@@ -330,6 +334,41 @@ async def test_intellichem_tank_level_sensors(
     )
 
     assert orp_tank.native_value == 3
+
+
+async def test_intellichem_dosing_volume_sensors(
+    hass: HomeAssistant,
+    pool_object_intellichem: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Test IntelliChem dosing volume sensors (cumulative mL)."""
+    ph_vol = PoolSensor(
+        mock_coordinator,
+        pool_object_intellichem,
+        device_class=None,
+        attribute_key=PHVOL_ATTR,
+        name="+ (pH Dosing Volume)",
+        unit_of_measurement="mL",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    )
+
+    assert ph_vol.native_value == 1250
+    assert ph_vol.native_unit_of_measurement == "mL"
+    assert ph_vol.state_class == SensorStateClass.TOTAL_INCREASING
+
+    orp_vol = PoolSensor(
+        mock_coordinator,
+        pool_object_intellichem,
+        device_class=None,
+        attribute_key=ORPVOL_ATTR,
+        name="+ (ORP Dosing Volume)",
+        unit_of_measurement="mL",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    )
+
+    assert orp_vol.native_value == 30208
+    assert orp_vol.native_unit_of_measurement == "mL"
+    assert orp_vol.state_class == SensorStateClass.TOTAL_INCREASING
 
 
 async def test_intellichlor_salt_sensor(

@@ -31,16 +31,27 @@ from pyintellicenter import (
     BODY_TYPE,
     CALC_ATTR,
     CHEM_TYPE,
+    CIRCUIT_ATTR,
     CYACID_ATTR,
+    GPM_ATTR,
     HITMP_ATTR,
+    MAX_ATTR,
+    MAXF_ATTR,
+    MIN_ATTR,
+    MINF_ATTR,
     ORPSET_ATTR,
+    PARENT_ATTR,
     PHSET_ATTR,
+    PMPCIRC_TYPE,
     PRIM_ATTR,
     SEC_ATTR,
+    SPEED_ATTR,
+    SUBTYP_ATTR,
     PoolObject,
 )
 
 from . import IntelliCenterConfigEntry, PoolEntity
+from .const import CONST_GPM, CONST_RPM
 from .coordinator import IntelliCenterCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -74,6 +85,15 @@ CYACID_STEP = 1
 TEMP_SETPOINT_MIN = 40
 TEMP_SETPOINT_MAX = 104
 TEMP_SETPOINT_STEP = 1
+
+# Pump speed/flow ranges (defaults, actual limits come from pump MIN/MAX attributes)
+PUMP_RPM_MIN_DEFAULT = 450
+PUMP_RPM_MAX_DEFAULT = 3450
+PUMP_RPM_STEP = 50
+
+PUMP_GPM_MIN_DEFAULT = 15
+PUMP_GPM_MAX_DEFAULT = 140
+PUMP_GPM_STEP = 5
 
 # -------------------------------------------------------------------------------------
 
@@ -229,6 +249,102 @@ async def async_setup_entry(
                     integer_only=True,
                 )
             )
+
+    # Add pump circuit speed/flow setpoints (PMPCIRC) - CONFIG category
+    # These allow control of variable speed pump settings per circuit
+    for pool_obj in coordinator.model:
+        if pool_obj.objtype == PMPCIRC_TYPE:
+            # Get the parent pump to determine limits and type
+            parent_objnam = pool_obj[PARENT_ATTR]
+            parent_pump = coordinator.model[parent_objnam] if parent_objnam else None
+
+            # Get the associated circuit for naming
+            circuit_objnam = pool_obj[CIRCUIT_ATTR]
+            circuit = coordinator.model[circuit_objnam] if circuit_objnam else None
+            circuit_name = circuit.sname if circuit else circuit_objnam
+
+            # Determine pump type (SPEED=RPM only, FLOW=GPM only, VSF=both)
+            pump_subtype = parent_pump[SUBTYP_ATTR] if parent_pump else None
+
+            # Get limits from parent pump, with defaults
+            rpm_min = PUMP_RPM_MIN_DEFAULT
+            rpm_max = PUMP_RPM_MAX_DEFAULT
+            gpm_min = PUMP_GPM_MIN_DEFAULT
+            gpm_max = PUMP_GPM_MAX_DEFAULT
+
+            if parent_pump:
+                if MIN_ATTR in parent_pump.attribute_keys and parent_pump[MIN_ATTR]:
+                    try:
+                        rpm_min = int(parent_pump[MIN_ATTR])
+                    except (ValueError, TypeError):
+                        pass
+                if MAX_ATTR in parent_pump.attribute_keys and parent_pump[MAX_ATTR]:
+                    try:
+                        rpm_max = int(parent_pump[MAX_ATTR])
+                    except (ValueError, TypeError):
+                        pass
+                if MINF_ATTR in parent_pump.attribute_keys and parent_pump[MINF_ATTR]:
+                    try:
+                        val = int(parent_pump[MINF_ATTR])
+                        if val > 0:
+                            gpm_min = val
+                    except (ValueError, TypeError):
+                        pass
+                if MAXF_ATTR in parent_pump.attribute_keys and parent_pump[MAXF_ATTR]:
+                    try:
+                        val = int(parent_pump[MAXF_ATTR])
+                        if val > 0:
+                            gpm_max = val
+                    except (ValueError, TypeError):
+                        pass
+
+            # Create RPM setpoint entity if pump supports speed control
+            if SPEED_ATTR in pool_obj.attribute_keys and pump_subtype in (
+                "SPEED",
+                "VSF",
+                "VS",
+                None,  # Default to showing if unknown
+            ):
+                numbers.append(
+                    PoolNumber(
+                        coordinator,
+                        pool_obj,
+                        min_value=rpm_min,
+                        max_value=rpm_max,
+                        step=PUMP_RPM_STEP,
+                        attribute_key=SPEED_ATTR,
+                        name=f"+ RPM ({circuit_name})",
+                        icon="mdi:speedometer",
+                        unit_of_measurement=CONST_RPM,
+                        mode=NumberMode.BOX,
+                        entity_category=EntityCategory.CONFIG,
+                        integer_only=True,
+                    )
+                )
+
+            # Create GPM setpoint entity if pump supports flow control
+            if GPM_ATTR in pool_obj.attribute_keys and pump_subtype in (
+                "FLOW",
+                "VSF",
+                "VF",
+                None,  # Default to showing if unknown
+            ):
+                numbers.append(
+                    PoolNumber(
+                        coordinator,
+                        pool_obj,
+                        min_value=gpm_min,
+                        max_value=gpm_max,
+                        step=PUMP_GPM_STEP,
+                        attribute_key=GPM_ATTR,
+                        name=f"+ GPM ({circuit_name})",
+                        icon="mdi:water-pump",
+                        unit_of_measurement=CONST_GPM,
+                        mode=NumberMode.BOX,
+                        entity_category=EntityCategory.CONFIG,
+                        integer_only=True,
+                    )
+                )
 
     async_add_entities(numbers)
 

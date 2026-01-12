@@ -47,11 +47,13 @@ from pyintellicenter import (
     ORPSET_ATTR,
     ORPTNK_ATTR,
     ORPVAL_ATTR,
+    PARENT_ATTR,
     PHHI_ATTR,
     PHLO_ATTR,
     PHSET_ATTR,
     PHTNK_ATTR,
     PHVAL_ATTR,
+    PMPCIRC_TYPE,
     PRIM_ATTR,
     PUMP_TYPE,
     PWR_ATTR,
@@ -60,9 +62,11 @@ from pyintellicenter import (
     SALT_ATTR,
     SCHED_TYPE,
     SEC_ATTR,
+    SELECT_ATTR,
     SENSE_TYPE,
     SNAME_ATTR,
     SOURCE_ATTR,
+    SPEED_ATTR,
     STATUS_ATTR,
     SUBTYP_ATTR,
     SUPER_ATTR,
@@ -145,6 +149,15 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
         MIN_ATTR,
         MAXF_ATTR,
         MINF_ATTR,
+        SUBTYP_ATTR,  # Pump type: SPEED, FLOW, VSF
+    },
+    PMPCIRC_TYPE: {
+        SNAME_ATTR,
+        PARENT_ATTR,  # The pump this circuit setting belongs to
+        CIRCUIT_ATTR,  # The circuit this setting is for
+        SELECT_ATTR,  # "RPM" or "GPM" - determines which setpoint is active
+        SPEED_ATTR,  # RPM setpoint when SELECT=RPM
+        GPM_ATTR,  # GPM setpoint when SELECT=GPM
     },
     SENSE_TYPE: {SNAME_ATTR, SOURCE_ATTR},
     SCHED_TYPE: {SNAME_ATTR, ACT_ATTR, VACFLO_ATTR},

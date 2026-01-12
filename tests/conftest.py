@@ -12,6 +12,7 @@ from pyintellicenter import (
     CHEM_TYPE,
     CIRCUIT_TYPE,
     HEATER_TYPE,
+    PMPCIRC_TYPE,
     PUMP_TYPE,
     SCHED_TYPE,
     SENSE_TYPE,
@@ -161,17 +162,34 @@ def pool_model_data() -> list[dict[str, Any]]:
                 "FEATR": "OFF",
             },
         },
-        # Pump
+        # Pump (variable speed/flow with limits)
         {
             "objnam": "PUMP1",
             "params": {
                 "OBJTYP": PUMP_TYPE,
-                "SUBTYP": "VS",
+                "SUBTYP": "VSF",
                 "SNAME": "Pool Pump",
                 "STATUS": "10",
                 "PWR": "1200",
                 "RPM": "2000",
                 "GPM": "55",
+                "MIN": "450",
+                "MAX": "3450",
+                "MINF": "15",
+                "MAXF": "140",
+            },
+        },
+        # Pump circuit settings (PMPCIRC)
+        {
+            "objnam": "PMPCIRC01",
+            "params": {
+                "OBJTYP": PMPCIRC_TYPE,
+                "SNAME": "Pool Pump Circuit 1",
+                "PARENT": "PUMP1",
+                "CIRCUIT": "POOL1",
+                "SELECT": "GPM",
+                "SPEED": "2400",
+                "GPM": "80",
             },
         },
         # Heater
@@ -263,17 +281,38 @@ def pool_object_switch() -> PoolObject:
 
 @pytest.fixture
 def pool_object_pump() -> PoolObject:
-    """Return a PoolObject representing a variable speed pump."""
+    """Return a PoolObject representing a variable speed/flow pump."""
     return PoolObject(
         "PUMP1",
         {
             "OBJTYP": PUMP_TYPE,
-            "SUBTYP": "VS",
+            "SUBTYP": "VSF",
             "SNAME": "Pool Pump",
             "STATUS": "10",
             "PWR": "1200",
             "RPM": "2000",
             "GPM": "55",
+            "MIN": "450",
+            "MAX": "3450",
+            "MINF": "15",
+            "MAXF": "140",
+        },
+    )
+
+
+@pytest.fixture
+def pool_object_pmpcirc() -> PoolObject:
+    """Return a PoolObject representing a pump circuit setting."""
+    return PoolObject(
+        "PMPCIRC01",
+        {
+            "OBJTYP": PMPCIRC_TYPE,
+            "SNAME": "Pool Pump Circuit 1",
+            "PARENT": "PUMP1",
+            "CIRCUIT": "POOL1",
+            "SELECT": "GPM",
+            "SPEED": "2400",
+            "GPM": "80",
         },
     )
 

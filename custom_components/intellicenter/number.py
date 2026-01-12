@@ -46,7 +46,6 @@ from pyintellicenter import (
     PRIM_ATTR,
     SEC_ATTR,
     SPEED_ATTR,
-    SUBTYP_ATTR,
     PoolObject,
 )
 
@@ -263,9 +262,6 @@ async def async_setup_entry(
             circuit = coordinator.model[circuit_objnam] if circuit_objnam else None
             circuit_name = circuit.sname if circuit else circuit_objnam
 
-            # Determine pump type (SPEED=RPM only, FLOW=GPM only, VSF=both)
-            pump_subtype = parent_pump[SUBTYP_ATTR] if parent_pump else None
-
             # Get limits from parent pump, with defaults
             rpm_min = PUMP_RPM_MIN_DEFAULT
             rpm_max = PUMP_RPM_MAX_DEFAULT
@@ -298,13 +294,9 @@ async def async_setup_entry(
                     except (ValueError, TypeError):
                         pass
 
-            # Create RPM setpoint entity if pump supports speed control
-            if SPEED_ATTR in pool_obj.attribute_keys and pump_subtype in (
-                "SPEED",
-                "VSF",
-                "VS",
-                None,  # Default to showing if unknown
-            ):
+            # Create RPM setpoint entity if SPEED attribute exists on PMPCIRC
+            # The presence of the attribute indicates the pump circuit supports RPM control
+            if SPEED_ATTR in pool_obj.attribute_keys:
                 numbers.append(
                     PoolNumber(
                         coordinator,
@@ -322,13 +314,9 @@ async def async_setup_entry(
                     )
                 )
 
-            # Create GPM setpoint entity if pump supports flow control
-            if GPM_ATTR in pool_obj.attribute_keys and pump_subtype in (
-                "FLOW",
-                "VSF",
-                "VF",
-                None,  # Default to showing if unknown
-            ):
+            # Create GPM setpoint entity if GPM attribute exists on PMPCIRC
+            # The presence of the attribute indicates the pump circuit supports GPM control
+            if GPM_ATTR in pool_obj.attribute_keys:
                 numbers.append(
                     PoolNumber(
                         coordinator,

@@ -699,6 +699,9 @@ async def test_pump_speed_number_gpm_mode(
     """Test PumpSpeedNumber in GPM mode returns correct unit and limits."""
     from custom_components.intellicenter.const import CONST_GPM
 
+    # Mock the controller to return the expected speed value
+    mock_coordinator.controller.get_pump_circuit_speed.return_value = 80
+
     number = PumpSpeedNumber(
         mock_coordinator,
         pool_object_pmpcirc_vsf,
@@ -726,6 +729,9 @@ async def test_pump_speed_number_rpm_mode(
 ) -> None:
     """Test PumpSpeedNumber in RPM mode returns correct unit and limits."""
     from custom_components.intellicenter.const import CONST_RPM
+
+    # Mock the controller to return the expected speed value
+    mock_coordinator.controller.get_pump_circuit_speed.return_value = 2400
 
     number = PumpSpeedNumber(
         mock_coordinator,
@@ -755,6 +761,9 @@ async def test_pump_speed_number_mode_switching(
     """Test PumpSpeedNumber updates when mode switches from RPM to GPM."""
     from custom_components.intellicenter.const import CONST_GPM, CONST_RPM
 
+    # Mock the controller to return initial RPM value, then updated GPM value
+    mock_coordinator.controller.get_pump_circuit_speed.return_value = 2400
+
     number = PumpSpeedNumber(
         mock_coordinator,
         pool_object_pmpcirc_rpm_mode,
@@ -770,8 +779,9 @@ async def test_pump_speed_number_mode_switching(
     assert number.native_unit_of_measurement == CONST_RPM
     assert number.native_max_value == 3450.0
 
-    # Simulate mode switch to GPM
+    # Simulate mode switch to GPM - controller now returns GPM value
     pool_object_pmpcirc_rpm_mode.update({SELECT_ATTR: "GPM", SPEED_ATTR: "80"})
+    mock_coordinator.controller.get_pump_circuit_speed.return_value = 80
 
     # Now in GPM mode
     assert number._current_mode == "GPM"

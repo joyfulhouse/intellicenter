@@ -541,8 +541,16 @@ class PumpSpeedNumber(PoolEntity, NumberEntity):
 
     @property
     def native_value(self) -> int | None:
-        """Return the current speed value from SPEED attribute."""
-        return self._safe_int_conversion(self._pool_object[SPEED_ATTR])
+        """Return the current speed value, clamped to valid range for current mode.
+
+        Uses the controller's get_pump_circuit_speed() method which handles
+        the case where SELECT and SPEED updates arrive in separate NotifyList
+        messages, preventing display of invalid values during mode transitions.
+        """
+        result: int | None = self._controller.get_pump_circuit_speed(
+            self._pool_object.objnam
+        )
+        return result
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the speed value via SPEED attribute."""

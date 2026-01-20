@@ -411,6 +411,8 @@ def mock_coordinator(
     mock_controller.get_alkalinity = MagicMock(return_value=100)
     mock_controller.get_calcium_hardness = MagicMock(return_value=300)
     mock_controller.get_cyanuric_acid = MagicMock(return_value=40)
+    # Pump circuit speed helper - default to None, tests can override return_value
+    mock_controller.get_pump_circuit_speed = MagicMock(return_value=None)
     mock_coord.controller = mock_controller
 
     # Configure system info

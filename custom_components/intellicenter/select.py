@@ -135,12 +135,22 @@ class PumpModeSelect(PoolEntity, SelectEntity):
         return None
 
     async def async_select_option(self, option: str) -> None:
-        """Change the selected option."""
+        """Change the selected option and refresh speed value.
+
+        After changing the pump mode, we proactively request the fresh SPEED
+        value from IntelliCenter. This ensures the PumpSpeedNumber entity
+        displays the correct value immediately rather than waiting for
+        IntelliCenter to push the update (which may come in a separate message).
+        """
         if option not in PUMP_MODES:
             _LOGGER.warning("Invalid pump mode option: %s", option)
             return
 
         self.request_changes({SELECT_ATTR: option})
+
+        # Request fresh SPEED value after mode change
+        # This triggers an update that will be pushed to PumpSpeedNumber
+        await self._controller.refresh_pump_circuit_speed(self._pool_object.objnam)
 
     def isUpdated(self, updates: dict[str, dict[str, Any]]) -> bool:
         """Return true if the entity is updated by the updates from IntelliCenter."""

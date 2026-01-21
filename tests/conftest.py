@@ -413,6 +413,13 @@ def mock_coordinator(
     mock_controller.get_cyanuric_acid = MagicMock(return_value=40)
     # Pump circuit speed helper - default to None, tests can override return_value
     mock_controller.get_pump_circuit_speed = MagicMock(return_value=None)
+    # Cooling support detection - default to False (no cooling support)
+    mock_controller.body_supports_cooling = MagicMock(return_value=False)
+    # Heating/cooling setpoint methods
+    mock_controller.set_heating_setpoint = AsyncMock()
+    mock_controller.set_cooling_setpoint = AsyncMock()
+    # Body heating detection
+    mock_controller.is_body_heating = MagicMock(return_value=False)
     mock_coord.controller = mock_controller
 
     # Configure system info

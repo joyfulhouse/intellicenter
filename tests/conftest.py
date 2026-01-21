@@ -420,6 +420,8 @@ def mock_coordinator(
     mock_controller.set_cooling_setpoint = AsyncMock()
     # Body heating detection
     mock_controller.is_body_heating = MagicMock(return_value=False)
+    # Body cooling detection
+    mock_controller.is_body_cooling = MagicMock(return_value=False)
     mock_coord.controller = mock_controller
 
     # Configure system info

@@ -200,8 +200,11 @@ class PoolClimate(PoolEntity, ClimateEntity):
         if self._controller.is_body_heating(self._pool_object.objnam):
             return HVACAction.HEATING
 
-        # Could add cooling detection here if IntelliCenter exposes it
-        # For now, return IDLE when heater is enabled but not actively heating
+        # Check if actively cooling (UltraTemp heat pump)
+        if self._controller.is_body_cooling(self._pool_object.objnam):
+            return HVACAction.COOLING
+
+        # Heater is enabled but not actively heating or cooling
         return HVACAction.IDLE
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:

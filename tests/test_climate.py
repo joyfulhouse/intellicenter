@@ -278,17 +278,40 @@ async def test_climate_hvac_action_heating(
     assert climate.hvac_action == HVACAction.HEATING
 
 
-async def test_climate_hvac_action_idle(
+async def test_climate_hvac_action_cooling(
     hass: HomeAssistant,
     pool_object_body_with_ultratemp: PoolObject,
     mock_coordinator: MagicMock,
 ) -> None:
-    """Test HVAC action is idle when heater enabled but not heating."""
+    """Test HVAC action is cooling when actively cooling."""
     mock_coordinator.controller.system_info = MagicMock()
     type(mock_coordinator.controller.system_info).uses_metric = property(
         lambda self: False
     )
     mock_coordinator.controller.is_body_heating = MagicMock(return_value=False)
+    mock_coordinator.controller.is_body_cooling = MagicMock(return_value=True)
+
+    climate = PoolClimate(
+        mock_coordinator,
+        pool_object_body_with_ultratemp,
+        ["HTR01"],
+    )
+
+    assert climate.hvac_action == HVACAction.COOLING
+
+
+async def test_climate_hvac_action_idle(
+    hass: HomeAssistant,
+    pool_object_body_with_ultratemp: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Test HVAC action is idle when heater enabled but not heating or cooling."""
+    mock_coordinator.controller.system_info = MagicMock()
+    type(mock_coordinator.controller.system_info).uses_metric = property(
+        lambda self: False
+    )
+    mock_coordinator.controller.is_body_heating = MagicMock(return_value=False)
+    mock_coordinator.controller.is_body_cooling = MagicMock(return_value=False)
 
     climate = PoolClimate(
         mock_coordinator,

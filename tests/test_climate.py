@@ -171,11 +171,10 @@ async def test_climate_hvac_modes(
         ["HTR01"],
     )
 
-    # Check available HVAC modes
+    # Check available HVAC modes (only OFF and HEAT_COOL - system manages heat vs cool)
     assert HVACMode.OFF in climate.hvac_modes
-    assert HVACMode.HEAT in climate.hvac_modes
-    assert HVACMode.COOL in climate.hvac_modes
     assert HVACMode.HEAT_COOL in climate.hvac_modes
+    assert len(climate.hvac_modes) == 2
 
 
 async def test_climate_hvac_mode_heat_cool_when_active(
@@ -199,11 +198,15 @@ async def test_climate_hvac_mode_heat_cool_when_active(
     assert climate.hvac_mode == HVACMode.HEAT_COOL
 
 
-async def test_climate_hvac_mode_off_when_body_off(
+async def test_climate_hvac_mode_heat_cool_when_heater_assigned(
     hass: HomeAssistant,
     mock_coordinator: MagicMock,
 ) -> None:
-    """Test HVAC mode is off when body is off."""
+    """Test HVAC mode is heat_cool when heater is assigned, even if body is off.
+
+    The hvac_mode reflects whether climate control is enabled (heater assigned),
+    while hvac_action reflects actual heating/cooling state.
+    """
     mock_coordinator.controller.system_info = MagicMock()
     type(mock_coordinator.controller.system_info).uses_metric = property(
         lambda self: False
@@ -225,7 +228,9 @@ async def test_climate_hvac_mode_off_when_body_off(
 
     climate = PoolClimate(mock_coordinator, body, ["HTR01"])
 
-    assert climate.hvac_mode == HVACMode.OFF
+    # Mode is HEAT_COOL when heater is assigned (system manages heat vs cool)
+    # hvac_action will show OFF since body is off
+    assert climate.hvac_mode == HVACMode.HEAT_COOL
 
 
 async def test_climate_hvac_mode_off_when_no_heater(
@@ -425,7 +430,7 @@ async def test_climate_set_temperature_heating(
     )
     climate.hass = hass
 
-    await climate.async_set_temperature(temperature_low=75)
+    await climate.async_set_temperature(target_temp_low=75)
 
     mock_coordinator.controller.set_heating_setpoint.assert_called_once_with(
         "POOL1", 75
@@ -453,7 +458,7 @@ async def test_climate_set_temperature_cooling(
     )
     climate.hass = hass
 
-    await climate.async_set_temperature(temperature_high=88)
+    await climate.async_set_temperature(target_temp_high=88)
 
     mock_coordinator.controller.set_cooling_setpoint.assert_called_once_with(
         "POOL1", 88
@@ -481,7 +486,7 @@ async def test_climate_set_temperature_both(
     )
     climate.hass = hass
 
-    await climate.async_set_temperature(temperature_low=75, temperature_high=88)
+    await climate.async_set_temperature(target_temp_low=75, target_temp_high=88)
 
     mock_coordinator.controller.set_heating_setpoint.assert_called_once_with(
         "POOL1", 75

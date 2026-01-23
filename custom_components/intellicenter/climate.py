@@ -6,7 +6,8 @@ with heating-only equipment (gas heaters, solar), use the water_heater entity.
 
 Climate entities support:
 - Dual setpoints (heating and cooling)
-- HVAC modes: heat, cool, heat_cool, off
+- HVAC modes: off and heat_cool (system auto-manages heating vs cooling)
+- Preset modes: Heater selection (e.g., "Heater", "UltraTemp Preferred", "UltraTemp Only")
 - Current temperature monitoring
 """
 
@@ -16,12 +17,13 @@ import logging
 from typing import Any
 
 from homeassistant.components.climate import (
+    ATTR_TARGET_TEMP_HIGH,
+    ATTR_TARGET_TEMP_LOW,
     ClimateEntity,
     ClimateEntityFeature,
     HVACAction,
     HVACMode,
 )
-from homeassistant.const import ATTR_TEMPERATURE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyintellicenter import (
@@ -110,12 +112,7 @@ class PoolClimate(PoolEntity, ClimateEntity):
             extra_state_attributes=[HEATER_ATTR, HTMODE_ATTR],
         )
         self._heater_list = heater_list
-        self._attr_hvac_modes = [
-            HVACMode.OFF,
-            HVACMode.HEAT,
-            HVACMode.COOL,
-            HVACMode.HEAT_COOL,
-        ]
+        self._attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT_COOL]
 
     @property
     def unique_id(self) -> str:
@@ -130,6 +127,7 @@ class PoolClimate(PoolEntity, ClimateEntity):
             ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
             | ClimateEntityFeature.TURN_ON
             | ClimateEntityFeature.TURN_OFF
+            | ClimateEntityFeature.PRESET_MODE
         )
 
     @property
@@ -167,21 +165,35 @@ class PoolClimate(PoolEntity, ClimateEntity):
     @property
     def hvac_mode(self) -> HVACMode:
         """Return the current HVAC mode."""
-        status = self._pool_object[STATUS_ATTR]
         heater = self._pool_object[HEATER_ATTR]
 
-        # If body is off or no heater assigned, mode is OFF
-        if status == STATUS_OFF or heater == NULL_OBJNAM:
+        # Mode is OFF when no heater is assigned
+        # Mode is HEAT_COOL when a heater is assigned (system decides heating vs cooling)
+        # Whether actively heating/cooling is shown via hvac_action property
+        if heater == NULL_OBJNAM:
             return HVACMode.OFF
 
-        # Check the heat mode to determine if heating/cooling is enabled
-        htmode = self._pool_object[HTMODE_ATTR]
-        if htmode == "0":
-            return HVACMode.OFF
-
-        # When heater is active, default to heat_cool mode
-        # IntelliCenter manages the actual heating vs cooling decision
         return HVACMode.HEAT_COOL
+
+    @property
+    def preset_mode(self) -> str | None:
+        """Return the current preset mode (selected heater)."""
+        heater = self._pool_object[HEATER_ATTR]
+        if heater in self._heater_list:
+            heater_obj = self.coordinator.model[heater]
+            if heater_obj is not None and heater_obj.sname is not None:
+                return str(heater_obj.sname)
+        return None
+
+    @property
+    def preset_modes(self) -> list[str]:
+        """Return the list of available preset modes (heater options)."""
+        presets: list[str] = []
+        for heater in self._heater_list:
+            heater_obj = self.coordinator.model[heater]
+            if heater_obj is not None and heater_obj.sname is not None:
+                presets.append(heater_obj.sname)
+        return presets
 
     @property
     def hvac_action(self) -> HVACAction:
@@ -212,14 +224,27 @@ class PoolClimate(PoolEntity, ClimateEntity):
         if hvac_mode == HVACMode.OFF:
             self.request_changes({HEATER_ATTR: NULL_OBJNAM})
         else:
-            # Turn on heating/cooling by selecting the first available heater
-            if self._heater_list:
+            # Turn on heating/cooling by selecting the current or first available heater
+            current_heater = self._pool_object[HEATER_ATTR]
+            if current_heater and current_heater in self._heater_list:
+                # Keep current heater selection
+                self.request_changes({HEATER_ATTR: current_heater})
+            elif self._heater_list:
+                # Select first heater if no current selection
                 self.request_changes({HEATER_ATTR: self._heater_list[0]})
+
+    async def async_set_preset_mode(self, preset_mode: str) -> None:
+        """Set the preset mode (heater selection)."""
+        for heater in self._heater_list:
+            heater_obj = self.coordinator.model[heater]
+            if heater_obj is not None and preset_mode == heater_obj.sname:
+                self.request_changes({HEATER_ATTR: heater})
+                break
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set new target temperatures."""
-        low_temp = kwargs.get(ATTR_TEMPERATURE + "_low")
-        high_temp = kwargs.get(ATTR_TEMPERATURE + "_high")
+        low_temp = kwargs.get(ATTR_TARGET_TEMP_LOW)
+        high_temp = kwargs.get(ATTR_TARGET_TEMP_HIGH)
 
         if low_temp is not None:
             try:

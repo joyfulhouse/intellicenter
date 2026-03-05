@@ -180,9 +180,16 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
 
     @property
     def current_operation(self) -> str:
-        """Return current operation."""
+        """Return current operation.
+
+        This reflects the configured heater mode, independent of whether the
+        body is currently running (STATUS). A user can pre-select a heater for
+        a body even when it's off (e.g., setting the Spa heater while in Pool
+        mode). The real-time heating activity is exposed via the heating_status
+        extra state attribute.
+        """
         heater = self._pool_object[HEATER_ATTR]
-        if self._is_heater_active and heater in self._heater_list:
+        if heater in self._heater_list:
             heater_obj = self.coordinator.model[heater]
             if heater_obj is not None and heater_obj.sname is not None:
                 return str(heater_obj.sname)

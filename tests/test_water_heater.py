@@ -192,12 +192,17 @@ async def test_water_heater_state_idle(
     assert water_heater.extra_state_attributes["heating_status"] == "idle"
 
 
-async def test_water_heater_state_off(
+async def test_water_heater_state_body_off_heater_configured(
     hass: HomeAssistant,
     pool_object_heater: PoolObject,
     mock_coordinator: MagicMock,
 ) -> None:
-    """Test water heater state when off."""
+    """Test water heater shows configured heater even when body is off.
+
+    This is the core of issue #34 bug 1: when the system is in Pool mode,
+    the Spa body STATUS is OFF, but the user can still configure a heater
+    for the Spa. The operation mode should reflect the configured heater.
+    """
     mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
 
     body = PoolObject(
@@ -205,8 +210,37 @@ async def test_water_heater_state_off(
         {
             "OBJTYP": BODY_TYPE,
             "SNAME": "Pool",
-            "STATUS": "OFF",  # Body off
-            "HEATER": "HTR01",
+            "STATUS": "OFF",  # Body off (e.g., Spa while in Pool mode)
+            "HEATER": "HTR01",  # But heater is configured
+            "HTMODE": "0",
+            "LOTMP": "72",
+            "LSTTMP": "68",
+        },
+    )
+
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
+
+    # Operation should show the configured heater, not "off"
+    assert water_heater.current_operation == "Gas Heater"
+    # But heating_status should not be present since body isn't running
+    assert "heating_status" not in water_heater.extra_state_attributes
+
+
+async def test_water_heater_state_off_no_heater_configured(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Test water heater state when body is off and no heater configured."""
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
+
+    body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Pool",
+            "STATUS": "OFF",
+            "HEATER": NULL_OBJNAM,  # No heater configured
             "HTMODE": "0",
             "LOTMP": "72",
             "LSTTMP": "68",

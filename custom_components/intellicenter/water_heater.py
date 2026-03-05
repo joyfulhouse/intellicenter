@@ -14,7 +14,7 @@ from homeassistant.components.water_heater import (
     WaterHeaterEntity,
     WaterHeaterEntityFeature,
 )
-from homeassistant.const import ATTR_TEMPERATURE, STATE_IDLE, STATE_OFF, STATE_ON
+from homeassistant.const import ATTR_TEMPERATURE, STATE_OFF
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
@@ -102,25 +102,26 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
         self._last_heater: str | None = self._pool_object[HEATER_ATTR]
 
     @property
+    def _is_heater_active(self) -> bool:
+        """Return True if the body is on and a heater is assigned."""
+        return bool(
+            self._pool_object[STATUS_ATTR] != STATUS_OFF
+            and self._pool_object[HEATER_ATTR] != NULL_OBJNAM
+        )
+
+    @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return the state attributes of the entity."""
-
         state_attributes = super().extra_state_attributes
 
         if self._last_heater != NULL_OBJNAM:
             state_attributes[self.LAST_HEATER_ATTR] = self._last_heater
 
-        return state_attributes
+        if self._is_heater_active:
+            htmode = self._pool_object[HTMODE_ATTR]
+            state_attributes["heating_status"] = "heating" if htmode != "0" else "idle"
 
-    @property
-    def state(self) -> str:
-        """Return the current state."""
-        status = self._pool_object[STATUS_ATTR]
-        heater = self._pool_object[HEATER_ATTR]
-        if status == STATUS_OFF or heater == NULL_OBJNAM:
-            return str(STATE_OFF)
-        htmode = self._pool_object[HTMODE_ATTR]
-        return str(STATE_ON) if htmode != "0" else str(STATE_IDLE)
+        return state_attributes
 
     @property
     def unique_id(self) -> str:
@@ -134,6 +135,7 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
         return (
             WaterHeaterEntityFeature.TARGET_TEMPERATURE
             | WaterHeaterEntityFeature.OPERATION_MODE
+            | WaterHeaterEntityFeature.ON_OFF
         )
 
     @property
@@ -180,7 +182,7 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
     def current_operation(self) -> str:
         """Return current operation."""
         heater = self._pool_object[HEATER_ATTR]
-        if heater in self._heater_list:
+        if self._is_heater_active and heater in self._heater_list:
             heater_obj = self.coordinator.model[heater]
             if heater_obj is not None and heater_obj.sname is not None:
                 return str(heater_obj.sname)
@@ -225,13 +227,9 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
         self.request_changes({HEATER_ATTR: NULL_OBJNAM})
 
     def isUpdated(self, updates: dict[str, dict[str, Any]]) -> bool:
-        """Return true if the entity is updated by the updates from Intellicenter."""
-        my_updates = updates.get(self._pool_object.objnam, {})
-
-        updated = bool(
-            my_updates
-            and {STATUS_ATTR, HEATER_ATTR, HTMODE_ATTR, LOTMP_ATTR, LSTTMP_ATTR}
-            & my_updates.keys()
+        """Return true if the entity is updated by the updates from IntelliCenter."""
+        updated = self._check_attributes_updated(
+            updates, STATUS_ATTR, HEATER_ATTR, HTMODE_ATTR, LOTMP_ATTR, LSTTMP_ATTR
         )
 
         if updated and self._pool_object[HEATER_ATTR] != NULL_OBJNAM:

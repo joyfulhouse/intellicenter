@@ -1,15 +1,13 @@
 """Test the Pentair IntelliCenter water heater platform."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 from homeassistant.components.water_heater import (
     WaterHeaterEntityFeature,
 )
 from homeassistant.const import (
     ATTR_TEMPERATURE,
-    STATE_IDLE,
     STATE_OFF,
-    STATE_ON,
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
@@ -119,14 +117,8 @@ async def test_water_heater_entity_properties(
     mock_coordinator: MagicMock,
 ) -> None:
     """Test PoolWaterHeater entity properties."""
-
-    mock_coordinator.controller.request_changes = AsyncMock()
     mock_coordinator.model = MagicMock()
     mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
-    mock_coordinator.controller.system_info = MagicMock()
-    type(mock_coordinator.controller.system_info).uses_metric = property(
-        lambda self: False
-    )
 
     water_heater = PoolWaterHeater(
         mock_coordinator,
@@ -139,7 +131,10 @@ async def test_water_heater_entity_properties(
     assert water_heater.unique_id == "test_entry_POOL1LOTMP"
     assert water_heater.current_temperature == 78.0
     assert water_heater.target_temperature == 72.0
-    assert water_heater.state == STATE_ON  # STATUS=ON, HTMODE=1
+    assert water_heater.current_operation == "Gas Heater"  # STATUS=ON, HEATER=HTR01
+    assert (
+        water_heater.extra_state_attributes["heating_status"] == "heating"
+    )  # HTMODE=1
     assert water_heater.temperature_unit == str(UnitOfTemperature.FAHRENHEIT)
 
 
@@ -149,12 +144,7 @@ async def test_water_heater_state_heating(
     mock_coordinator: MagicMock,
 ) -> None:
     """Test water heater state when actively heating."""
-
     mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
-    mock_coordinator.controller.system_info = MagicMock()
-    type(mock_coordinator.controller.system_info).uses_metric = property(
-        lambda self: False
-    )
 
     body = PoolObject(
         "POOL1",
@@ -171,7 +161,8 @@ async def test_water_heater_state_heating(
 
     water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
 
-    assert water_heater.state == STATE_ON
+    assert water_heater.current_operation == "Gas Heater"
+    assert water_heater.extra_state_attributes["heating_status"] == "heating"
 
 
 async def test_water_heater_state_idle(
@@ -180,12 +171,7 @@ async def test_water_heater_state_idle(
     mock_coordinator: MagicMock,
 ) -> None:
     """Test water heater state when idle (at temperature)."""
-
     mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
-    mock_coordinator.controller.system_info = MagicMock()
-    type(mock_coordinator.controller.system_info).uses_metric = property(
-        lambda self: False
-    )
 
     body = PoolObject(
         "POOL1",
@@ -202,7 +188,8 @@ async def test_water_heater_state_idle(
 
     water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
 
-    assert water_heater.state == STATE_IDLE
+    assert water_heater.current_operation == "Gas Heater"
+    assert water_heater.extra_state_attributes["heating_status"] == "idle"
 
 
 async def test_water_heater_state_off(
@@ -211,12 +198,7 @@ async def test_water_heater_state_off(
     mock_coordinator: MagicMock,
 ) -> None:
     """Test water heater state when off."""
-
     mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
-    mock_coordinator.controller.system_info = MagicMock()
-    type(mock_coordinator.controller.system_info).uses_metric = property(
-        lambda self: False
-    )
 
     body = PoolObject(
         "POOL1",
@@ -233,7 +215,8 @@ async def test_water_heater_state_off(
 
     water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
 
-    assert water_heater.state == STATE_OFF
+    assert water_heater.current_operation == STATE_OFF
+    assert "heating_status" not in water_heater.extra_state_attributes
 
 
 async def test_water_heater_state_no_heater(
@@ -241,12 +224,6 @@ async def test_water_heater_state_no_heater(
     mock_coordinator: MagicMock,
 ) -> None:
     """Test water heater state when no heater assigned."""
-
-    mock_coordinator.controller.system_info = MagicMock()
-    type(mock_coordinator.controller.system_info).uses_metric = property(
-        lambda self: False
-    )
-
     body = PoolObject(
         "POOL1",
         {
@@ -262,7 +239,8 @@ async def test_water_heater_state_no_heater(
 
     water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
 
-    assert water_heater.state == STATE_OFF
+    assert water_heater.current_operation == STATE_OFF
+    assert "heating_status" not in water_heater.extra_state_attributes
 
 
 async def test_water_heater_set_temperature(
@@ -290,13 +268,6 @@ async def test_water_heater_set_temperature_invalid(
     mock_coordinator: MagicMock,
 ) -> None:
     """Test setting invalid temperature (should be handled gracefully)."""
-
-    mock_coordinator.controller.request_changes = AsyncMock()
-    mock_coordinator.controller.system_info = MagicMock()
-    type(mock_coordinator.controller.system_info).uses_metric = property(
-        lambda self: False
-    )
-
     water_heater = PoolWaterHeater(
         mock_coordinator,
         pool_object_body_with_heater,
@@ -315,13 +286,6 @@ async def test_water_heater_turn_on(
     mock_coordinator: MagicMock,
 ) -> None:
     """Test turning on the water heater."""
-
-    mock_coordinator.controller.request_changes = AsyncMock()
-    mock_coordinator.controller.system_info = MagicMock()
-    type(mock_coordinator.controller.system_info).uses_metric = property(
-        lambda self: False
-    )
-
     body = PoolObject(
         "POOL1",
         {
@@ -354,12 +318,6 @@ async def test_water_heater_turn_on_remembers_last_heater(
     mock_coordinator: MagicMock,
 ) -> None:
     """Test turning on uses last heater if available."""
-
-    mock_coordinator.controller.request_changes = AsyncMock()
-    mock_coordinator.controller.system_info = MagicMock()
-    type(mock_coordinator.controller.system_info).uses_metric = property(
-        lambda self: False
-    )
     mock_coordinator.model = MagicMock()
     mock_coordinator.model.__getitem__ = MagicMock(
         side_effect=lambda x: pool_object_heater2
@@ -410,13 +368,6 @@ async def test_water_heater_turn_off(
     mock_coordinator: MagicMock,
 ) -> None:
     """Test turning off the water heater."""
-
-    mock_coordinator.controller.request_changes = AsyncMock()
-    mock_coordinator.controller.system_info = MagicMock()
-    type(mock_coordinator.controller.system_info).uses_metric = property(
-        lambda self: False
-    )
-
     water_heater = PoolWaterHeater(
         mock_coordinator,
         pool_object_body_with_heater,
@@ -441,16 +392,11 @@ async def test_water_heater_operation_list(
     mock_coordinator: MagicMock,
 ) -> None:
     """Test operation mode list."""
-
     mock_coordinator.model = MagicMock()
     mock_coordinator.model.__getitem__ = MagicMock(
         side_effect=lambda x: pool_object_heater2
         if x == "HTR02"
         else pool_object_heater
-    )
-    mock_coordinator.controller.system_info = MagicMock()
-    type(mock_coordinator.controller.system_info).uses_metric = property(
-        lambda self: False
     )
 
     water_heater = PoolWaterHeater(
@@ -473,14 +419,8 @@ async def test_water_heater_set_operation_mode(
     mock_coordinator: MagicMock,
 ) -> None:
     """Test setting operation mode."""
-
-    mock_coordinator.controller.request_changes = AsyncMock()
     mock_coordinator.model = MagicMock()
     mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
-    mock_coordinator.controller.system_info = MagicMock()
-    type(mock_coordinator.controller.system_info).uses_metric = property(
-        lambda self: False
-    )
 
     water_heater = PoolWaterHeater(
         mock_coordinator,
@@ -504,13 +444,6 @@ async def test_water_heater_set_operation_mode_off(
     mock_coordinator: MagicMock,
 ) -> None:
     """Test setting operation mode to off."""
-
-    mock_coordinator.controller.request_changes = AsyncMock()
-    mock_coordinator.controller.system_info = MagicMock()
-    type(mock_coordinator.controller.system_info).uses_metric = property(
-        lambda self: False
-    )
-
     water_heater = PoolWaterHeater(
         mock_coordinator,
         pool_object_body_with_heater,
@@ -531,12 +464,6 @@ async def test_water_heater_supported_features(
     mock_coordinator: MagicMock,
 ) -> None:
     """Test supported features."""
-
-    mock_coordinator.controller.system_info = MagicMock()
-    type(mock_coordinator.controller.system_info).uses_metric = property(
-        lambda self: False
-    )
-
     water_heater = PoolWaterHeater(
         mock_coordinator,
         pool_object_body_with_heater,
@@ -547,6 +474,7 @@ async def test_water_heater_supported_features(
 
     assert features & WaterHeaterEntityFeature.TARGET_TEMPERATURE
     assert features & WaterHeaterEntityFeature.OPERATION_MODE
+    assert features & WaterHeaterEntityFeature.ON_OFF
 
 
 async def test_water_heater_min_max_temp_fahrenheit(
@@ -555,12 +483,6 @@ async def test_water_heater_min_max_temp_fahrenheit(
     mock_coordinator: MagicMock,
 ) -> None:
     """Test min/max temperature in Fahrenheit."""
-
-    mock_coordinator.controller.system_info = MagicMock()
-    type(mock_coordinator.controller.system_info).uses_metric = property(
-        lambda self: False
-    )
-
     water_heater = PoolWaterHeater(
         mock_coordinator,
         pool_object_body_with_heater,
@@ -596,12 +518,6 @@ async def test_water_heater_is_updated(
     mock_coordinator: MagicMock,
 ) -> None:
     """Test isUpdated method for relevant attributes."""
-
-    mock_coordinator.controller.system_info = MagicMock()
-    type(mock_coordinator.controller.system_info).uses_metric = property(
-        lambda self: False
-    )
-
     water_heater = PoolWaterHeater(
         mock_coordinator,
         pool_object_body_with_heater,
@@ -634,12 +550,6 @@ async def test_water_heater_extra_state_attributes(
     mock_coordinator: MagicMock,
 ) -> None:
     """Test extra state attributes."""
-
-    mock_coordinator.controller.system_info = MagicMock()
-    type(mock_coordinator.controller.system_info).uses_metric = property(
-        lambda self: False
-    )
-
     water_heater = PoolWaterHeater(
         mock_coordinator,
         pool_object_body_with_heater,

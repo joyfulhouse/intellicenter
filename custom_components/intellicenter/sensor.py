@@ -350,9 +350,10 @@ class PoolSensor(PoolEntity, SensorEntity):
     def native_value(self) -> float | int | str | None:
         """Return the native value of the sensor.
 
-        Some sensors (like variable speed pumps) can vary constantly,
-        so rounding their value to a nearest multiplier of 'rounding_factor'
-        smooths the curve and limits the number of updates in the log.
+        Integer values are adjusted by value_offset (e.g., -1 for tank levels
+        to correct IntelliCenter's off-by-one reporting) then optionally rounded
+        to the nearest multiple of rounding_factor (used by pump sensors to
+        smooth high-frequency updates).
         """
         raw_value = self._pool_object[self._attribute_key]
         if raw_value is None:

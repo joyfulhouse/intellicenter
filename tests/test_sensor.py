@@ -314,16 +314,23 @@ async def test_intellichem_tank_level_sensors(
     pool_object_intellichem: PoolObject,
     mock_coordinator: MagicMock,
 ) -> None:
-    """Test IntelliChem tank level sensors."""
+    """Test IntelliChem tank level sensors.
+
+    IntelliCenter reports tank levels as 1-7, but the actual range
+    displayed on the IntelliChem hardware is 0-6. The value_offset=-1
+    corrects this off-by-one discrepancy.
+    """
     ph_tank = PoolSensor(
         mock_coordinator,
         pool_object_intellichem,
         device_class=None,
         attribute_key=PHTNK_ATTR,
-        name="+ (Ph Tank Level)",
+        name="+ (pH Tank Level)",
+        value_offset=-1,
     )
 
-    assert ph_tank.native_value == 5
+    # Raw value is 5 (from fixture), offset by -1 = 4
+    assert ph_tank.native_value == 4
 
     orp_tank = PoolSensor(
         mock_coordinator,
@@ -331,9 +338,11 @@ async def test_intellichem_tank_level_sensors(
         device_class=None,
         attribute_key=ORPTNK_ATTR,
         name="+ (ORP Tank Level)",
+        value_offset=-1,
     )
 
-    assert orp_tank.native_value == 3
+    # Raw value is 3 (from fixture), offset by -1 = 2
+    assert orp_tank.native_value == 2
 
 
 async def test_intellichem_dosing_volume_sensors(

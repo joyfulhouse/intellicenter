@@ -226,6 +226,7 @@ async def async_setup_entry(
                             name="+ (pH Tank Level)",
                             icon="mdi:barrel",
                             entity_category=EntityCategory.DIAGNOSTIC,
+                            value_offset=-1,
                         )
                     )
                 if ORPTNK_ATTR in obj.attribute_keys:
@@ -238,6 +239,7 @@ async def async_setup_entry(
                             name="+ (ORP Tank Level)",
                             icon="mdi:barrel",
                             entity_category=EntityCategory.DIAGNOSTIC,
+                            value_offset=-1,
                         )
                     )
                 # Cumulative dosing volume sensors (mL)
@@ -318,6 +320,7 @@ class PoolSensor(PoolEntity, SensorEntity):
         pool_object: PoolObject,
         device_class: SensorDeviceClass | None,
         rounding_factor: int = 0,
+        value_offset: int = 0,
         entity_category: EntityCategory | None = None,
         state_class: SensorStateClass | None = SensorStateClass.MEASUREMENT,
         **kwargs: Any,
@@ -329,6 +332,7 @@ class PoolSensor(PoolEntity, SensorEntity):
             pool_object: The PoolObject this sensor represents
             device_class: The device class for this sensor
             rounding_factor: If non-zero, round values to this factor
+            value_offset: Fixed offset added to raw values (e.g., -1 for tank levels)
             entity_category: The entity category (e.g., DIAGNOSTIC)
             state_class: The state class (default: MEASUREMENT, None for non-numeric)
             **kwargs: Additional arguments passed to PoolEntity
@@ -336,6 +340,7 @@ class PoolSensor(PoolEntity, SensorEntity):
         super().__init__(coordinator, pool_object, **kwargs)
         self._attr_device_class = device_class
         self._rounding_factor = rounding_factor
+        self._value_offset = value_offset
         if state_class is not None:
             self._attr_state_class = state_class
         if entity_category:
@@ -354,7 +359,7 @@ class PoolSensor(PoolEntity, SensorEntity):
             return None
 
         try:
-            value = int(raw_value)
+            value = int(raw_value) + self._value_offset
             if self._rounding_factor:
                 value = int(
                     round(value / self._rounding_factor) * self._rounding_factor

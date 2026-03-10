@@ -30,16 +30,17 @@ This integration connects your Pentair IntelliCenter pool control system to Home
 - **Multi-Language**: User interface available in 12 languages
 - **Easy Reconfiguration**: Change connection settings without removing the integration
 
-## What's New in v3.5
+## What's New in v3.7
 
-This release brings significant performance and usability improvements:
+This release adds new equipment support and critical fixes:
 
-- **Transport Selection**: Choose between TCP (default) or WebSocket connections during setup or reconfiguration - useful for networks where one protocol works better than the other
-- **Reconfiguration Support**: Change your IntelliCenter's IP address or transport type through the UI without removing and re-adding the integration
-- **Modernized Codebase**: Updated to use current asyncio patterns, removing all deprecated function calls for better compatibility with Python 3.13+
-- **Request Queue Optimization**: Intelligent request queuing prevents overwhelming the IntelliCenter, resulting in faster and more reliable command execution
-- **Improved Responsiveness**: Optimized async operations throughout the integration for snappier control response times
-- **Protocol Library Extraction**: Core protocol handling extracted to standalone [pyintellicenter](https://github.com/joyfulhouse/pyintellicenter) library for better maintainability
+- **Climate Entity**: Full UltraTemp heat pump support with heating and cooling modes, preset detection, and real-time HVAC action tracking
+- **VSF Pump Control**: Variable Speed/Flow pump mode selection with unified speed/flow setpoint entities
+- **IntelliChem Dosing Sensors**: Monitor acid and chlorine dosing volumes
+- **Pump Speed/Flow Control**: Number entities for setting variable speed pump RPM/GPM targets
+- **Water Heater Fixes**: Resolved operation mode validation errors when changing heater modes
+- **Light Effect Fix**: Color effect control now works correctly with pyintellicenter 0.1.7+
+- **Broader Pump Support**: Removed restrictive subtype checks, supporting more pump configurations
 
 ## Architecture
 
@@ -142,6 +143,7 @@ After setup, configure connection settings:
 | **Circuits** | Switch | All "Featured" circuits (cleaner, blower, etc.) |
 | **Pumps** | Binary Sensor, Sensors | Running status, power (W), speed (RPM), flow (GPM) |
 | **Chemistry** | Sensors, Number | pH, ORP, tank levels, setpoints (IntelliChem) |
+| **Heat Pumps** | Climate | UltraTemp heating/cooling with presets |
 | **Heaters** | Binary Sensor | Running status |
 | **Schedules** | Binary Sensor | Active status (disabled by default) |
 | **System** | Switch, Binary Sensor, Sensors | Vacation mode, freeze protection, temperatures |
@@ -365,7 +367,7 @@ This integration meets the **Platinum tier** quality standards for Home Assistan
 **Gold Requirements:**
 - Full translation support (12 languages)
 - Easy reconfiguration through the UI
-- Comprehensive automated testing (175+ tests)
+- Comprehensive automated testing (217 tests)
 - Extensive user-friendly documentation
 - Automatic Zeroconf discovery
 

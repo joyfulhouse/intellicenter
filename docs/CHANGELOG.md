@@ -5,6 +5,135 @@ All notable changes to the Pentair IntelliCenter integration will be documented 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0] - 2026-03-10
+
+### Added
+- **Climate Entity** - Full support for UltraTemp heat pump with cooling
+  - `HVACAction.COOLING` detection for active cooling state
+  - Preset modes reflecting detected heating/cooling capabilities
+  - Simplified HVAC modes (Off/Auto) driven by actual equipment state
+- **IntelliChem Dosing Sensors** - Acid and chlorine dosing volume monitoring
+- **VSF Pump Control** - Variable Speed/Flow pump mode selection and speed/flow setpoints
+  - Unified speed entity for RPM and GPM control
+  - Mode selector for VSF pumps supporting both RPM and GPM
+- **Pump Speed/Flow Control** - Number entities for variable speed pump setpoints
+
+### Changed
+- **pyintellicenter 0.1.15** - Updated protocol library with climate and pump improvements
+- Climate entity current state driven by actual heating/cooling action, not mode status
+- Improved pump entity creation: removed restrictive subtype checks for PMPCIRC entities
+
+### Fixed
+- **Water Heater Operation Mode** - Resolved validation error when setting operation mode; decoupled operation from body STATUS
+- **IntelliChem Tank Level** - Corrected off-by-one error in acid tank level reporting (#36)
+- Light effect control now works correctly with pyintellicenter 0.1.7+
+
+---
+
+## [3.6.5] - 2026-03-06
+
+### Fixed
+- Decoupled water heater operation from body STATUS for independent control (#35)
+- Corrected IntelliChem acid tank level off-by-one error (#36)
+- Updated `native_value` docstring to document `value_offset` parameter
+
+---
+
+## [3.6.4] - 2026-03-04
+
+### Fixed
+- Resolved water heater operation mode validation error when changing heater modes (#33)
+
+---
+
+## [3.6.3] - 2026-02-26
+
+### Changed
+- Climate entity preset modes now reflect detected heating/cooling capabilities
+- Simplified climate HVAC modes to Off/Auto
+- Climate current state properly driven by heating/cooling action instead of mode status
+- **pyintellicenter 0.1.15** - Protocol library update
+
+---
+
+## [3.6.2] - 2026-01-21
+
+### Added
+- **Climate Entity** - New platform for UltraTemp heat pump cooling support (#24)
+- `HVACAction.COOLING` detection for climate entity (#26)
+
+---
+
+## [3.6.1] - 2026-01-21
+
+### Added
+- **IntelliChem Dosing Sensors** - Acid and chlorine dosing volume monitoring (#18)
+- **VSF Pump Control** - Variable Speed/Flow pump mode selection with unified speed entity (#22)
+- **Pump Speed/Flow Control** - Number entities for variable speed pump setpoints (#19, #20)
+
+### Fixed
+- Removed restrictive pump subtype checks for PMPCIRC entities (#21)
+- License in README corrected to match actual license (#16)
+
+---
+
+## [3.6.0] - 2025-12-22
+
+### Fixed
+- Light effect control with pyintellicenter 0.1.7 (#17)
+- HACS zip release structure (#14)
+
+### Changed
+- **pyintellicenter 0.1.7** - Protocol library update with light effect fixes
+- Updated README for HACS default repository status (#15)
+
+---
+
+## [3.5.6] - 2025-11-28
+
+### Changed
+- UI improvements for entity display and configuration
+- **pyintellicenter 0.1.6** - Protocol library update
+
+---
+
+## [3.5.5] - 2025-11-28
+
+### Fixed
+- Entity default values corrected for initial state handling
+
+### Changed
+- **pyintellicenter 0.1.5** - Protocol library update
+
+---
+
+## [3.5.4] - 2025-11-27
+
+### Removed
+- **Deprecated valve support** - Removed unused valve platform (#10)
+
+---
+
+## [3.5.3] - 2025-11-27
+
+### Changed
+- **pyintellicenter 0.1.4** - Protocol library update
+- Removed dead code and unused imports
+
+---
+
+## [3.5.2] - 2025-11-27
+
+### Added
+- Convenience methods for entity state management
+- Config entity support improvements
+- Release workflow to attach zip asset to GitHub releases
+
+### Changed
+- Code cleanup and organization improvements
+
+---
+
 ## [3.5.0] - 2025-11-27
 
 ### Added
@@ -162,7 +291,9 @@ See [ACKNOWLEDGMENTS.md](./ACKNOWLEDGMENTS.md) for full credits.
 
 | Version | Quality Scale | Tests | Key Feature |
 |---------|---------------|-------|-------------|
-| 3.5.0 | Platinum | 175+ | IntelliChem, i18n |
+| 3.7.0 | Platinum | 217 | Climate entity, VSF pumps, water heater fixes |
+| 3.6.x | Platinum | 217 | Climate, IntelliChem dosing, pump control |
+| 3.5.x | Platinum | 175+ | IntelliChem, i18n, valve removal |
 | 3.1.0 | Platinum | 175+ | pyintellicenter extraction |
 | 3.0.0 | Platinum | 175+ | Full test coverage |
 | 2.2.x | Gold | 59 | Connection stability |
@@ -171,6 +302,18 @@ See [ACKNOWLEDGMENTS.md](./ACKNOWLEDGMENTS.md) for full credits.
 
 ---
 
+[3.7.0]: https://github.com/joyfulhouse/intellicenter/compare/v3.6.5...v3.7.0
+[3.6.5]: https://github.com/joyfulhouse/intellicenter/compare/v3.6.4...v3.6.5
+[3.6.4]: https://github.com/joyfulhouse/intellicenter/compare/v3.6.3...v3.6.4
+[3.6.3]: https://github.com/joyfulhouse/intellicenter/compare/v3.6.2...v3.6.3
+[3.6.2]: https://github.com/joyfulhouse/intellicenter/compare/v3.6.1...v3.6.2
+[3.6.1]: https://github.com/joyfulhouse/intellicenter/compare/v3.6.0...v3.6.1
+[3.6.0]: https://github.com/joyfulhouse/intellicenter/compare/v3.5.6...v3.6.0
+[3.5.6]: https://github.com/joyfulhouse/intellicenter/compare/v3.5.5...v3.5.6
+[3.5.5]: https://github.com/joyfulhouse/intellicenter/compare/v3.5.4...v3.5.5
+[3.5.4]: https://github.com/joyfulhouse/intellicenter/compare/v3.5.3...v3.5.4
+[3.5.3]: https://github.com/joyfulhouse/intellicenter/compare/v3.5.2...v3.5.3
+[3.5.2]: https://github.com/joyfulhouse/intellicenter/compare/v3.5.0...v3.5.2
 [3.5.0]: https://github.com/joyfulhouse/intellicenter/compare/v3.1.0...v3.5.0
 [3.1.0]: https://github.com/joyfulhouse/intellicenter/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/joyfulhouse/intellicenter/compare/v2.2.1...v3.0.0

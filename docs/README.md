@@ -4,11 +4,11 @@ Technical documentation for developers working on the Pentair IntelliCenter Home
 
 | Metric | Value |
 |--------|-------|
-| **Current Version** | 3.5.0 |
+| **Current Version** | 3.7.0 |
 | **Quality Scale** | Platinum |
-| **Test Coverage** | 175+ tests |
+| **Test Coverage** | 217 tests |
 | **Home Assistant** | 2025.11+ required |
-| **pyintellicenter** | 0.1.1+ required |
+| **pyintellicenter** | 0.1.15+ required |
 
 ## Documentation Index
 
@@ -37,9 +37,10 @@ intellicenter/
 │       ├── sensor.py        # Temperature, chemistry
 │       ├── binary_sensor.py # Pumps, schedules
 │       ├── water_heater.py  # Heater control
+│       ├── climate.py       # UltraTemp heat pump
 │       ├── number.py        # Setpoints
 │       └── cover.py         # Pool covers
-├── tests/                   # 175+ automated tests
+├── tests/                   # 216 automated tests
 ├── docs/                    # This documentation
 └── README.md                # User guide
 ```

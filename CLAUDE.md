@@ -19,7 +19,7 @@ This is a Home Assistant custom integration for Pentair IntelliCenter pool contr
 **Current Quality Scale**: **Platinum** ✅ (v3.1.0+)
 
 The integration meets **Platinum** quality scale requirements with:
-- 257 automated tests across all platforms
+- 217 automated tests across all platforms
 - Comprehensive type annotations (mypy strict mode)
 - Full code documentation
 - Production hardening (circuit breaker, metrics, health monitoring)
@@ -178,7 +178,7 @@ Mock the protocol layer by patching `ModelController` or creating test `PoolMode
 The integration follows a layered architecture:
 
 1. **Home Assistant Layer** (`custom_components/intellicenter/`)
-   - Platform modules: `light.py`, `sensor.py`, `switch.py`, `binary_sensor.py`, `water_heater.py`, `number.py`, `cover.py`
+   - Platform modules: `light.py`, `sensor.py`, `switch.py`, `binary_sensor.py`, `water_heater.py`, `climate.py`, `number.py`, `cover.py`
    - Entry point: `__init__.py` - Sets up integration, manages entity lifecycle
    - Config flow: `config_flow.py` - Handles UI setup, Zeroconf discovery, and options flow
    - Base entity: `PoolEntity` class in `__init__.py` - Common functionality for all entities
@@ -187,7 +187,7 @@ The integration follows a layered architecture:
 
 2. **Protocol/Model Layer** (`pyintellicenter` - external package)
    - Separate repository: https://github.com/joyfulhouse/pyintellicenter
-   - Installed via `manifest.json` requirements: `pyintellicenter>=1.0.0`
+   - Installed via `manifest.json` requirements: `pyintellicenter>=0.1.15`
    - `controller.py` - Controller classes:
      - `BaseController`: Basic TCP connection and command handling
      - `ModelController`: Manages PoolModel state and tracks attribute changes
@@ -301,7 +301,7 @@ The integration has achieved **Platinum** quality scale (v3.0.0). The roadmap be
 - ✅ Supports translations (English in `strings.json`)
 - ✅ Extensive non-technical user documentation (README with troubleshooting, automation examples)
 - ⚠️ Firmware/software updates through HA - Not applicable (hardware doesn't support)
-- ✅ **Automated tests covering entire integration** - 257 tests across 14 test files
+- ✅ **Automated tests covering entire integration** - 217 tests across 11 test files
 - ✅ UI reconfiguration support (options flow for keepalive/reconnect settings)
 - ✅ Diagnostic capabilities (`diagnostics.py` with connection metrics)
 
@@ -341,21 +341,20 @@ The integration has achieved **Platinum** quality scale (v3.0.0). The roadmap be
 
 **Testing**: ✅ COMPLETE
 - ✅ **Comprehensive automated test suite** using `pytest-homeassistant-custom-component`:
-  - **Config flow tests**: 8 tests
-  - **Integration tests**: 12 tests (includes PoolConnectionHandler)
-  - **Protocol tests**: 24 tests (message parsing, flow control, keepalive)
-  - **Controller tests**: 33 tests (BaseController, ConnectionHandler, ConnectionMetrics)
-  - **Model tests**: 24 tests (PoolObject, PoolModel state management)
+  - **Config flow tests**: 13 tests
+  - **Integration tests**: 11 tests (includes PoolConnectionHandler)
   - **Platform tests**:
-    - Light: 14 tests (parameterized effect tests)
-    - Switch: 11 tests (device class)
-    - Sensor: 18 tests (pH device class)
-    - Binary Sensor: 15 tests
+    - Light: 47 tests (parameterized effect tests)
+    - Number: 33 tests (setpoint controls)
+    - Climate: 22 tests (UltraTemp heat pump)
     - Water Heater: 19 tests
+    - Sensor: 18 tests (pH device class)
     - Cover: 17 tests (device class)
-    - Number: 14 tests
-  - **Diagnostics tests**: 9 tests
-  - **Total**: 257 automated tests with TCP connection mocking
+    - Binary Sensor: 15 tests
+    - Switch: 11 tests (device class)
+  - **Diagnostics tests**: 10 tests
+  - **Total**: 217 automated tests with TCP connection mocking
+  - Protocol, controller, and model tests are in the [pyintellicenter](https://github.com/joyfulhouse/pyintellicenter) repository
 - ✅ **Type checking**: mypy configuration (`mypy.ini`) with strict type checking enabled
 - ✅ **Code quality**: Pre-commit hooks configured with ruff, ruff-format, codespell, bandit
 
@@ -364,21 +363,21 @@ The integration has achieved **Platinum** quality scale (v3.0.0). The roadmap be
 **Platinum Quality Scale Status**: ✅ **ACHIEVED** (v3.1.0+)
 
 The integration now meets ALL Platinum quality requirements:
-1. ✅ **Bronze**: Automated test suite with 257 tests
+1. ✅ **Bronze**: Automated test suite with 217 tests
 2. ✅ **Silver**: Comprehensive troubleshooting documentation
 3. ✅ **Gold**: Extensive test coverage across all critical components
 4. ✅ **Platinum**: Complete implementation
    - ✅ Full type annotations in all critical modules
    - ✅ Comprehensive code comments explaining complex logic
    - ✅ Optimized async performance with orjson
-   - ✅ 257 automated tests covering protocol, controller, model, and platforms
+   - ✅ 217 automated tests covering protocol, controller, model, and platforms
    - ✅ mypy type checking configured
    - ✅ All pre-commit hooks passing
 
 **Platinum Achievements Summary**:
 - **Type Safety**: Complete type annotations with mypy strict mode
 - **Code Documentation**: Detailed docstrings and comments throughout
-- **Test Coverage**: 257 tests across 14 test files (~90% coverage)
+- **Test Coverage**: 217 tests across 11 test files
 - **Performance**: Optimized async architecture with orjson and minimal network overhead
 - **Code Quality**: Automated linting and formatting with ruff
 - **Production Hardening**: Circuit breaker, connection metrics, health monitoring

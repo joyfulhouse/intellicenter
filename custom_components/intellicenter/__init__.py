@@ -23,7 +23,9 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from pyintellicenter import (
     STATUS_ATTR,
+    ICConnectionError,
     ICModelController,
+    ICTimeoutError,
     PoolObject,
 )
 
@@ -106,8 +108,22 @@ async def async_setup_entry(
 
         return True
 
-    except ConnectionRefusedError as err:
-        raise ConfigEntryNotReady from err
+    except (
+        ConnectionRefusedError,
+        ICConnectionError,
+        ICTimeoutError,
+        TimeoutError,
+        OSError,
+    ) as err:
+        # Raise ConfigEntryNotReady so HA's built-in retry loop kicks in
+        # (every 30s with exponential backoff) instead of leaving the entry
+        # in a permanent setup_error state requiring a manual reload.
+        # Fixes issue #41: integration fails to start when HA is restarted
+        # while the IntelliCenter / its bridge is temporarily unreachable
+        # (EHOSTUNREACH, timeout, refused, etc.).
+        raise ConfigEntryNotReady(
+            f"Could not connect to IntelliCenter at {entry.data[CONF_HOST]}: {err}"
+        ) from err
 
 
 async def async_unload_entry(

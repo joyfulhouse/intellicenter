@@ -693,7 +693,7 @@ async def test_water_heater_hcombo_turn_off_uses_mode_attr(
     assert args[0] == "POOL1"
     assert MODE_ATTR in args[1]
     assert args[1][MODE_ATTR] == str(HeaterType.OFF.value)
-    assert HEATER_ATTR not in args[1]
+    assert args[1][HEATER_ATTR] == NULL_OBJNAM
 
 
 async def test_water_heater_hcombo_current_operation_from_mode(
@@ -721,7 +721,40 @@ async def test_water_heater_hcombo_current_operation_from_mode(
 
     water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR_COMBO"])
 
-    assert water_heater.current_operation == "Hybrid"
+    assert water_heater.current_operation == "Dual"
+
+
+async def test_water_heater_hcombo_current_operation_ignores_heater_attr(
+    hass: HomeAssistant,
+    pool_object_hcombo_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Test HCOMBO current_operation uses MODE even when HEATER_ATTR is set.
+
+    IntelliCenter sets HEATER=<objnam> on the body even for HCOMBO heaters when
+    they're active. Without this fix current_operation would return the heater's
+    sname ("Hybrid") regardless of which sub-mode is selected.
+    """
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_hcombo_heater)
+
+    body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Spa",
+            "STATUS": "ON",
+            "HEATER": "HTR_COMBO",  # IntelliCenter sets this even for HCOMBO
+            "HTMODE": "1",
+            "MODE": "7",  # Gas Only
+            "LOTMP": "98",
+            "LSTTMP": "95",
+        },
+    )
+
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR_COMBO"])
+
+    assert water_heater.current_operation == "Gas Only"
 
 
 async def test_water_heater_hcombo_current_operation_off_when_mode_off(
@@ -730,6 +763,7 @@ async def test_water_heater_hcombo_current_operation_off_when_mode_off(
     mock_coordinator: MagicMock,
 ) -> None:
     """Test HCOMBO current_operation is off when MODE_ATTR is 1 (OFF)."""
+    mock_coordinator.model = MagicMock()
     mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_hcombo_heater)
 
     body = PoolObject(
@@ -777,12 +811,12 @@ async def test_water_heater_hcombo_set_operation_mode_uses_mode_attr(
     water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR_COMBO"])
     water_heater.hass = hass
 
-    await water_heater.async_set_operation_mode("Hybrid")
+    await water_heater.async_set_operation_mode("Gas Only")
 
     mock_coordinator.controller.request_changes.assert_called_once()
     args = mock_coordinator.controller.request_changes.call_args[0]
     assert MODE_ATTR in args[1]
-    assert args[1][MODE_ATTR] == str(HeaterType.HYBRID_DUAL.value)
+    assert args[1][MODE_ATTR] == str(HeaterType.HYBRID_GAS.value)
 
 
 async def test_water_heater_hcombo_is_heater_active_from_mode(
@@ -852,6 +886,7 @@ async def test_water_heater_isUpdated_watches_mode_attr(
     mock_coordinator: MagicMock,
 ) -> None:
     """Test isUpdated triggers on MODE_ATTR changes for HCOMBO heaters."""
+    mock_coordinator.model = MagicMock()
     mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_hcombo_heater)
 
     body = PoolObject(
@@ -872,3 +907,450 @@ async def test_water_heater_isUpdated_watches_mode_attr(
 
     assert water_heater.isUpdated({"POOL1": {MODE_ATTR: "10"}}) is True
     assert water_heater.isUpdated({"POOL1": {"UNRELATED": "x"}}) is False
+
+
+async def test_water_heater_hcombo_operation_list_has_all_modes(
+    hass: HomeAssistant,
+    pool_object_hcombo_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Test HCOMBO operation list contains all four sub-modes."""
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_hcombo_heater)
+
+    body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Spa",
+            "STATUS": "ON",
+            "HEATER": NULL_OBJNAM,
+            "HTMODE": "0",
+            "MODE": "1",
+            "LOTMP": "98",
+            "LSTTMP": "98",
+        },
+    )
+
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR_COMBO"])
+
+    ops = water_heater.operation_list
+    assert STATE_OFF in ops
+    assert "Gas Only" in ops
+    assert "Heat Pump Only" in ops
+    assert "Hybrid" in ops
+    assert "Dual" in ops
+    assert len(ops) == 5
+
+
+async def test_water_heater_hcombo_set_each_operation_mode(
+    hass: HomeAssistant,
+    pool_object_hcombo_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Test each HCOMBO label maps to the correct HeaterType MODE value."""
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_hcombo_heater)
+
+    body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Spa",
+            "STATUS": "ON",
+            "HEATER": NULL_OBJNAM,
+            "HTMODE": "0",
+            "MODE": "1",
+            "LOTMP": "98",
+            "LSTTMP": "98",
+        },
+    )
+
+    expected = {
+        "Gas Only": HeaterType.HYBRID_GAS,
+        "Heat Pump Only": HeaterType.HYBRID_ULTRA_TEMP,
+        "Hybrid": HeaterType.HYBRID_HYBRID,
+        "Dual": HeaterType.HYBRID_DUAL,
+    }
+
+    for label, heater_type in expected.items():
+        mock_coordinator.controller.request_changes.reset_mock()
+        water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR_COMBO"])
+        water_heater.hass = hass
+        await water_heater.async_set_operation_mode(label)
+        args = mock_coordinator.controller.request_changes.call_args[0]
+        assert args[1][MODE_ATTR] == str(heater_type.value), f"Wrong MODE for {label}"
+
+
+async def test_water_heater_hcombo_current_operation_each_mode(
+    hass: HomeAssistant,
+    pool_object_hcombo_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Test current_operation returns correct label for each HCOMBO MODE value."""
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_hcombo_heater)
+
+    mode_to_label = {
+        "7": "Gas Only",
+        "8": "Heat Pump Only",
+        "9": "Hybrid",
+        "10": "Dual",
+    }
+
+    for mode_val, expected_label in mode_to_label.items():
+        body = PoolObject(
+            "POOL1",
+            {
+                "OBJTYP": BODY_TYPE,
+                "SNAME": "Spa",
+                "STATUS": "ON",
+                "HEATER": NULL_OBJNAM,
+                "HTMODE": "1",
+                "MODE": mode_val,
+                "LOTMP": "98",
+                "LSTTMP": "95",
+            },
+        )
+        water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR_COMBO"])
+        assert water_heater.current_operation == expected_label, f"Wrong label for MODE={mode_val}"
+
+
+async def test_water_heater_hcombo_turn_on_restores_last_mode(
+    hass: HomeAssistant,
+    pool_object_hcombo_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Test turn_on uses the last active HCOMBO mode instead of defaulting to Dual."""
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_hcombo_heater)
+
+    body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Spa",
+            "STATUS": "ON",
+            "HEATER": NULL_OBJNAM,
+            "HTMODE": "1",
+            "MODE": "7",  # Gas Only was active
+            "LOTMP": "98",
+            "LSTTMP": "95",
+        },
+    )
+
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR_COMBO"])
+    water_heater.hass = hass
+
+    # Simulate update that records Gas Only as last mode
+    updates = {"POOL1": {MODE_ATTR: "7"}}
+    water_heater.isUpdated(updates)
+
+    # Turn off
+    body.update({MODE_ATTR: "1"})
+
+    # Turn back on — should restore Gas Only, not Dual
+    await water_heater.async_turn_on()
+
+    args = mock_coordinator.controller.request_changes.call_args[0]
+    assert args[1][MODE_ATTR] == str(HeaterType.HYBRID_GAS.value)
+
+
+# -------------------------------------------------------------------------------------
+# Backward-compatibility tests — standard (non-HCOMBO) heaters must be unaffected
+# -------------------------------------------------------------------------------------
+
+
+async def test_water_heater_standard_heater_unaffected(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Verify standard (gas/solar/heat-pump) heaters behave identically after HCOMBO changes.
+
+    This is a regression guard: none of the HCOMBO code paths should activate
+    for heaters whose subtype is not HCOMBO.
+    """
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
+
+    body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "HEATER": "HTR01",
+            "HTMODE": "1",
+            "LOTMP": "72",
+            "LSTTMP": "68",
+        },
+    )
+
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
+    water_heater.hass = hass
+
+    # _is_multimode must be False for standard heaters
+    assert water_heater._is_multimode is False
+
+    # operation_list uses heater snames, not HCOMBO mode labels
+    ops = water_heater.operation_list
+    assert "Gas Heater" in ops
+    assert "Gas Only" not in ops
+    assert "Heat Pump Only" not in ops
+    assert "Dual" not in ops
+
+    # current_operation reflects HEATER_ATTR, not MODE_ATTR
+    assert water_heater.current_operation == "Gas Heater"
+
+    # turn_on sends HEATER_ATTR, not MODE_ATTR
+    body_off = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "HEATER": NULL_OBJNAM,
+            "HTMODE": "0",
+            "LOTMP": "72",
+            "LSTTMP": "68",
+        },
+    )
+    wh_off = PoolWaterHeater(mock_coordinator, body_off, ["HTR01"])
+    wh_off.hass = hass
+    await wh_off.async_turn_on()
+    args = mock_coordinator.controller.request_changes.call_args[0]
+    assert HEATER_ATTR in args[1]
+    assert MODE_ATTR not in args[1]
+
+    # turn_off sends HEATER_ATTR=NULL, not MODE_ATTR
+    mock_coordinator.controller.request_changes.reset_mock()
+    wh_on = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
+    wh_on.hass = hass
+    await wh_on.async_turn_off()
+    args = mock_coordinator.controller.request_changes.call_args[0]
+    assert args[1][HEATER_ATTR] == NULL_OBJNAM
+    assert MODE_ATTR not in args[1]
+
+
+async def test_water_heater_hcombo_last_heater_not_in_attributes(
+    hass: HomeAssistant,
+    pool_object_hcombo_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Test LAST_HEATER is not exposed in state attributes for HCOMBO entities."""
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_hcombo_heater)
+
+    body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Spa",
+            "STATUS": "ON",
+            "HEATER": "HTR_COMBO",
+            "HTMODE": "0",
+            "MODE": "10",
+            "LOTMP": "98",
+            "LSTTMP": "98",
+        },
+    )
+
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR_COMBO"])
+
+    attrs = water_heater.extra_state_attributes
+    assert "LAST_HEATER" not in attrs
+    assert "LAST_HCOMBO_MODE" in attrs
+
+
+async def test_water_heater_hcombo_restore_invalid_mode_ignored(
+    hass: HomeAssistant,
+    pool_object_hcombo_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Test that restoring an invalid/non-HCOMBO HeaterType value is ignored.
+
+    If LAST_HCOMBO_MODE is stored as HeaterType.OFF (1) or any value not in
+    _HCOMBO_MODE_LABELS, async_turn_on must not use it (would send MODE=1, turning off).
+    """
+    from unittest.mock import AsyncMock, patch
+
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_hcombo_heater)
+
+    body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Spa",
+            "STATUS": "ON",
+            "HEATER": NULL_OBJNAM,
+            "HTMODE": "0",
+            "MODE": "1",
+            "LOTMP": "98",
+            "LSTTMP": "98",
+        },
+    )
+
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR_COMBO"])
+
+    # Simulate restoring HeaterType.OFF (1) — an invalid HCOMBO mode
+    mock_last_state = MagicMock()
+    mock_last_state.attributes = {"LAST_HCOMBO_MODE": "1"}
+
+    with patch.object(water_heater, "async_get_last_state", AsyncMock(return_value=mock_last_state)):
+        await water_heater.async_added_to_hass()
+
+    # _last_hcombo_mode must remain None — OFF is not a valid HCOMBO mode to restore
+    assert water_heater._last_hcombo_mode is None
+
+    # turn_on should fall back to HYBRID_DUAL, not send MODE=1
+    water_heater.hass = hass
+    await water_heater.async_turn_on()
+    args = mock_coordinator.controller.request_changes.call_args[0]
+    assert args[1][MODE_ATTR] == str(HeaterType.HYBRID_DUAL.value)
+
+
+# -------------------------------------------------------------------------------------
+# Mixed standard + HCOMBO heater tests
+# -------------------------------------------------------------------------------------
+
+
+async def test_water_heater_mixed_heaters_operation_list(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    pool_object_hcombo_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Test that a body with both standard and HCOMBO heaters exposes both in operation_list."""
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(
+        side_effect=lambda x: pool_object_hcombo_heater if x == "HTR_COMBO" else pool_object_heater
+    )
+
+    body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "HEATER": NULL_OBJNAM,
+            "HTMODE": "0",
+            "MODE": "1",
+            "LOTMP": "80",
+            "LSTTMP": "75",
+        },
+    )
+
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR_COMBO", "HTR01"])
+
+    assert water_heater._is_multimode is True
+    ops = water_heater.operation_list
+    assert STATE_OFF in ops
+    assert "Gas Only" in ops
+    assert "Heat Pump Only" in ops
+    assert "Hybrid" in ops
+    assert "Dual" in ops
+    assert "Gas Heater" in ops  # Standard heater still accessible
+
+
+async def test_water_heater_mixed_heaters_set_standard_heater(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    pool_object_hcombo_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Test that selecting a standard heater mode on a mixed body sends HEATER_ATTR."""
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(
+        side_effect=lambda x: pool_object_hcombo_heater if x == "HTR_COMBO" else pool_object_heater
+    )
+
+    body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "HEATER": NULL_OBJNAM,
+            "HTMODE": "0",
+            "MODE": "1",
+            "LOTMP": "80",
+            "LSTTMP": "75",
+        },
+    )
+
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR_COMBO", "HTR01"])
+    water_heater.hass = hass
+
+    await water_heater.async_set_operation_mode("Gas Heater")
+
+    args = mock_coordinator.controller.request_changes.call_args[0]
+    assert args[1][HEATER_ATTR] == "HTR01"
+    assert MODE_ATTR not in args[1]
+
+
+async def test_water_heater_mixed_heaters_turn_off_clears_both(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    pool_object_hcombo_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Test that turn_off on a mixed body clears both HEATER_ATTR and MODE_ATTR."""
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(
+        side_effect=lambda x: pool_object_hcombo_heater if x == "HTR_COMBO" else pool_object_heater
+    )
+
+    body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "HEATER": "HTR01",
+            "HTMODE": "1",
+            "MODE": "1",
+            "LOTMP": "80",
+            "LSTTMP": "75",
+        },
+    )
+
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR_COMBO", "HTR01"])
+    water_heater.hass = hass
+
+    await water_heater.async_turn_off()
+
+    args = mock_coordinator.controller.request_changes.call_args[0]
+    assert args[1][HEATER_ATTR] == NULL_OBJNAM
+    assert args[1][MODE_ATTR] == str(HeaterType.OFF.value)
+
+
+async def test_water_heater_mixed_heaters_current_operation_standard_heater(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    pool_object_hcombo_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Test current_operation reflects standard heater when HEATER is set and MODE is off."""
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(
+        side_effect=lambda x: pool_object_hcombo_heater if x == "HTR_COMBO" else pool_object_heater
+    )
+
+    body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "HEATER": "HTR01",
+            "HTMODE": "1",
+            "MODE": "1",  # HCOMBO off
+            "LOTMP": "80",
+            "LSTTMP": "75",
+        },
+    )
+
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR_COMBO", "HTR01"])
+
+    assert water_heater.current_operation == "Gas Heater"

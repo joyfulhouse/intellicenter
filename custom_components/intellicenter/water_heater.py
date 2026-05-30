@@ -3,6 +3,11 @@
 This module provides water heater entities for pool and spa heating control.
 Supports multiple heater types (gas, solar, heat pump) and remembers the
 last used heater for convenient turn-on operations.
+
+Multi-mode heaters (subtype HCOMBO, e.g. Pentair UltraTemp ETi Hybrid) require
+MODE-based control instead of HEATER assignment. IntelliCenter ignores HEATER
+attribute changes for HCOMBO heaters; the body's MODE attribute must be set to
+a HeaterType value (e.g. HYBRID_DUAL=10) to activate heating.
 """
 
 from __future__ import annotations
@@ -27,14 +32,19 @@ from pyintellicenter import (
     LISTORD_ATTR,
     LOTMP_ATTR,
     LSTTMP_ATTR,
+    MODE_ATTR,
     NULL_OBJNAM,
     STATUS_ATTR,
     STATUS_OFF,
+    HeaterType,
     PoolObject,
 )
 
 from . import IntelliCenterConfigEntry, PoolEntity
 from .coordinator import IntelliCenterCoordinator
+
+# IntelliCenter subtype for multi-mode combo heaters (e.g. UltraTemp ETi Hybrid)
+_HCOMBO_SUBTYPE = "HCOMBO"
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -100,14 +110,27 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
         )
         self._heater_list = heater_list
         self._last_heater: str | None = self._pool_object[HEATER_ATTR]
+        self._is_multimode: bool = self._detect_multimode()
+
+    def _detect_multimode(self) -> bool:
+        """Return True if any heater in this entity's list is a multi-mode (HCOMBO) heater."""
+        for heater_id in self._heater_list:
+            heater_obj = self.coordinator.model[heater_id]
+            if heater_obj is not None and heater_obj.subtype == _HCOMBO_SUBTYPE:
+                return True
+        return False
 
     @property
     def _is_heater_active(self) -> bool:
-        """Return True if the body is on and a heater is assigned."""
-        return bool(
-            self._pool_object[STATUS_ATTR] != STATUS_OFF
-            and self._pool_object[HEATER_ATTR] != NULL_OBJNAM
-        )
+        """Return True if the body is on and a heater is assigned or mode is active."""
+        if self._pool_object[STATUS_ATTR] == STATUS_OFF:
+            return False
+        if self._pool_object[HEATER_ATTR] != NULL_OBJNAM:
+            return True
+        if self._is_multimode:
+            mode = self._pool_object[MODE_ATTR]
+            return bool(mode and mode not in ("0", "1"))
+        return False
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -187,12 +210,21 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
         a body even when it's off (e.g., setting the Spa heater while in Pool
         mode). The real-time heating activity is exposed via the heating_status
         extra state attribute.
+
+        For multi-mode (HCOMBO) heaters, operation is controlled via MODE_ATTR
+        on the body rather than HEATER_ATTR assignment.
         """
         heater = self._pool_object[HEATER_ATTR]
         if heater in self._heater_list:
             heater_obj = self.coordinator.model[heater]
             if heater_obj is not None and heater_obj.sname is not None:
                 return str(heater_obj.sname)
+        if self._is_multimode:
+            mode = self._pool_object[MODE_ATTR]
+            if mode and mode not in ("0", "1"):
+                heater_obj = self.coordinator.model[self._heater_list[0]]
+                if heater_obj is not None and heater_obj.sname is not None:
+                    return str(heater_obj.sname)
         return str(STATE_OFF)
 
     @property
@@ -209,6 +241,8 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
         """Set new target operation mode."""
         if operation_mode == STATE_OFF:
             self._turn_off()
+        elif self._is_multimode:
+            self.request_changes({MODE_ATTR: str(HeaterType.HYBRID_DUAL.value)})
         else:
             for heater in self._heater_list:
                 heater_obj = self.coordinator.model[heater]
@@ -218,12 +252,15 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
 
     async def async_turn_on(self) -> None:
         """Turn the entity on."""
-        heater = (
-            self._last_heater
-            if self._last_heater and self._last_heater != NULL_OBJNAM
-            else self._heater_list[0]
-        )
-        self.request_changes({HEATER_ATTR: heater})
+        if self._is_multimode:
+            self.request_changes({MODE_ATTR: str(HeaterType.HYBRID_DUAL.value)})
+        else:
+            heater = (
+                self._last_heater
+                if self._last_heater and self._last_heater != NULL_OBJNAM
+                else self._heater_list[0]
+            )
+            self.request_changes({HEATER_ATTR: heater})
 
     async def async_turn_off(self) -> None:
         """Turn the entity off."""
@@ -231,12 +268,15 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
 
     def _turn_off(self) -> None:
         """Turn off the water heater."""
-        self.request_changes({HEATER_ATTR: NULL_OBJNAM})
+        if self._is_multimode:
+            self.request_changes({MODE_ATTR: str(HeaterType.OFF.value)})
+        else:
+            self.request_changes({HEATER_ATTR: NULL_OBJNAM})
 
     def isUpdated(self, updates: dict[str, dict[str, Any]]) -> bool:
         """Return true if the entity is updated by the updates from IntelliCenter."""
         updated = self._check_attributes_updated(
-            updates, STATUS_ATTR, HEATER_ATTR, HTMODE_ATTR, LOTMP_ATTR, LSTTMP_ATTR
+            updates, STATUS_ATTR, HEATER_ATTR, HTMODE_ATTR, LOTMP_ATTR, LSTTMP_ATTR, MODE_ATTR
         )
 
         if updated and self._pool_object[HEATER_ATTR] != NULL_OBJNAM:

@@ -98,6 +98,7 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
         HTMODE_ATTR,
         LOTMP_ATTR,
         LSTTMP_ATTR,
+        MODE_ATTR,  # Heat mode (used by multi-mode heaters like HCOMBO)
         STATUS_ATTR,
         VOL_ATTR,
     },
@@ -142,7 +143,7 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
         # IntelliChlor sensors
         SALT_ATTR,
     },
-    HEATER_TYPE: {SNAME_ATTR, BODY_ATTR, LISTORD_ATTR},
+    HEATER_TYPE: {SNAME_ATTR, BODY_ATTR, LISTORD_ATTR, SUBTYP_ATTR},
     PUMP_TYPE: {
         SNAME_ATTR,
         STATUS_ATTR,

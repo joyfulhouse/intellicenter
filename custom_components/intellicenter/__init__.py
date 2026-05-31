@@ -8,6 +8,7 @@ It supports Zeroconf discovery and local push updates for real-time responsivene
 from __future__ import annotations
 
 from collections.abc import Iterable
+import contextlib
 import logging
 import re
 from typing import TYPE_CHECKING, Any
@@ -23,6 +24,7 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from pyintellicenter import (
     STATUS_ATTR,
+    ICCommandError,
     ICConnectionError,
     ICModelController,
     ICTimeoutError,
@@ -93,37 +95,45 @@ async def async_setup_entry(
         transport=transport,
     )
 
+    # Only the connection attempt belongs inside the retry try/except. Keeping
+    # async_forward_entry_setups() and the listener registration outside it means a
+    # genuine platform or programming error (e.g. an unrelated OSError) surfaces as a
+    # real setup_error instead of being misclassified as a transient connection
+    # failure and retried forever.
     try:
-        # Start the connection
         await coordinator.async_start()
-
-        # Store the coordinator in the entry's runtime_data
-        entry.runtime_data = coordinator
-
-        # Set up platforms
-        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
-        # Register update listener for options changes
-        entry.async_on_unload(entry.add_update_listener(async_reload_entry))
-
-        return True
-
     except (
-        ConnectionRefusedError,
         ICConnectionError,
         ICTimeoutError,
+        ICCommandError,
         TimeoutError,
         OSError,
     ) as err:
-        # Raise ConfigEntryNotReady so HA's built-in retry loop kicks in
-        # (every 30s with exponential backoff) instead of leaving the entry
-        # in a permanent setup_error state requiring a manual reload.
-        # Fixes issue #41: integration fails to start when HA is restarted
-        # while the IntelliCenter / its bridge is temporarily unreachable
-        # (EHOSTUNREACH, timeout, refused, etc.).
+        # async_start() registers an EVENT_HOMEASSISTANT_STOP listener and kicks off
+        # pyintellicenter's background reconnect task *before* re-raising the
+        # first-attempt error. runtime_data isn't set yet, so async_unload_entry
+        # can't reach this coordinator to clean it up. Tear it down here, otherwise
+        # every HA retry during an outage leaks another listener + reconnect loop.
+        # Best-effort: never let teardown mask the ConfigEntryNotReady below.
+        with contextlib.suppress(Exception):
+            await coordinator.async_stop()
+        # Raise ConfigEntryNotReady so HA's built-in retry loop kicks in (with
+        # exponential backoff) instead of leaving the entry in a permanent
+        # setup_error state requiring a manual reload. Fixes issue #41: the
+        # integration fails to start when HA is restarted while IntelliCenter / its
+        # bridge is temporarily unreachable (refused, timeout, EHOSTUNREACH) or still
+        # booting (a not-ready panel rejects the initial handshake with an
+        # ICCommandError, which pyintellicenter itself treats as retryable).
         raise ConfigEntryNotReady(
             f"Could not connect to IntelliCenter at {entry.data[CONF_HOST]}: {err}"
         ) from err
+
+    # Connection established — store the coordinator and finish setup.
+    entry.runtime_data = coordinator
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+
+    return True
 
 
 async def async_unload_entry(

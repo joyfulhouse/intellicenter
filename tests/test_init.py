@@ -6,6 +6,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+from pyintellicenter import ICCommandError, ICConnectionError, ICTimeoutError
 import pytest
 
 from custom_components.intellicenter import (
@@ -62,21 +63,75 @@ async def test_async_setup_entry_success(
             mock_forward.assert_called_once_with(entry, PLATFORMS)
 
 
-async def test_async_setup_entry_connection_failed(hass: HomeAssistant) -> None:
-    """Test setup fails when connection is refused."""
+@pytest.mark.parametrize(
+    "exc",
+    [
+        ConnectionRefusedError(),
+        OSError("EHOSTUNREACH"),
+        TimeoutError(),
+        ICConnectionError("connection lost"),
+        ICTimeoutError("request timed out"),
+        ICCommandError("404"),
+    ],
+)
+async def test_async_setup_entry_transient_error_retries(
+    hass: HomeAssistant, exc: Exception
+) -> None:
+    """Transient connection errors during start raise ConfigEntryNotReady.
+
+    Covers issue #41: each of these must trigger HA's retry loop instead of a
+    permanent setup_error. ICCommandError represents a reachable-but-not-ready
+    panel that rejects the initial handshake; pyintellicenter's own reconnect loop
+    treats it as retryable, so setup must too.
+    """
     entry = MagicMock(spec=ConfigEntry)
     entry.entry_id = "test_entry_id"
     entry.data = {CONF_HOST: "192.168.1.100"}
     entry.options = {}  # No custom options, will use defaults
 
-    # Mock coordinator to raise ConnectionRefusedError on start
+    with (
+        patch.object(
+            IntelliCenterCoordinator,
+            "async_start",
+            new_callable=AsyncMock,
+            side_effect=exc,
+        ),
+        patch.object(
+            IntelliCenterCoordinator,
+            "async_stop",
+            new_callable=AsyncMock,
+        ) as mock_stop,
+        pytest.raises(ConfigEntryNotReady),
+    ):
+        await async_setup_entry(hass, entry)
+
+    # The partially-started coordinator must be torn down on failure so its
+    # EVENT_HOMEASSISTANT_STOP listener and pyintellicenter reconnect task don't
+    # leak on every retry during an outage.
+    mock_stop.assert_awaited_once()
+
+
+async def test_async_setup_entry_unexpected_error_propagates(
+    hass: HomeAssistant,
+) -> None:
+    """A non-connection error during start is not reclassified as transient.
+
+    Only the connection attempt is inside the retry try/except, so an unrelated
+    error (here ValueError) propagates unchanged instead of being masked as
+    ConfigEntryNotReady and retried forever.
+    """
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = "test_entry_id"
+    entry.data = {CONF_HOST: "192.168.1.100"}
+    entry.options = {}
+
     with patch.object(
         IntelliCenterCoordinator,
         "async_start",
         new_callable=AsyncMock,
-        side_effect=ConnectionRefusedError(),
+        side_effect=ValueError("boom"),
     ):
-        with pytest.raises(ConfigEntryNotReady):
+        with pytest.raises(ValueError):
             await async_setup_entry(hass, entry)
 
 

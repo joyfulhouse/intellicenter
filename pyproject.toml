@@ -1,12 +1,12 @@
 [project]
 name = "intellicenter"
-version = "3.6.0"
+version = "3.6.6"
 description = "Home Assistant custom integration for Pentair IntelliCenter"
 readme = "README.md"
 requires-python = ">=3.13.2"
 dependencies = [
     "homeassistant>=2025.11.3",
-    "pyintellicenter>=0.1.7",
+    "pyintellicenter>=0.1.15",
 ]
 
 [tool.ruff]
@@ -54,20 +54,9 @@ ignore-words-list = "hass,timout"
 skip = ".git,*.json,*.csv"
 quiet-level = 2
 
-[tool.mypy]
-python_version = "3.13"
-ignore_missing_imports = true
-no_strict_optional = true
-warn_redundant_casts = true
-warn_unused_configs = true
-disallow_untyped_defs = false
-check_untyped_defs = true
-warn_return_any = false
-show_error_codes = true
-
-[[tool.mypy.overrides]]
-module = "custom_components.intellicenter.*"
-ignore_errors = false
+# mypy configuration is centralized in mypy.ini (strict mode).
+# Do not add a [tool.mypy] block here: mypy.ini takes precedence over
+# pyproject.toml, so a second config would silently diverge.
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

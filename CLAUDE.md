@@ -35,7 +35,7 @@ This integration consists of two repositories that work together:
 | Project | Path | Repository |
 |---------|------|------------|
 | **intellicenter** (HA Integration) | `/Users/bryanli/Projects/joyfulhouse/homeassistant-dev/intellicenter` | `joyfulhouse/intellicenter` |
-| **pyintellicenter** (Protocol Library) | `/Users/bryanli/Projects/joyfulhouse/homeassistant-dev/pyintellicenter` | `joyfulhouse/pyintellicenter` |
+| **pyintellicenter** (Protocol Library) | `/Users/bryanli/Projects/joyfulhouse/python/pyintellicenter` | `joyfulhouse/pyintellicenter` |
 
 ### When to Edit Each Project
 
@@ -51,7 +51,7 @@ When changes are made to pyintellicenter:
 3. Commit and push pyintellicenter changes
 4. Create a GitHub release to trigger the publish workflow:
    ```bash
-   cd /Users/bryanli/Projects/joyfulhouse/homeassistant-dev/pyintellicenter
+   cd /Users/bryanli/Projects/joyfulhouse/python/pyintellicenter
    gh release create v0.0.X --title "v0.0.X" --notes "Release notes here"
    ```
 5. Wait for publish workflow to complete (~60s)
@@ -91,17 +91,18 @@ pre-commit run --all-files
 
 ### Development Setup
 
-The protocol layer is in a separate package (`pyintellicenter`). For development:
+The protocol layer is in a separate package (`pyintellicenter`), checked out locally at
+`/Users/bryanli/Projects/joyfulhouse/python/pyintellicenter` (repo `joyfulhouse/pyintellicenter`).
+For development against a local copy of the library:
 
 ```bash
-# Clone both repositories
-git clone https://github.com/joyfulhouse/intellicenter.git
-git clone https://github.com/joyfulhouse/pyintellicenter.git
-
-# Install pyintellicenter in development mode
-cd intellicenter
-uv pip install -e ../pyintellicenter
+# From the intellicenter repo root, install the local library editable:
+uv pip install -e /Users/bryanli/Projects/joyfulhouse/python/pyintellicenter
 ```
+
+For normal test/CI runs the published release is used (per `manifest.json`:
+`pyintellicenter>=0.1.15`). Keep `pyproject.toml`'s pin and `uv.lock` in sync with
+`manifest.json` — they have drifted in the past.
 
 ### Testing
 
@@ -178,41 +179,44 @@ Mock the protocol layer by patching `ModelController` or creating test `PoolMode
 The integration follows a layered architecture:
 
 1. **Home Assistant Layer** (`custom_components/intellicenter/`)
-   - Platform modules: `light.py`, `sensor.py`, `switch.py`, `binary_sensor.py`, `water_heater.py`, `climate.py`, `number.py`, `cover.py`
+   - Platform modules: `light.py`, `sensor.py`, `switch.py`, `binary_sensor.py`, `water_heater.py`, `climate.py`, `number.py`, `cover.py`, `select.py`
    - Entry point: `__init__.py` - Sets up integration, manages entity lifecycle
+   - Coordinator: `coordinator.py` - `IntelliCenterCoordinator` (a `DataUpdateCoordinator`) owns the connection and fans out push updates to entities
    - Config flow: `config_flow.py` - Handles UI setup, Zeroconf discovery, and options flow
-   - Base entity: `PoolEntity` class in `__init__.py` - Common functionality for all entities
-   - `PoolConnectionHandler` - Home Assistant integration bridge for connection events
+   - Base entity: `PoolEntity` class in `__init__.py` (subclass of `CoordinatorEntity`) - common functionality for all entities
    - `OnOffControlMixin` - Mixin for simple on/off entities
 
 2. **Protocol/Model Layer** (`pyintellicenter` - external package)
-   - Separate repository: https://github.com/joyfulhouse/pyintellicenter
+   - Separate repository: https://github.com/joyfulhouse/pyintellicenter (checked out at `/Users/bryanli/Projects/joyfulhouse/python/pyintellicenter`)
    - Installed via `manifest.json` requirements: `pyintellicenter>=0.1.15`
-   - `controller.py` - Controller classes:
-     - `BaseController`: Basic TCP connection and command handling
-     - `ModelController`: Manages PoolModel state and tracks attribute changes
-     - `ConnectionHandler`: Reconnection logic with exponential backoff and circuit breaker
-     - `ConnectionMetrics`: Tracks response times, reconnect attempts, and health
-   - `protocol.py` - `ICProtocol`: Low-level asyncio protocol using orjson, handles message framing, request queuing (one-at-a-time), and keepalive queries
-   - `model.py` - `PoolModel` and `PoolObject`: Object model representing pool equipment
-   - `attributes.py` - Attribute definitions and type mappings
+   - `controller.py` - Controller classes (all `IC`-prefixed):
+     - `ICBaseController`: connection + command handling; exposes `ICSystemInfo` and `ICConnectionMetrics`
+     - `ICModelController`: manages `PoolModel` state, tracks attribute changes, and provides domain control/query helpers (lights, pumps, heaters, bodies, chemistry). NOTE: this class is large (~1,200 lines / 130+ methods) and is the main refactor target
+     - `ICConnectionHandler`: reconnection with exponential backoff + circuit breaker; emits events via the `ICConnectionHandlerCallbacks` protocol
+     - `ICConnectionMetrics`: tracks response times, reconnect attempts, and health
+   - `connection.py` - Transport layer: `ICProtocol` (TCP, port 6681) and `ICWebSocketTransport` (port 6680) share `ICRequestMixin`/`ICNotificationMixin`, wrapped by `ICConnection`. Uses orjson; handles framing, one-request-at-a-time flow control, and keepalive queries
+   - `model.py` - `PoolModel` and `PoolObject`: object model representing pool equipment
+   - `attributes/` - Attribute definitions and type mappings (package: `constants.py`, `body.py`, `circuit.py`, `equipment.py`, `system.py`, `schedule.py`, `misc.py`)
+   - `discovery.py` - Zeroconf discovery (`ICUnit`, `discover_intellicenter_units()`)
 
 ### Key Architectural Patterns
 
 **Connection Management**: The integration uses a layered approach to handle unreliable network connections:
-- `ICProtocol` handles transport-level concerns (message framing, flow control, keepalive queries)
-- `ModelController` manages state synchronization
-- `ConnectionHandler` implements automatic reconnection with exponential backoff (configurable, default 30s)
+- `ICProtocol` / `ICWebSocketTransport` (in `connection.py`) handle transport-level concerns (message framing, flow control, keepalive queries)
+- `ICModelController` manages state synchronization
+- `ICConnectionHandler` implements automatic reconnection with exponential backoff (configurable, default 30s)
 - Circuit breaker pattern prevents hammering dead servers (opens after 5 failures)
-- `ConnectionMetrics` tracks response times and reconnect attempts for observability
+- `ICConnectionMetrics` tracks response times and reconnect attempts for observability
 
-**State Updates**: Real-time updates flow through the system via:
+**State Updates**: Real-time updates flow through a `DataUpdateCoordinator` (no polling; `local_push`):
 1. IntelliCenter sends `NotifyList` messages when equipment state changes
-2. `ModelController.receivedNotifyList()` updates the `PoolModel`
-3. Dispatcher signals (`DOMAIN_UPDATE_{entry_id}`) notify Home Assistant entities
-4. Entities call `async_write_ha_state()` to update HA
+2. `ICModelController` applies them to the `PoolModel` and invokes the handler's `on_updated(controller, updates)` callback
+3. `_CoordinatorConnectionHandler.on_updated()` (in `coordinator.py`) calls `IntelliCenterCoordinator.async_set_updated_data(updates)`, which calls `async_update_listeners()`
+4. Each `PoolEntity` (a `CoordinatorEntity`) runs `_handle_coordinator_update()`; if its tracked attribute changed it calls `async_write_ha_state()`
 
-**Request Flow Control**: IntelliCenter struggles with concurrent requests, so `ICProtocol` enforces one request on the wire at a time using `_out_pending` counter and `_out_queue`.
+Connection up/down propagates the same way via `on_reconnected` / `on_disconnected` → `async_set_connection_state()`, which drives each entity's `available`.
+
+**Request Flow Control**: IntelliCenter struggles with concurrent requests, so the transport (`connection.py`) keeps a single in-flight request (`_response_future`) and queues the rest.
 
 ### Entity Creation Logic
 
@@ -247,8 +251,8 @@ Entities are created based on equipment characteristics in the pool model:
 ## Common Modifications
 
 When adding support for new equipment types:
-1. Add type/subtype constants to `attributes.py` if needed
-2. Add to `attributes_map` in `__init__.py:async_setup_entry()` to specify tracked attributes
+1. Add type/subtype constants to the `attributes/` package (in pyintellicenter) if needed
+2. Add to `DEFAULT_ATTRIBUTES_MAP` in `coordinator.py` to specify tracked attributes
 3. Create new platform module (e.g., `cover.py`) or extend existing one
 4. Add platform to `PLATFORMS` list in `__init__.py`
 5. Update `manifest.json` domains list and version
@@ -256,7 +260,7 @@ When adding support for new equipment types:
 
 When modifying protocol handling:
 - Be careful with request/response correlation - message IDs can mismatch on errors (IntelliCenter bug)
-- Maintain one-request-at-a-time flow control in `ICProtocol`
+- Maintain one-request-at-a-time flow control in `connection.py` (`ICProtocol` / `ICWebSocketTransport`)
 - Handle both responses (with `response` field) and notifications (without `response` field)
 
 ## Configuration Files
@@ -310,12 +314,12 @@ The integration has achieved **Platinum** quality scale (v3.0.0). The roadmap be
 **Code Quality & Standards**: ✅ COMPLETE
 - ✅ Follows Home Assistant integration standards
 - ✅ **Comprehensive type annotations** throughout codebase:
-  - `pyintellicenter/protocol.py`: Full type annotations with proper imports (TYPE_CHECKING)
+  - `pyintellicenter/connection.py`: Full type annotations with proper imports (TYPE_CHECKING)
   - `pyintellicenter/controller.py`: Complete type annotations for all classes
   - All methods have typed parameters and return values
   - Proper use of Optional, Union, and generic types
 - ✅ **Detailed code comments** explaining complex logic:
-  - `pyintellicenter/protocol.py`:
+  - `pyintellicenter/connection.py`:
     - Comprehensive module docstring explaining architecture
     - Detailed explanations of flow control mechanism
     - Documentation of message handling and buffering

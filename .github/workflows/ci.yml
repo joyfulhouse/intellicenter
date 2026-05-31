@@ -48,7 +48,7 @@ jobs:
         run: |
           pip install pytest pytest-asyncio pytest-cov \
             pytest-homeassistant-custom-component \
-            "pyintellicenter>=0.1.1"
+            "pyintellicenter>=0.1.15"
       - name: Run tests
         run: pytest tests/ -v --tb=short --cov=custom_components/intellicenter
       - name: Count tests

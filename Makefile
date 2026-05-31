@@ -24,7 +24,7 @@ format-check:
 	ruff format --check custom_components/
 
 type-check:
-	mypy custom_components/intellicenter/ --ignore-missing-imports --no-strict-optional || true
+	mypy custom_components/intellicenter/ --ignore-missing-imports
 
 pytest:
 	pytest tests/ -v --tb=short

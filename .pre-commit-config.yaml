@@ -30,7 +30,7 @@ repos:
     rev: v1.13.0
     hooks:
       - id: mypy
-        args: [--ignore-missing-imports, --no-strict-optional]
+        args: [--ignore-missing-imports]
         additional_dependencies: []
         files: ^custom_components/intellicenter/
   - repo: https://github.com/pre-commit/pre-commit-hooks

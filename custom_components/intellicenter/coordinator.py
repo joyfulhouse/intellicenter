@@ -358,6 +358,12 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         already know about. Any new objects are recorded and dispatched to the
         registered listeners so the platforms can create entities for them at
         runtime. Does nothing until the initial connection has completed.
+
+        Independent new objects (e.g. a newly-installed IntelliChem) are handled
+        fully. Objects whose entities depend on *another* object — a heater added
+        to an existing body, or a PMPCIRC arriving before its parent pump in a
+        separate update — may still require an integration reload (tracked in
+        issue #57).
         """
         if not self._started:
             return
@@ -369,7 +375,9 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
             return
 
         # Record before notifying so a listener cannot observe the objects as
-        # "new" a second time (e.g. via a re-entrant refresh).
+        # "new" a second time (e.g. via a re-entrant refresh); duplicate entity
+        # creation is additionally guarded by unique_id de-duplication in the
+        # platforms.
         self._known_objnams.update(obj.objnam for obj in new_objects)
 
         _LOGGER.debug(
@@ -377,8 +385,17 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
             len(new_objects),
             ", ".join(obj.objnam for obj in new_objects),
         )
+        # Dispatch to each platform independently: a failure in one platform's
+        # builder must not skip the rest. Builders are deterministic, so a logged
+        # error would recur rather than resolve on retry, which is why the objects
+        # stay recorded as known above.
         for listener in list(self._new_objects_listeners):
-            listener(new_objects)
+            try:
+                listener(new_objects)
+            except Exception:
+                _LOGGER.exception(
+                    "Error dispatching new pool objects to a platform listener"
+                )
 
     @callback
     def async_set_updated_data(self, data: dict[str, dict[str, Any]]) -> None:

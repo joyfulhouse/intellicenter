@@ -636,6 +636,7 @@ async def test_system_mode_sensor_enum_contract(
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
+        # Documented modes, normalized case- and space-insensitively.
         ("AUTO", "auto"),
         ("auto", "auto"),
         ("SERVICE", "service"),
@@ -643,15 +644,23 @@ async def test_system_mode_sensor_enum_contract(
         ("TIMEOUT", "timeout"),
         ("TIME OUT", "timeout"),
         ("Time Out", "timeout"),
+        # Absent or unrecognized values surface as unknown (None). HA raises
+        # ValueError if an enum sensor reports a state outside its options, so
+        # anything other than auto/service/timeout must normalize to None.
+        (None, None),
+        ("", None),
+        ("UNKNOWN", None),
+        ("RUN", None),
+        ("Standby", None),
     ],
 )
-async def test_system_mode_sensor_native_value_normalizes(
+async def test_system_mode_sensor_native_value(
     hass: HomeAssistant,
     mock_coordinator: MagicMock,
-    raw: str,
-    expected: str,
+    raw: str | None,
+    expected: str | None,
 ) -> None:
-    """native_value normalizes raw SERVICE strings to the documented modes."""
+    """native_value normalizes SERVICE to a documented mode or None."""
     obj = PoolObject(
         "_5451",
         {
@@ -664,53 +673,8 @@ async def test_system_mode_sensor_native_value_normalizes(
     sensor = SystemModeSensor(mock_coordinator, obj)
 
     assert sensor.native_value == expected
-
-
-@pytest.mark.parametrize("raw", ["", "UNKNOWN", "RUN", "Standby"])
-async def test_system_mode_sensor_unexpected_value_is_unknown(
-    hass: HomeAssistant,
-    mock_coordinator: MagicMock,
-    raw: str,
-) -> None:
-    """An unexpected SERVICE value normalizes to None, never out of options.
-
-    Home Assistant raises ValueError if an enum sensor reports a state that is
-    not one of its declared options, so any value outside auto/service/timeout
-    must surface as unknown (None) rather than be returned verbatim.
-    """
-    obj = PoolObject(
-        "_5451",
-        {
-            "OBJTYP": SYSTEM_TYPE,
-            "SNAME": "IntelliCenter System",
-            "SERVICE": raw,
-        },
-    )
-
-    sensor = SystemModeSensor(mock_coordinator, obj)
-
-    assert sensor.native_value is None
     # Whatever native_value returns must be a valid enum option (or None).
     assert sensor.native_value in (None, *sensor.options)
-
-
-async def test_system_mode_sensor_native_value_none(
-    hass: HomeAssistant,
-    mock_coordinator: MagicMock,
-) -> None:
-    """native_value is None when SERVICE is absent."""
-    obj = PoolObject(
-        "_5451",
-        {
-            "OBJTYP": SYSTEM_TYPE,
-            "SNAME": "IntelliCenter System",
-            "SERVICE": None,
-        },
-    )
-
-    sensor = SystemModeSensor(mock_coordinator, obj)
-
-    assert sensor.native_value is None
 
 
 async def test_system_mode_sensor_is_updated(

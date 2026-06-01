@@ -28,12 +28,9 @@ from homeassistant.components.climate import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyintellicenter import (
-    BODY_ATTR,
     HEATER_ATTR,
-    HEATER_TYPE,
     HITMP_ATTR,
     HTMODE_ATTR,
-    LISTORD_ATTR,
     LOTMP_ATTR,
     LSTTMP_ATTR,
     NULL_OBJNAM,
@@ -47,6 +44,7 @@ from . import (
     PoolEntity,
     async_setup_pool_entities,
     bodies_affected_by,
+    heaters_for_body,
 )
 from .coordinator import IntelliCenterCoordinator
 
@@ -64,14 +62,9 @@ def _build_entities(
     Only bodies whose heat pump supports cooling get a climate entity. A body is
     (re)evaluated when it is itself a candidate OR when a candidate heater serves
     it (issue #42). Duplicate entities for already-known bodies are filtered by
-    the caller via ``unique_id``.
+    the caller via ``unique_id``; an existing entity keeps its (live) heater
+    composition up to date itself (issue #57).
     """
-    # Find all heaters sorted by UI order
-    heaters = sorted(
-        coordinator.model.get_by_type(HEATER_TYPE),
-        key=lambda h: int(h[LISTORD_ATTR]) if h[LISTORD_ATTR] else 100,
-    )
-
     climate_entities: list[PoolClimate] = []
     for body in bodies_affected_by(coordinator, candidates):
         # Check if this body supports cooling (has UltraTemp heat pump)
@@ -79,11 +72,7 @@ def _build_entities(
             continue
 
         # Build list of heaters that support this body
-        heater_list = [
-            heater.objnam
-            for heater in heaters
-            if body.objnam in heater[BODY_ATTR].split(" ")
-        ]
+        heater_list = heaters_for_body(coordinator, body.objnam)
 
         if heater_list:
             climate_entities.append(PoolClimate(coordinator, body, heater_list))
@@ -124,8 +113,24 @@ class PoolClimate(PoolEntity, ClimateEntity):
             pool_object,
             extra_state_attributes=[HEATER_ATTR, HTMODE_ATTR],
         )
-        self._heater_list = heater_list
+        # Heaters wired to this body are derived live from the model (see
+        # `_heater_list`) so a heater added to an existing body shows up as a
+        # preset on the next coordinator update without rebuilding the entity
+        # (issue #57). The list captured at construction is retained only as a
+        # fallback for when the live model cannot be enumerated.
+        self._seed_heater_list = heater_list
         self._attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT_COOL]
+
+    @property
+    def _heater_list(self) -> list[str]:
+        """Return the heaters wired to this body, derived from the live model.
+
+        Recomputed on each access so the entity's preset list tracks heaters
+        added to (or removed from) its body at runtime (issue #57). Falls back
+        to the list captured at construction if the live model yields nothing.
+        """
+        live = heaters_for_body(self.coordinator, self._pool_object.objnam)
+        return live if live else self._seed_heater_list
 
     @property
     def unique_id(self) -> str:

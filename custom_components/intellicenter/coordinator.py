@@ -359,11 +359,16 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         registered listeners so the platforms can create entities for them at
         runtime. Does nothing until the initial connection has completed.
 
-        Independent new objects (e.g. a newly-installed IntelliChem) are handled
-        fully. Objects whose entities depend on *another* object — a heater added
-        to an existing body, or a PMPCIRC arriving before its parent pump in a
-        separate update — may still require an integration reload (tracked in
-        issue #57).
+        Both independent and dependent new equipment are handled. Independent
+        objects (e.g. a newly-installed IntelliChem) dispatch on their own.
+        Some entities, however, can only be built once *another* object exists:
+        a PMPCIRC's select/number entities need its parent pump, and a body's
+        heater-dependent entities need the heater. To cover the case where the
+        dependency arrives in a *separate, later* update than the child, any
+        already-known object whose parent is among the just-arrived objects is
+        re-dispatched alongside the new objects so a previously-skipped entity
+        now gets built (issue #57). ``unique_id`` de-duplication in the platforms
+        makes re-dispatching an already-built dependent harmless.
         """
         if not self._started:
             return
@@ -374,24 +379,44 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         if not new_objects:
             return
 
+        # Re-evaluate already-known children whose parent is among the objects
+        # that just arrived. Such a child was skipped earlier (its parent was
+        # absent) and would otherwise never be reconsidered. Guard PARENT_ATTR
+        # access: not every object carries it.
+        new_objnams = {obj.objnam for obj in new_objects}
+        dependents = [
+            obj
+            for obj in self._model
+            if obj.objnam in self._known_objnams
+            and obj.objnam not in new_objnams
+            and (obj[PARENT_ATTR] or "") in new_objnams
+        ]
+
         # Record before notifying so a listener cannot observe the objects as
         # "new" a second time (e.g. via a re-entrant refresh); duplicate entity
         # creation is additionally guarded by unique_id de-duplication in the
-        # platforms.
-        self._known_objnams.update(obj.objnam for obj in new_objects)
+        # platforms. Dependents are already known, so they need no recording.
+        self._known_objnams.update(new_objnams)
 
         _LOGGER.debug(
-            "Detected %d new pool object(s): %s",
+            "Detected %d new pool object(s): %s%s",
             len(new_objects),
             ", ".join(obj.objnam for obj in new_objects),
+            f"; re-evaluating {len(dependents)} dependent(s): "
+            + ", ".join(obj.objnam for obj in dependents)
+            if dependents
+            else "",
         )
-        # Dispatch to each platform independently: a failure in one platform's
-        # builder must not skip the rest. Builders are deterministic, so a logged
-        # error would recur rather than resolve on retry, which is why the objects
-        # stay recorded as known above.
+        # Dispatch the new objects together with any dependents whose parent just
+        # arrived, so a child that was skipped before its parent existed is now
+        # built. Dispatch to each platform independently: a failure in one
+        # platform's builder must not skip the rest. Builders are deterministic,
+        # so a logged error would recur rather than resolve on retry, which is
+        # why the objects stay recorded as known above.
+        dispatched = new_objects + dependents
         for listener in list(self._new_objects_listeners):
             try:
-                listener(new_objects)
+                listener(dispatched)
             except Exception:
                 _LOGGER.exception(
                     "Error dispatching new pool objects to a platform listener"

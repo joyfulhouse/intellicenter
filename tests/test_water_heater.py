@@ -1,5 +1,6 @@
 """Test the Pentair IntelliCenter water heater platform."""
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.components.water_heater import (
@@ -1693,3 +1694,106 @@ async def test_water_heater_standard_heater_named_like_hcombo_not_misrouted(
     mock_coordinator.controller.request_changes.assert_called_once_with(
         "POOL1", {HEATER_ATTR: "HTR01"}
     )
+
+
+# -------------------------------------------------------------------------------------
+# issue #57: a heater added to an EXISTING body must surface on the existing entity
+# -------------------------------------------------------------------------------------
+
+
+async def test_water_heater_second_heater_added_to_existing_body(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A second heater added to an existing body shows on the existing entity.
+
+    Regression test for issue #57 (Fix A). A body that already has a water
+    heater entity gains a SECOND heater at runtime. The heater list is derived
+    live from the model, so the existing entity's ``operation_list`` must gain
+    the new heater on the next coordinator update WITHOUT a fresh entity being
+    created (the platform de-dups the rebuilt entity by ``unique_id``).
+    """
+    # A real model so the live heater derivation (get_by_type) actually runs.
+    model = PoolModel()
+    model.add_objects(
+        [
+            {
+                "objnam": "POOL1",
+                "params": {
+                    "OBJTYP": BODY_TYPE,
+                    "SUBTYP": "POOL",
+                    "SNAME": "Pool",
+                    "STATUS": "ON",
+                    "LSTTMP": "78",
+                    "LOTMP": "72",
+                    "HEATER": "HTR01",
+                    "HTMODE": "1",
+                },
+            },
+            {
+                "objnam": "HTR01",
+                "params": {
+                    "OBJTYP": HEATER_TYPE,
+                    "SUBTYP": "GAS",
+                    "SNAME": "Gas Heater",
+                    "BODY": "POOL1",
+                    "LISTORD": "1",
+                },
+            },
+        ]
+    )
+    mock_coordinator.model = model
+
+    # Build the platform's entities for the objects present at setup, capturing
+    # the dynamic new-objects listener and de-duplicating by unique_id exactly
+    # like the production helper does.
+    from custom_components.intellicenter.water_heater import async_setup_entry
+
+    listener_holder: dict[str, Any] = {"listener": None}
+
+    def _register(listener: Any) -> Any:
+        listener_holder["listener"] = listener
+        return MagicMock()
+
+    mock_coordinator.async_add_new_objects_listener = MagicMock(side_effect=_register)
+
+    entry = MagicMock()
+    entry.runtime_data = mock_coordinator
+    entry.async_on_unload = MagicMock()
+
+    added: list[PoolWaterHeater] = []
+    await async_setup_entry(hass, entry, added.extend)
+
+    # Exactly one water heater for POOL1 was created, and it lists only the gas
+    # heater so far.
+    pool_heaters = [e for e in added if e._pool_object.objnam == "POOL1"]
+    assert len(pool_heaters) == 1
+    existing = pool_heaters[0]
+    assert "Gas Heater" in existing.operation_list
+    assert "Solar Heater" not in existing.operation_list
+
+    # A second heater for the SAME body comes online in a later update.
+    new_heater = model.add_object(
+        "HTR02",
+        {
+            "OBJTYP": HEATER_TYPE,
+            "SUBTYP": "SOLAR",
+            "SNAME": "Solar Heater",
+            "BODY": "POOL1",
+            "LISTORD": "2",
+        },
+    )
+    assert new_heater is not None
+
+    # The platform re-evaluates the body; the rebuilt entity is de-duped away.
+    added.clear()
+    assert listener_holder["listener"] is not None
+    listener_holder["listener"]([new_heater])
+
+    # No duplicate water heater entity was added for the already-known body.
+    assert [e for e in added if e._pool_object.objnam == "POOL1"] == []
+
+    # The EXISTING entity now exposes the new heater because its heater list is
+    # derived from the live model.
+    assert "Gas Heater" in existing.operation_list
+    assert "Solar Heater" in existing.operation_list

@@ -18,7 +18,14 @@ from unittest.mock import MagicMock
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
-from pyintellicenter import CHEM_TYPE, SENSE_TYPE, PoolModel, PoolObject
+from pyintellicenter import (
+    CHEM_TYPE,
+    PMPCIRC_TYPE,
+    PUMP_TYPE,
+    SENSE_TYPE,
+    PoolModel,
+    PoolObject,
+)
 import pytest
 
 from custom_components.intellicenter import (
@@ -400,6 +407,149 @@ async def test_setup_pool_entities_dedups_across_calls(
     added.clear()
     state["listener"]([pool_model["CHEM1"]])
     assert added == []
+
+
+# -------------------------------------------------------------------------------------
+# issue #57: a PMPCIRC child arriving BEFORE its parent pump
+# -------------------------------------------------------------------------------------
+
+# A pump-circuit whose parent pump may not yet be in the model. Its select
+# entity can only be built once the parent VSF pump (supporting BOTH RPM and
+# GPM) is present, so it cleanly demonstrates the "child before parent" skip.
+PMPCIRC2_OBJNAM = "PMPCIRC2"
+PMPCIRC2_PARAMS: dict[str, str] = {
+    "OBJTYP": PMPCIRC_TYPE,
+    "SNAME": "Spa Pump Circuit",
+    "PARENT": "PUMP2",
+    "CIRCUIT": "SPA01",
+    "SELECT": "RPM",
+    "SPEED": "2400",
+    "GPM": "60",
+}
+
+PUMP2_OBJNAM = "PUMP2"
+PUMP2_PARAMS: dict[str, str] = {
+    "OBJTYP": PUMP_TYPE,
+    "SUBTYP": "VSF",
+    "SNAME": "Spa Pump",
+    "STATUS": "10",
+    "MIN": "450",
+    "MAX": "3450",
+    "MINF": "15",
+    "MAXF": "140",
+}
+
+
+async def test_pmpcirc_select_built_when_parent_pump_arrives_later(
+    hass: HomeAssistant,
+    pool_model: PoolModel,
+) -> None:
+    """A PMPCIRC's select entity is built once its parent pump arrives later.
+
+    Regression test for issue #57 (Fix B). The pump-mode select needs its parent
+    pump to know the pump supports BOTH RPM and GPM. If the PMPCIRC arrives in
+    one update and the pump in a LATER separate update, the child was previously
+    skipped, marked known, and never reconsidered. The coordinator now
+    re-dispatches an already-known object whose parent just arrived, so the
+    select entity is finally created.
+    """
+    from custom_components.intellicenter.select import async_setup_entry
+
+    coordinator = _make_coordinator(hass, pool_model)
+
+    entry = MagicMock()
+    entry.runtime_data = coordinator
+    entry.async_on_unload = MagicMock()
+
+    added: list[Any] = []
+    await async_setup_entry(hass, entry, added.extend)
+
+    def added_for(objnam: str) -> list[Any]:
+        return [e for e in added if e._pool_object.objnam == objnam]
+
+    # The PMPCIRC child appears first, while its parent pump is still absent.
+    new_child = pool_model.add_object(PMPCIRC2_OBJNAM, dict(PMPCIRC2_PARAMS))
+    assert new_child is not None
+    assert pool_model[PUMP2_OBJNAM] is None  # parent genuinely not in the model
+
+    added.clear()
+    coordinator._async_detect_new_objects()
+
+    # With no parent pump, capabilities are unknown so NO select is created. The
+    # child is now recorded as known (and would never be reconsidered without
+    # the dependent re-dispatch).
+    assert added_for(PMPCIRC2_OBJNAM) == []
+    assert PMPCIRC2_OBJNAM in coordinator._known_objnams
+
+    # The parent pump arrives in a SEPARATE, later update.
+    new_pump = pool_model.add_object(PUMP2_OBJNAM, dict(PUMP2_PARAMS))
+    assert new_pump is not None
+
+    added.clear()
+    coordinator._async_detect_new_objects()
+
+    # The pump itself is new; the PMPCIRC is re-dispatched as a dependent and its
+    # select is now created because the parent pump's capabilities are known.
+    assert added_for(PMPCIRC2_OBJNAM), (
+        "select did not create an entity for the PMPCIRC once its parent pump arrived"
+    )
+
+
+async def test_pmpcirc_redispatched_when_parent_pump_arrives_later(
+    hass: HomeAssistant,
+    pool_model: PoolModel,
+) -> None:
+    """A known PMPCIRC is re-dispatched when its parent pump arrives later.
+
+    Regression test for issue #57 (Fix B) at the coordinator layer, covering the
+    re-dispatch mechanism that feeds every dependent platform (select AND number
+    both key their PMPCIRC entities off the parent pump). The PMPCIRC is known
+    but its parent pump only arrives in a later, separate update; the coordinator
+    must include the PMPCIRC in that update's dispatched batch so the platforms
+    get a chance to (re)build its entities.
+    """
+    coordinator = _make_coordinator(hass, pool_model)
+
+    received: list[list[PoolObject]] = []
+    coordinator.async_add_new_objects_listener(received.append)
+
+    # The PMPCIRC arrives before its parent pump and is skipped/recorded.
+    pool_model.add_object(PMPCIRC2_OBJNAM, dict(PMPCIRC2_PARAMS))
+    coordinator._async_detect_new_objects()
+    assert len(received) == 1
+    assert {obj.objnam for obj in received[0]} == {PMPCIRC2_OBJNAM}
+
+    # The parent pump arrives later; the known PMPCIRC is re-dispatched with it.
+    pool_model.add_object(PUMP2_OBJNAM, dict(PUMP2_PARAMS))
+    coordinator._async_detect_new_objects()
+    assert len(received) == 2
+    dispatched = {obj.objnam for obj in received[1]}
+    assert dispatched == {PUMP2_OBJNAM, PMPCIRC2_OBJNAM}
+
+
+async def test_pmpcirc_not_redispatched_without_parent_arrival(
+    hass: HomeAssistant, pool_model: PoolModel
+) -> None:
+    """A known PMPCIRC is not re-dispatched when an UNRELATED object arrives.
+
+    The dependent re-dispatch (issue #57, Fix B) must be scoped to children
+    whose parent is among the just-arrived objects, so an unrelated new object
+    does not cause spurious re-evaluation of every known child.
+    """
+    coordinator = _make_coordinator(hass, pool_model)
+
+    received: list[list[PoolObject]] = []
+    coordinator.async_add_new_objects_listener(received.append)
+
+    # PMPCIRC01 (parent PUMP1) is already known from the fixture. An unrelated
+    # new sensor arrives - it shares no parent relationship with the PMPCIRC.
+    pool_model.add_object(SENSE2_OBJNAM, dict(SENSE2_PARAMS))
+    coordinator._async_detect_new_objects()
+
+    assert len(received) == 1
+    dispatched = {obj.objnam for obj in received[0]}
+    # Only the genuinely-new sensor is dispatched; the known PMPCIRC is not.
+    assert dispatched == {SENSE2_OBJNAM}
 
 
 if __name__ == "__main__":

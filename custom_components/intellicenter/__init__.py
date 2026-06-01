@@ -28,6 +28,7 @@ from pyintellicenter import (
     BODY_ATTR,
     BODY_TYPE,
     HEATER_TYPE,
+    LISTORD_ATTR,
     STATUS_ATTR,
     ICConnectionError,
     ICModelController,
@@ -275,9 +276,10 @@ def bodies_affected_by(
     Heater-dependent platforms (water_heater, climate) create one entity per
     body, but whether that entity exists depends on the heaters wired to the
     body. A body is included when it is itself a candidate OR when a candidate
-    heater serves it, so adding a heater to an existing body re-evaluates that
-    body (issue #42). Duplicate entities for bodies that already have one are
-    filtered by ``async_setup_pool_entities`` via ``unique_id``.
+    heater serves it, so adding a heater to a body re-evaluates that body
+    (issue #42). When the body already has an entity, the duplicate is filtered
+    by ``async_setup_pool_entities`` via ``unique_id`` and the existing entity
+    instead picks up the new heater from its live heater list (issue #57).
 
     Args:
         coordinator: The coordinator providing the pool model.
@@ -301,6 +303,38 @@ def bodies_affected_by(
         if body is not None and body.objtype == BODY_TYPE:
             bodies.append(body)
     return bodies
+
+
+def heaters_for_body(
+    coordinator: IntelliCenterCoordinator, body_objnam: str
+) -> list[str]:
+    """Return the objnams of the heaters wired to a body, in UI order.
+
+    A heater serves a body when the body's objnam appears in the heater's
+    (space-separated) ``BODY`` attribute. Heaters are ordered by ``LISTORD``;
+    those without one sort last.
+
+    Heater-dependent entities (water_heater, climate) call this against the
+    *live* model so their heater composition tracks heaters added to an existing
+    body at runtime, rather than being frozen when the entity was built (issue
+    #57).
+
+    Args:
+        coordinator: The coordinator providing the pool model.
+        body_objnam: The body whose heaters should be returned.
+
+    Returns:
+        The heater objnams serving the body, ordered by ``LISTORD``.
+    """
+    heaters = sorted(
+        coordinator.model.get_by_type(HEATER_TYPE),
+        key=lambda h: int(h[LISTORD_ATTR]) if h[LISTORD_ATTR] else 100,
+    )
+    return [
+        heater.objnam
+        for heater in heaters
+        if body_objnam in (heater[BODY_ATTR] or "").split(" ")
+    ]
 
 
 # -------------------------------------------------------------------------------------

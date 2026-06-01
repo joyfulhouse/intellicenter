@@ -38,11 +38,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 from pyintellicenter import (
-    BODY_ATTR,
     HEATER_ATTR,
-    HEATER_TYPE,
     HTMODE_ATTR,
-    LISTORD_ATTR,
     LOTMP_ATTR,
     LSTTMP_ATTR,
     MODE_ATTR,
@@ -58,6 +55,7 @@ from . import (
     PoolEntity,
     async_setup_pool_entities,
     bodies_affected_by,
+    heaters_for_body,
 )
 from .coordinator import IntelliCenterCoordinator
 
@@ -91,21 +89,12 @@ def _build_entities(
     itself is a candidate OR when a candidate heater serves it, so that adding a
     heater to an existing body surfaces a water heater entity too. Duplicate
     entities for already-known bodies are filtered out by the caller via
-    ``unique_id``.
+    ``unique_id``; an existing entity keeps its (live) heater composition up to
+    date itself (issue #57).
     """
-    # All heaters, sorted by their UI order (objects without one go last).
-    heaters = sorted(
-        coordinator.model.get_by_type(HEATER_TYPE),
-        key=lambda h: int(h[LISTORD_ATTR]) if h[LISTORD_ATTR] else 100,
-    )
-
     water_heaters: list[PoolWaterHeater] = []
     for body in bodies_affected_by(coordinator, candidates):
-        heater_list = [
-            heater.objnam
-            for heater in heaters
-            if body.objnam in heater[BODY_ATTR].split(" ")
-        ]
+        heater_list = heaters_for_body(coordinator, body.objnam)
         if heater_list:
             water_heaters.append(PoolWaterHeater(coordinator, body, heater_list))
 
@@ -142,16 +131,36 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
             pool_object,
             extra_state_attributes=[HEATER_ATTR, HTMODE_ATTR],
         )
-        self._heater_list = heater_list
-        self._is_multimode: bool = self._detect_multimode()
+        # The heaters wired to this body are derived live from the model (see
+        # `_heater_list`), so a heater added to an existing body is reflected on
+        # the next coordinator update without rebuilding the entity (issue #57).
+        # The list supplied at construction is retained only as a fallback for
+        # the (rare) case where the live model cannot be enumerated.
+        self._seed_heater_list = heater_list
         # Remember the last non-off operation so turn-on can restore it. None
         # means the body is currently off (nothing to restore yet).
         self._last_operation: str | None = self.current_operation
         if self._last_operation == STATE_OFF:
             self._last_operation = None
 
-    def _detect_multimode(self) -> bool:
-        """Return True if any heater in this entity's list is a multi-mode (HCOMBO) heater."""
+    @property
+    def _heater_list(self) -> list[str]:
+        """Return the heaters wired to this body, derived from the live model.
+
+        Recomputed on each access so the entity reflects heaters added to (or
+        removed from) its body at runtime (issue #57). Falls back to the list
+        captured at construction if the live model yields nothing, which keeps
+        behaviour stable when the model is not enumerable.
+        """
+        live = heaters_for_body(self.coordinator, self._pool_object.objnam)
+        return live if live else self._seed_heater_list
+
+    @property
+    def _is_multimode(self) -> bool:
+        """Return True if any heater wired to this body is a multi-mode (HCOMBO) heater.
+
+        Derived from the live heater list so it tracks heaters added at runtime.
+        """
         for heater_id in self._heater_list:
             heater_obj = self.coordinator.model[heater_id]
             if heater_obj is not None and heater_obj.subtype == _HCOMBO_SUBTYPE:

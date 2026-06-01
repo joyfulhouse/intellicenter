@@ -195,6 +195,26 @@ async def test_light_current_effect(
     assert light.effect == "Party Mode"
 
 
+async def test_light_sam_effect_resolves(
+    hass: HomeAssistant,
+    pool_object_light: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Regression test for issue #47: the SAm light show must resolve.
+
+    IntelliCenter reports the SAm light show via USE=SAMMOD. When it was
+    missing from LIGHT_EFFECTS, the effect property returned None and the HA
+    entity showed null. It must now resolve to the "SAm" effect name.
+    """
+    pool_object_light.update({"USE": "SAMMOD"})
+
+    light = PoolLight(mock_coordinator, pool_object_light, LIGHT_EFFECTS)
+
+    assert light.effect == "SAm"
+    assert light.effect_list is not None
+    assert "SAm" in light.effect_list
+
+
 async def test_light_state_updates(
     hass: HomeAssistant,
     pool_object_light: PoolObject,
@@ -293,6 +313,7 @@ async def test_light_is_not_updated_by_irrelevant_attributes(
 @pytest.mark.parametrize(
     "effect_code,effect_name",
     [
+        ("SAMMOD", "SAm"),
         ("PARTY", "Party Mode"),
         ("CARIB", "Caribbean"),
         ("SSET", "Sunset"),

@@ -92,3 +92,18 @@ def test_controller_methods_exist_and_callable() -> None:
         f"ICModelController is missing methods the integration calls: {missing}. "
         "This is library/integration contract drift that mocked tests cannot catch."
     )
+
+
+def test_light_effects_includes_sam_show() -> None:
+    """The installed library must map the SAm light show (issue #47).
+
+    IntelliCenter reports the SAm show via USE=SAMMOD; ``light.py`` maps that
+    code through ``LIGHT_EFFECTS``. Asserting against the *installed* library
+    catches a manifest pin shipping a version without the fix -- the drift the
+    mocked light tests cannot see.
+    """
+    effects = pyintellicenter.LIGHT_EFFECTS
+    assert effects.get("SAMMOD") == "SAm", (
+        "Installed pyintellicenter is missing the SAMMOD->'SAm' light show. "
+        "Bump the manifest pin to a version that includes it."
+    )

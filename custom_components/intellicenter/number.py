@@ -259,6 +259,15 @@ def _build_entities(
             parent_objnam = pool_obj[PARENT_ATTR]
             parent_pump = coordinator.model[parent_objnam] if parent_objnam else None
 
+            # Without the parent pump we cannot tell whether this circuit drives
+            # an RPM-only, GPM-only, or dual-mode (VSF) pump. Building now would
+            # lock in a guessed entity class and default limits that unique_id
+            # de-duplication could never correct once the pump arrives. Skip and
+            # let the coordinator re-dispatch this PMPCIRC when its parent pump
+            # appears (issue #57), mirroring select.py's parent-capability guard.
+            if parent_pump is None:
+                continue
+
             # Get the associated circuit for naming
             circuit_objnam = pool_obj[CIRCUIT_ATTR]
             circuit = coordinator.model[circuit_objnam] if circuit_objnam else None

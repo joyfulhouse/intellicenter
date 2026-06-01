@@ -14,23 +14,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Set up uv (Python 3.14)
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.13"
-          cache: "pip"
-      - run: pip install ruff bandit mypy
+          python-version: "3.14"
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --frozen
 
       - name: Ruff lint
-        run: ruff check custom_components/
+        run: uv run ruff check custom_components/
 
       - name: Ruff format
-        run: ruff format --check custom_components/
+        run: uv run ruff format --check custom_components/
 
       - name: Bandit security
-        run: bandit -r custom_components/intellicenter/ -ll
+        run: uv run bandit -r custom_components/intellicenter/ -ll
 
       - name: Type check (mypy)
-        run: mypy custom_components/intellicenter/ --ignore-missing-imports
+        run: uv run mypy custom_components/intellicenter/
 
   tests:
     name: Tests
@@ -40,21 +42,19 @@ jobs:
       test_count: ${{ steps.count.outputs.count }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Set up uv (Python 3.14)
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.13"
-          cache: "pip"
+          python-version: "3.14"
+          enable-cache: true
       - name: Install dependencies
-        run: |
-          pip install pytest pytest-asyncio pytest-cov \
-            pytest-homeassistant-custom-component \
-            "pyintellicenter>=0.1.16"
+        run: uv sync --frozen
       - name: Run tests
-        run: pytest tests/ -v --tb=short --cov=custom_components/intellicenter
+        run: uv run pytest tests/ -v --tb=short --cov=custom_components/intellicenter
       - name: Count tests
         id: count
         run: |
-          count=$(pytest tests/ --collect-only -q 2>/dev/null | tail -1 | grep -oE '^[0-9]+')
+          count=$(uv run pytest tests/ --collect-only -q 2>/dev/null | tail -1 | grep -oE '^[0-9]+')
           echo "count=$count" >> $GITHUB_OUTPUT
           echo "Test count: $count"
 

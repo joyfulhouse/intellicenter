@@ -3,14 +3,17 @@ name = "intellicenter"
 version = "3.7.0"
 description = "Home Assistant custom integration for Pentair IntelliCenter"
 readme = "README.md"
-requires-python = ">=3.13.2"
+# Tracks the Python floor of the Home Assistant release we target (2026.5.x ->
+# Python 3.14.2+). HACS installs by copying files and does not read this; it
+# governs our uv/CI tooling, which must resolve against that HA version.
+requires-python = ">=3.14.2"
 dependencies = [
     "homeassistant>=2025.11.3",
     "pyintellicenter>=0.1.16",
 ]
 
 [tool.ruff]
-target-version = "py313"
+target-version = "py314"
 line-length = 88
 
 [tool.ruff.lint]
@@ -69,10 +72,19 @@ norecursedirs = [
 
 [dependency-groups]
 dev = [
-    "homeassistant>=2025.11.0",
+    "homeassistant==2026.5.4",
     "pytest>=8.4.2",
     "pytest-asyncio>=1.2.0",
-    "pytest-homeassistant-custom-component>=0.13.297",
+    "pytest-cov>=7.1.0",
+    "pytest-homeassistant-custom-component>=0.13.333",
+    # Lint/type/security tools pinned via the lock so CI (uv sync --frozen) and
+    # local runs use identical versions instead of whatever is on PATH.
+    # ruff is held <0.15 and mypy <2 to match the repo's current format/type
+    # baseline: ruff 0.15 reformats unrelated files and mypy 2.x rejects HA's
+    # Python 3.14 syntax. Adopting those is a separate repo-wide change.
+    "ruff>=0.14.5,<0.15",
+    "mypy>=1.18.2,<2",
+    "bandit>=1.8.6",
 ]
 
 # Note: pyintellicenter is installed from local path during development:

@@ -10,8 +10,8 @@ ship mismatched metadata.
 from __future__ import annotations
 
 import json
-import tomllib
 from pathlib import Path
+import tomllib
 
 _ROOT = Path(__file__).resolve().parent.parent
 _MANIFEST = _ROOT / "custom_components" / "intellicenter" / "manifest.json"
@@ -47,8 +47,12 @@ def test_version_matches() -> None:
 def test_pyintellicenter_pin_matches() -> None:
     manifest_spec = _pyintellicenter_spec(_manifest()["requirements"])
     pyproject_spec = _pyintellicenter_spec(_pyproject()["project"]["dependencies"])
-    assert manifest_spec is not None, "manifest.json is missing a pyintellicenter requirement"
-    assert pyproject_spec is not None, "pyproject.toml is missing a pyintellicenter dependency"
+    assert manifest_spec is not None, (
+        "manifest.json is missing a pyintellicenter requirement"
+    )
+    assert pyproject_spec is not None, (
+        "pyproject.toml is missing a pyintellicenter dependency"
+    )
     assert manifest_spec == pyproject_spec, (
         f"pyintellicenter pin drift: manifest.json={manifest_spec!r} != "
         f"pyproject.toml={pyproject_spec!r}. Keep them in sync."

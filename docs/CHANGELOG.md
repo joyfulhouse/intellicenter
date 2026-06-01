@@ -5,6 +5,16 @@ All notable changes to the Pentair IntelliCenter integration will be documented 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Options flow 500 error** (#40) - Opening the integration options (the gear icon on the integration card) raised *"Config flow could not be loaded: 500 Internal Server Error"*. `OptionsFlowHandler` assigned `self.config_entry` in its `__init__`, but Home Assistant made `config_entry` a read-only property on the base `OptionsFlow` and removed the deprecated setter in 2025.12, so the assignment raised `AttributeError: property 'config_entry' ... has no setter` on current Home Assistant. The handler now relies on the `config_entry` that the base class provides. Thanks to @jeffstearns for the detailed report and traceback.
+
+### Changed
+- **Test/dev environment now tracks released Home Assistant** - Bumped the test stack to Home Assistant 2026.5.4 (Python 3.14.2+, `pytest-homeassistant-custom-component` 0.13.333) to match production. The previous pin (HA 2025.11.3) still shipped the deprecated options-flow `config_entry` setter (warn-only for custom integrations), which silently masked #40 in CI; tracking the shipped HA version ensures such removals are exercised before release.
+
+---
+
 ## [3.7.0] - 2026-05-31
 
 ### Fixed

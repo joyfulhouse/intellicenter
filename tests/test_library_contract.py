@@ -84,7 +84,9 @@ def test_controller_methods_exist_and_callable() -> None:
     """Every controller method the integration calls must still exist."""
     controller = pyintellicenter.ICModelController
     missing = [
-        name for name in CONTROLLER_METHODS if not callable(getattr(controller, name, None))
+        name
+        for name in CONTROLLER_METHODS
+        if not callable(getattr(controller, name, None))
     ]
     assert not missing, (
         f"ICModelController is missing methods the integration calls: {missing}. "

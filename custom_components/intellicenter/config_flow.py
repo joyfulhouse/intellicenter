@@ -89,6 +89,10 @@ def _validate_host(host: str) -> str:
     return host
 
 
+# HA's ConfigFlow defines the ``domain`` class keyword via __init_subclass__,
+# but homeassistant is a skipped (untyped) import in mypy.ini, so mypy resolves
+# the kwarg against object and flags it. Removable once the integration is typed
+# against HA's current API (tracked as the type-drift follow-up).
 class ConfigFlow(HAConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
     """Pentair Intellicenter config flow."""
 
@@ -106,7 +110,7 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
     @callback
     def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlowHandler:
         """Get the options flow for this handler."""
-        return OptionsFlowHandler(config_entry)
+        return OptionsFlowHandler()
 
     async def async_step_user(self, user_input: ConfigType | None = None) -> FlowResult:
         """Handle a flow initiated by the user.
@@ -507,11 +511,15 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
 
 
 class OptionsFlowHandler(OptionsFlow):
-    """Handle options flow for Pentair IntelliCenter integration."""
+    """Handle options flow for Pentair IntelliCenter integration.
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        """Initialize options flow."""
-        self.config_entry = config_entry
+    ``self.config_entry`` is provided by the base ``OptionsFlow`` class and is
+    only available after the flow manager has initialised the flow. Do not
+    assign it here, and do not read it from a custom ``__init__`` either: Home
+    Assistant removed the ability to set the ``config_entry`` property in
+    2025.12 (and the property raises if read before initialisation), so any
+    ``__init__`` that touches ``self.config_entry`` breaks (issue #40).
+    """
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None

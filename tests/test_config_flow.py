@@ -10,6 +10,8 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.intellicenter.const import (
+    CONF_KEEPALIVE_INTERVAL,
+    CONF_RECONNECT_DELAY,
     CONF_TRANSPORT,
     DEFAULT_TRANSPORT,
     DOMAIN,
@@ -267,6 +269,86 @@ async def test_zeroconf_flow_updates_existing_entry(
 
     assert result["type"] == FlowResultType.ABORT
     assert result["reason"] == "already_configured"
+
+
+# -------------------------------------------------------------------------------------
+# Options flow tests
+# -------------------------------------------------------------------------------------
+
+
+async def test_options_flow_init_and_save(hass: HomeAssistant) -> None:
+    """Test the options flow shows its form and saves new settings.
+
+    Regression test for issue #40: clicking the gear icon raised
+    "Config flow could not be loaded: 500 Internal Server Error". The cause was
+    ``OptionsFlowHandler.__init__`` assigning ``self.config_entry``; Home
+    Assistant made that a read-only property and removed the deprecated setter
+    in 2025.12, so the assignment raised ``AttributeError: property
+    'config_entry' ... has no setter`` whenever the options flow was created.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test Pool System",
+        data={CONF_HOST: "192.168.1.100", CONF_TRANSPORT: DEFAULT_TRANSPORT},
+        options={},
+    )
+    entry.add_to_hass(hass)
+
+    # Opening the options flow is exactly what clicking the gear icon triggers.
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "init"
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            CONF_KEEPALIVE_INTERVAL: 120,
+            CONF_RECONNECT_DELAY: 45,
+        },
+    )
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"] == {
+        CONF_KEEPALIVE_INTERVAL: 120,
+        CONF_RECONNECT_DELAY: 45,
+    }
+    assert entry.options == {
+        CONF_KEEPALIVE_INTERVAL: 120,
+        CONF_RECONNECT_DELAY: 45,
+    }
+
+
+async def test_options_flow_defaults_from_existing_options(
+    hass: HomeAssistant,
+) -> None:
+    """Test the options form pre-fills defaults from the entry's saved options.
+
+    This exercises the ``self.config_entry`` property resolution: the form's
+    defaults are read from ``config_entry.options``, so wrong resolution would
+    surface as wrong defaults.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test Pool System",
+        data={CONF_HOST: "192.168.1.100", CONF_TRANSPORT: DEFAULT_TRANSPORT},
+        options={
+            CONF_KEEPALIVE_INTERVAL: 150,
+            CONF_RECONNECT_DELAY: 60,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "init"
+
+    # The voluptuous schema's Optional markers carry the current values as
+    # their defaults.
+    defaults = {
+        marker.schema: marker.default() for marker in result["data_schema"].schema
+    }
+    assert defaults[CONF_KEEPALIVE_INTERVAL] == 150
+    assert defaults[CONF_RECONNECT_DELAY] == 60
 
 
 # -------------------------------------------------------------------------------------

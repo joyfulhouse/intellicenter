@@ -50,10 +50,24 @@ def mock_system_info() -> ICSystemInfo:
 
 @pytest.fixture
 def mock_controller(mock_system_info: ICSystemInfo) -> Generator[MagicMock]:
-    """Return a mock ICBaseController."""
-    with patch(
-        "custom_components.intellicenter.config_flow.ICBaseController"
-    ) as mock_controller_class:
+    """Return a mock ICBaseController for config-flow validation.
+
+    Also stubs out ``async_setup_entry`` so that a flow finishing with
+    ``CREATE_ENTRY`` does not trigger a real integration setup (and thus a real
+    IntelliCenter TCP connection) when the entry is added. Without this, the
+    connection handler spawns a background reconnect task that opens a socket
+    and lingers past the test, failing HA's ``verify_cleanup`` fixture.
+    """
+    with (
+        patch(
+            "custom_components.intellicenter.config_flow.ICBaseController"
+        ) as mock_controller_class,
+        patch(
+            "custom_components.intellicenter.async_setup_entry",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+    ):
         mock_instance = MagicMock()
         mock_instance.start = AsyncMock()
         mock_instance.stop = AsyncMock()

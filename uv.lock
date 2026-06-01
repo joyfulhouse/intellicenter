@@ -1136,7 +1136,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "homeassistant", specifier = ">=2025.11.3" },
-    { name = "pyintellicenter", specifier = ">=0.1.16" },
+    { name = "pyintellicenter", specifier = ">=0.1.17" },
 ]
 
 [package.metadata.requires-dev]
@@ -1756,16 +1756,16 @@ wheels = [
 
 [[package]]
 name = "pyintellicenter"
-version = "0.1.16"
+version = "0.1.17"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "orjson" },
     { name = "websockets" },
     { name = "zeroconf" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/63/5e/2c24032bff0c399e4d8a2ce8d98f29dee53117530ac60f2631b241e725f3/pyintellicenter-0.1.16.tar.gz", hash = "sha256:d854e43dc918954d5d97e26157c9bded746e1745830c1cc0b6bc08d4d7fba7f5", size = 50668, upload-time = "2026-06-01T02:41:09.672Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/19/d5/8da264fb5b484baa4ede29009cbe5dc3142efac56ada2023b307ce23a5d8/pyintellicenter-0.1.17.tar.gz", hash = "sha256:73e524b5348144943eb1b6369b63ae5c5c829114f304ea8bebbc8aa07dc2518c", size = 53313, upload-time = "2026-06-01T14:39:26.479Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8d/b1/3abd93457c546d7689eb3abca1c9a454f4fb41865fd99920940a4cb07851/pyintellicenter-0.1.16-py3-none-any.whl", hash = "sha256:12983aab0915317a4395d6031468c6af4e73a7401c477f21638747b21b2bf5bc", size = 64314, upload-time = "2026-06-01T02:41:08.364Z" },
+    { url = "https://files.pythonhosted.org/packages/32/4d/005f2baa8d09594eb37665cc191203c8454d24cea1341932594b5ac3dc9c/pyintellicenter-0.1.17-py3-none-any.whl", hash = "sha256:ced0fc89e416622d6cfa98840ee95e185ff2329472f1c16cbc3054cf6416c69b", size = 67129, upload-time = "2026-06-01T14:39:24.815Z" },
 ]
 
 [[package]]

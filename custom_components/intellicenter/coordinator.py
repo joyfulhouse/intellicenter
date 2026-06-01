@@ -398,14 +398,17 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         # platforms. Dependents are already known, so they need no recording.
         self._known_objnams.update(new_objnams)
 
+        dependents_note = ""
+        if dependents:
+            dependents_note = (
+                f"; re-evaluating {len(dependents)} dependent(s): "
+                + ", ".join(obj.objnam for obj in dependents)
+            )
         _LOGGER.debug(
             "Detected %d new pool object(s): %s%s",
             len(new_objects),
             ", ".join(obj.objnam for obj in new_objects),
-            f"; re-evaluating {len(dependents)} dependent(s): "
-            + ", ".join(obj.objnam for obj in dependents)
-            if dependents
-            else "",
+            dependents_note,
         )
         # Dispatch the new objects together with any dependents whose parent just
         # arrived, so a child that was skipped before its parent existed is now

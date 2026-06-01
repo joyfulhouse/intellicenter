@@ -5,13 +5,14 @@ All notable changes to the Pentair IntelliCenter integration will be documented 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.7.0] - 2026-05-31
 
 ### Fixed
+- **Retry setup on transient connection errors** (#41) - When Home Assistant restarts while IntelliCenter (or its bridge) is briefly unreachable or still booting, setup now raises `ConfigEntryNotReady` so HA retries with exponential backoff instead of leaving the entry in a permanent error state requiring a manual reload. Only connection-level failures are retried; a rejected command or non-network error still fails loudly, and the partially started coordinator is always torn down (no leaked reconnect task).
 - **HCOMBO heater control** - Multi-mode heaters (e.g. Pentair UltraTemp ETi Hybrid, subtype `HCOMBO`) can now be turned on and off correctly. IntelliCenter ignores `HEATER` attribute changes for HCOMBO heaters; the fix routes all control through the body's `MODE` attribute instead.
 
 ### Added
-- **HCOMBO operation modes** - Water heater entities backed by an HCOMBO heater now expose all four sub-modes as selectable operation modes: Gas Only, Heat Pump Only, Hybrid, and Dual. The last-used mode is remembered and restored on turn-on.
+- **HCOMBO operation modes** - Water heater entities backed by an HCOMBO heater now expose all four sub-modes as selectable operation modes: Gas Only, Heat Pump Only, Hybrid, and Dual. The last-used operation is remembered and restored on turn-on. Bodies with both an HCOMBO and a standard heater are fully supported.
 
 ---
 

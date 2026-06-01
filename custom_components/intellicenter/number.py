@@ -21,9 +21,12 @@ from homeassistant.components.number import (
     NumberEntity,
     NumberMode,
 )
-from homeassistant.const import CONCENTRATION_PARTS_PER_MILLION, PERCENTAGE
+from homeassistant.const import (
+    CONCENTRATION_PARTS_PER_MILLION,
+    PERCENTAGE,
+    EntityCategory,
+)
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyintellicenter import (
     ALK_ATTR,
@@ -259,7 +262,7 @@ def _build_entities(
             # Get the associated circuit for naming
             circuit_objnam = pool_obj[CIRCUIT_ATTR]
             circuit = coordinator.model[circuit_objnam] if circuit_objnam else None
-            circuit_name = circuit.sname if circuit else circuit_objnam
+            circuit_name = (circuit.sname if circuit else None) or str(circuit_objnam)
 
             # Get limits from parent pump
             # Initialize RPM with defaults (most pumps support RPM)
@@ -305,7 +308,7 @@ def _build_entities(
             )  # Only True if MAXF_ATTR was set from parent pump
 
             # Determine pump name for entity naming
-            pump_name = parent_pump.sname if parent_pump else "Pump"
+            pump_name = (parent_pump.sname if parent_pump else None) or "Pump"
 
             if supports_rpm and supports_gpm:
                 # VSF pump: Create single dynamic PumpSpeedNumber entity

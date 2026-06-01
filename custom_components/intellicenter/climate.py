@@ -17,10 +17,10 @@ from collections.abc import Iterable
 import logging
 from typing import Any
 
-from homeassistant.components.climate import (
+from homeassistant.components.climate import ClimateEntity
+from homeassistant.components.climate.const import (
     ATTR_TARGET_TEMP_HIGH,
     ATTR_TARGET_TEMP_LOW,
-    ClimateEntity,
     ClimateEntityFeature,
     HVACAction,
     HVACMode,

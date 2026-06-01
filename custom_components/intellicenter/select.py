@@ -11,8 +11,8 @@ import logging
 from typing import Any
 
 from homeassistant.components.select import SelectEntity
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyintellicenter import (
     CIRCUIT_ATTR,
@@ -76,10 +76,10 @@ def _build_entities(
             # Get the associated circuit for naming
             circuit_objnam = pool_obj[CIRCUIT_ATTR]
             circuit = coordinator.model[circuit_objnam] if circuit_objnam else None
-            circuit_name = circuit.sname if circuit else circuit_objnam
+            circuit_name = (circuit.sname if circuit else None) or str(circuit_objnam)
 
             # Get pump name from parent pump (PMPCIRC objects don't have meaningful sname)
-            pump_name = parent_pump.sname if parent_pump else "Pump"
+            pump_name = (parent_pump.sname if parent_pump else None) or "Pump"
 
             selects.append(
                 PumpModeSelect(

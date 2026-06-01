@@ -23,10 +23,10 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import (
     CONCENTRATION_PARTS_PER_MILLION,
+    EntityCategory,
     UnitOfPower,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyintellicenter import (
     CHEM_TYPE,

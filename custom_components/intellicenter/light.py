@@ -8,14 +8,10 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 import logging
-from typing import Any, ClassVar
+from typing import Any
 
-from homeassistant.components.light import (
-    ATTR_EFFECT,
-    ColorMode,
-    LightEntity,
-    LightEntityFeature,
-)
+from homeassistant.components.light import ATTR_EFFECT, LightEntity
+from homeassistant.components.light.const import ColorMode, LightEntityFeature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyintellicenter import (
@@ -85,7 +81,7 @@ class PoolLight(PoolEntity, LightEntity):
     """
 
     _attr_color_mode = ColorMode.ONOFF
-    _attr_supported_color_modes: ClassVar[set[ColorMode]] = {ColorMode.ONOFF}
+    _attr_supported_color_modes: set[ColorMode] = {ColorMode.ONOFF}
     _attr_supported_features = LightEntityFeature(0)
 
     def __init__(

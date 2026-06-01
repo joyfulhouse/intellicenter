@@ -11,8 +11,8 @@ import logging
 from typing import Any
 
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyintellicenter import (
     BODY_TYPE,
@@ -44,9 +44,9 @@ PARALLEL_UPDATES = 0
 
 def _build_entities(
     coordinator: IntelliCenterCoordinator, candidates: Iterable[PoolObject]
-) -> list[PoolCircuit]:
+) -> list[SwitchEntity]:
     """Build switch entities for the given candidate pool objects."""
-    switches: list[PoolCircuit] = []
+    switches: list[SwitchEntity] = []
     for pool_obj in candidates:
         if pool_obj.objtype == BODY_TYPE:
             switches.append(PoolBody(coordinator, pool_obj))

@@ -13,6 +13,7 @@ from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 
 from . import IntelliCenterConfigEntry
+from .coordinator import IntelliCenterCoordinator
 
 # Keys to redact from diagnostics output for privacy
 TO_REDACT = {
@@ -49,8 +50,13 @@ async def async_get_config_entry_diagnostics(
     }
 
     try:
-        # Get coordinator from runtime_data
-        coordinator = entry.runtime_data
+        # ``runtime_data`` is typed as the coordinator, but Home Assistant deletes
+        # it when the entry unloads (and it is unset before the entry loads), so
+        # read it defensively: ``getattr`` yields ``None`` instead of raising if
+        # it is absent.
+        coordinator: IntelliCenterCoordinator | None = getattr(
+            entry, "runtime_data", None
+        )
         if coordinator is None:
             diagnostics_data["error"] = "Coordinator not found"
             return dict(async_redact_data(diagnostics_data, TO_REDACT))

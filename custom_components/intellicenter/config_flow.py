@@ -17,18 +17,20 @@ from homeassistant.components import zeroconf
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow as HAConfigFlow,
+    ConfigFlowResult,
     OptionsFlow,
 )
-from homeassistant.const import CONF_HOST, CONF_NAME
+from homeassistant.const import CONF_HOST
 from homeassistant.core import callback
-from homeassistant.data_entry_flow import AbortFlow, FlowResult
+from homeassistant.data_entry_flow import AbortFlow
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.selector import (
+    SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
 )
-from homeassistant.helpers.typing import ConfigType
+from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 from pyintellicenter import ICBaseController, ICConnectionError, ICSystemInfo
 import voluptuous as vol
 
@@ -54,6 +56,7 @@ from .const import (
     MIN_RECONNECT_DELAY,
     TRANSPORT_TCP,
     TRANSPORT_WEBSOCKET,
+    TransportType,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -89,11 +92,7 @@ def _validate_host(host: str) -> str:
     return host
 
 
-# HA's ConfigFlow defines the ``domain`` class keyword via __init_subclass__,
-# but homeassistant is a skipped (untyped) import in mypy.ini, so mypy resolves
-# the kwarg against object and flags it. Removable once the integration is typed
-# against HA's current API (tracked as the type-drift follow-up).
-class ConfigFlow(HAConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
+class ConfigFlow(HAConfigFlow, domain=DOMAIN):
     """Pentair Intellicenter config flow."""
 
     VERSION = 1
@@ -112,7 +111,9 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
         """Get the options flow for this handler."""
         return OptionsFlowHandler()
 
-    async def async_step_user(self, user_input: ConfigType | None = None) -> FlowResult:
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Handle a flow initiated by the user.
 
         Presents options to discover devices or enter manually.
@@ -126,8 +127,8 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
         return await self.async_step_manual()
 
     async def async_step_discover(
-        self, user_input: ConfigType | None = None
-    ) -> FlowResult:
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Handle the discovery step."""
         errors: dict[str, str] = {}
 
@@ -192,8 +193,8 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
         return self._show_device_picker_form(errors)
 
     async def async_step_manual(
-        self, user_input: ConfigType | None = None
-    ) -> FlowResult:
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Handle manual IP entry step."""
         if user_input is None:
             return self._show_manual_form()
@@ -224,7 +225,9 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
 
         return self._show_manual_form(errors)
 
-    async def async_step_zeroconf(self, discovery_info: ConfigType) -> FlowResult:
+    async def async_step_zeroconf(
+        self, discovery_info: ZeroconfServiceInfo
+    ) -> ConfigFlowResult:
         """Handle device found via zeroconf."""
         _LOGGER.debug("Zeroconf discovery: %s", discovery_info)
 
@@ -242,13 +245,7 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
             self._discovered_host = host
             self._discovered_name = system_info.prop_name
 
-            self.context.update(
-                {
-                    CONF_HOST: host,
-                    CONF_NAME: system_info.prop_name,
-                    "title_placeholders": {"name": system_info.prop_name},
-                }
-            )
+            self.context["title_placeholders"] = {"name": system_info.prop_name}
 
             return self._show_confirm_dialog()
 
@@ -261,13 +258,13 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
             return self.async_abort(reason="unknown")
 
     async def async_step_zeroconf_confirm(
-        self, user_input: ConfigType | None = None
-    ) -> FlowResult:
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Handle a flow initiated by zeroconf."""
         if user_input is None:
             return self._show_confirm_dialog()
 
-        host = self._discovered_host or self.context.get(CONF_HOST)
+        host = self._discovered_host
         if host is None:
             return self.async_abort(reason="unknown")
 
@@ -291,7 +288,7 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
 
     def _show_pick_method_form(
         self, errors: dict[str, str] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Show the form to pick setup method."""
         options = [SETUP_MANUAL]
 
@@ -319,13 +316,13 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
 
     def _show_device_picker_form(
         self, errors: dict[str, str] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Show the form to pick a discovered device."""
         options = [
-            {
-                "value": unit.host,
-                "label": f"{unit.name} ({unit.host})",
-            }
+            SelectOptionDict(
+                value=unit.host,
+                label=f"{unit.name} ({unit.host})",
+            )
             for unit in self._discovered_units
         ]
 
@@ -345,7 +342,9 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
             description_placeholders={"count": str(len(self._discovered_units))},
         )
 
-    def _show_no_devices_form(self, errors: dict[str, str] | None = None) -> FlowResult:
+    def _show_no_devices_form(
+        self, errors: dict[str, str] | None = None
+    ) -> ConfigFlowResult:
         """Show form when no devices are found."""
         return self.async_show_form(
             step_id="manual",
@@ -354,7 +353,9 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
             description_placeholders={"reason": "no_devices_found"},
         )
 
-    def _show_manual_form(self, errors: dict[str, str] | None = None) -> FlowResult:
+    def _show_manual_form(
+        self, errors: dict[str, str] | None = None
+    ) -> ConfigFlowResult:
         """Show the manual setup form."""
         return self.async_show_form(
             step_id="manual",
@@ -375,17 +376,17 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
             errors=errors or {},
         )
 
-    def _show_confirm_dialog(self) -> FlowResult:
+    def _show_confirm_dialog(self) -> ConfigFlowResult:
         """Show the confirm dialog for zeroconf discovery."""
-        host = self._discovered_host or self.context.get(CONF_HOST)
-        name = self._discovered_name or self.context.get(CONF_NAME)
-
         return self.async_show_form(
             step_id="zeroconf_confirm",
-            description_placeholders={"host": host, "name": name},
+            description_placeholders={
+                "host": self._discovered_host or "",
+                "name": self._discovered_name or "",
+            },
         )
 
-    async def _async_create_entry_from_unit(self, unit: ICUnit) -> FlowResult:
+    async def _async_create_entry_from_unit(self, unit: ICUnit) -> ConfigFlowResult:
         """Create a config entry from a discovered unit."""
         try:
             system_info = await self._get_system_info(unit.host)
@@ -402,7 +403,7 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
             raise CannotConnect from err
 
     async def _get_system_info(
-        self, host: str, transport: str = DEFAULT_TRANSPORT
+        self, host: str, transport: TransportType = DEFAULT_TRANSPORT
     ) -> ICSystemInfo:
         """Attempt to connect and retrieve system information.
 
@@ -444,7 +445,7 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle reconfiguration of the integration.
 
         Allows users to change the host address and transport type after initial setup.
@@ -523,7 +524,7 @@ class OptionsFlowHandler(OptionsFlow):
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Manage the options for IntelliCenter integration."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)

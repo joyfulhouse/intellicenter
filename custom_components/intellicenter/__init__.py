@@ -594,7 +594,19 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
 # -------------------------------------------------------------------------------------
 
 
-class OnOffControlMixin:
+# Under static type checking the mixin is treated as an ``Entity`` subclass so
+# mypy can resolve the ``Entity`` members it uses (``hass``,
+# ``async_write_ha_state``) without re-declaring them - re-declaring
+# ``async_write_ha_state`` would clash with its ``@final`` marker on ``Entity``.
+# At runtime the mixin stays a plain ``object`` subclass, so the method
+# resolution order of the concrete entity classes is unchanged.
+if TYPE_CHECKING:
+    _MixinBase = Entity
+else:
+    _MixinBase = object
+
+
+class OnOffControlMixin(_MixinBase):
     """Mixin for entities with simple on/off control.
 
     Classes using this mixin must also inherit from PoolEntity.
@@ -606,14 +618,9 @@ class OnOffControlMixin:
     _optimistic_state: bool | None = None  # None = use real state
 
     if TYPE_CHECKING:
-        hass: HomeAssistant
 
         def request_changes(self, changes: dict[str, Any]) -> None:
             """Request changes - provided by PoolEntity."""
-            ...
-
-        def async_write_ha_state(self) -> None:
-            """Write entity state to Home Assistant - provided by Entity."""
             ...
 
         def isUpdated(self, updates: dict[str, dict[str, Any]]) -> bool:

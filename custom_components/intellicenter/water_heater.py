@@ -365,7 +365,7 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
             return
         await self._controller.request_changes(self._pool_object.objnam, changes)
 
-    async def async_turn_on(self) -> None:
+    async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on, restoring the last operation or a safe default."""
         operation = self._last_operation
         if operation is None or self._operation_to_changes(operation) is None:
@@ -374,7 +374,7 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
         if changes is not None:
             await self._controller.request_changes(self._pool_object.objnam, changes)
 
-    async def async_turn_off(self) -> None:
+    async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the entity off, clearing both control planes atomically."""
         await self._controller.request_changes(
             self._pool_object.objnam,

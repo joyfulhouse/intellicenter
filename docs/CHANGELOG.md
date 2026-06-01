@@ -7,8 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [3.8.0] - 2026-06-01
-
 ### Added
 - **System operating mode sensor (Auto / Service / Time out)** - Exposes the IntelliCenter system operating mode that the Pentair app shows as a dashboard banner. IntelliCenter reports it on the SYSTEM object's `SERVICE` attribute; the integration surfaces it as an enum sensor (`auto`/`service`/`timeout`) with per-state labels localized across all 12 supported languages. Requires pyintellicenter >= 0.1.18 (which exports the `SERVICE_ATTR` constant). Only the `AUTO` value is hardware-confirmed; the Service/Timeout protocol strings are inferred from Pentair documentation and normalized case/space-insensitively, with any unexpected value reported as unknown. Thanks to the Home Assistant community member (dbb1) who requested it.
 - **Runtime detection of newly-added equipment** (#42) - Equipment added to the Pentair system after Home Assistant has started (for example a second IntelliChem controller coming online) now surfaces its sensors and controls automatically, without requiring a restart. The coordinator watches the pool model for previously-unseen objects and notifies each platform so it can create the matching entities at runtime. Thanks to @bhamiltoncx for the report.

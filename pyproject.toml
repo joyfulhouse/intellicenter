@@ -1,6 +1,6 @@
 [project]
 name = "intellicenter"
-version = "3.8.0"
+version = "3.7.0"
 description = "Home Assistant custom integration for Pentair IntelliCenter"
 readme = "README.md"
 # Tracks the Python floor of the Home Assistant release we target (2026.5.x ->

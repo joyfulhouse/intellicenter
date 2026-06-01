@@ -1,4 +1,16 @@
 {
+  "entity": {
+    "sensor": {
+      "system_mode": {
+        "name": "システムモード",
+        "state": {
+          "auto": "自動",
+          "service": "サービス",
+          "timeout": "タイムアウト"
+        }
+      }
+    }
+  },
   "config": {
     "flow_title": "Pentair IntelliCenter: {name}",
     "step": {

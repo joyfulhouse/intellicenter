@@ -67,6 +67,7 @@ from pyintellicenter import (
     SEC_ATTR,
     SELECT_ATTR,
     SENSE_TYPE,
+    SERVICE_ATTR,
     SNAME_ATTR,
     SOURCE_ATTR,
     SPEED_ATTR,
@@ -174,7 +175,8 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
     },
     SENSE_TYPE: {SNAME_ATTR, SOURCE_ATTR},
     SCHED_TYPE: {SNAME_ATTR, ACT_ATTR, VACFLO_ATTR},
-    SYSTEM_TYPE: {MODE_ATTR, VACFLO_ATTR, VER_ATTR},  # VER_ATTR for firmware version
+    # MODE/VACFLO/VER plus SERVICE for the system operating mode sensor
+    SYSTEM_TYPE: {MODE_ATTR, SERVICE_ATTR, VACFLO_ATTR, VER_ATTR},
 }
 
 

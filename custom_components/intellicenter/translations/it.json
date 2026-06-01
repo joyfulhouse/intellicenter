@@ -1,4 +1,16 @@
 {
+  "entity": {
+    "sensor": {
+      "system_mode": {
+        "name": "Modalità del sistema",
+        "state": {
+          "auto": "Automatico",
+          "service": "Manutenzione",
+          "timeout": "Timeout"
+        }
+      }
+    }
+  },
   "config": {
     "flow_title": "Pentair IntelliCenter: {name}",
     "step": {

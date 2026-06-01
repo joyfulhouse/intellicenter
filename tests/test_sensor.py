@@ -24,14 +24,16 @@ from pyintellicenter import (
     RPM_ATTR,
     SALT_ATTR,
     SENSE_TYPE,
+    SERVICE_ATTR,
     SOURCE_ATTR,
+    SYSTEM_TYPE,
     PoolModel,
     PoolObject,
 )
 import pytest
 
 from custom_components.intellicenter.const import CONST_GPM, CONST_RPM
-from custom_components.intellicenter.sensor import PoolSensor
+from custom_components.intellicenter.sensor import PoolSensor, SystemModeSensor
 
 pytestmark = pytest.mark.asyncio
 
@@ -98,6 +100,21 @@ def pool_object_intellichem() -> PoolObject:
             "ORPTNK": "3",
             "PHVOL": "1250",
             "ORPVOL": "30208",
+        },
+    )
+
+
+@pytest.fixture
+def pool_object_system() -> PoolObject:
+    """Return a PoolObject representing the SYSTEM object with a service mode."""
+    return PoolObject(
+        "_5451",
+        {
+            "OBJTYP": SYSTEM_TYPE,
+            "SNAME": "IntelliCenter System",
+            "MODE": "ENGLISH",
+            "VER": "2.0.0",
+            "SERVICE": "AUTO",
         },
     )
 
@@ -557,3 +574,123 @@ async def test_ph_sensor_device_class(
 
     assert sensor.device_class == SensorDeviceClass.PH
     assert sensor.native_value == 7.2
+
+
+async def test_system_mode_sensor_created(
+    hass: HomeAssistant,
+    pool_object_system: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A System Mode sensor is created for a SYSTEM object exposing SERVICE."""
+    model = PoolModel()
+    model.add_objects(
+        [
+            {
+                "objnam": "_5451",
+                "params": {
+                    "OBJTYP": SYSTEM_TYPE,
+                    "SNAME": "IntelliCenter System",
+                    "MODE": "ENGLISH",
+                    "VER": "2.0.0",
+                    "SERVICE": "AUTO",
+                },
+            }
+        ]
+    )
+    mock_coordinator.model = model
+
+    mock_entry = MagicMock()
+    mock_entry.entry_id = "test_entry"
+    mock_entry.runtime_data = mock_coordinator
+
+    entities_added: list[object] = []
+
+    from custom_components.intellicenter.sensor import async_setup_entry
+
+    await async_setup_entry(hass, mock_entry, entities_added.extend)
+
+    system_mode_sensors = [e for e in entities_added if isinstance(e, SystemModeSensor)]
+    assert len(system_mode_sensors) == 1
+
+
+async def test_system_mode_sensor_enum_contract(
+    hass: HomeAssistant,
+    pool_object_system: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """The System Mode sensor is an ENUM with the expected options/translation."""
+    sensor = SystemModeSensor(mock_coordinator, pool_object_system)
+
+    assert sensor.device_class == SensorDeviceClass.ENUM
+    assert sensor.options == ["auto", "service", "timeout"]
+    assert sensor.translation_key == "system_mode"
+    # ENUM sensors must not carry a state_class.
+    assert sensor.state_class is None
+    # Name must come from translations, not a hardcoded English string.
+    assert sensor.name is None
+    # Unique id includes the attribute key (not the default STATUS).
+    assert sensor.unique_id == "test_entry__5451SERVICE"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("AUTO", "auto"),
+        ("auto", "auto"),
+        ("SERVICE", "service"),
+        ("Service", "service"),
+        ("TIMEOUT", "timeout"),
+        ("TIME OUT", "timeout"),
+        ("Time Out", "timeout"),
+    ],
+)
+async def test_system_mode_sensor_native_value_normalizes(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+    raw: str,
+    expected: str,
+) -> None:
+    """native_value normalizes raw SERVICE strings to the documented modes."""
+    obj = PoolObject(
+        "_5451",
+        {
+            "OBJTYP": SYSTEM_TYPE,
+            "SNAME": "IntelliCenter System",
+            "SERVICE": raw,
+        },
+    )
+
+    sensor = SystemModeSensor(mock_coordinator, obj)
+
+    assert sensor.native_value == expected
+
+
+async def test_system_mode_sensor_native_value_none(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+) -> None:
+    """native_value is None when SERVICE is absent."""
+    obj = PoolObject(
+        "_5451",
+        {
+            "OBJTYP": SYSTEM_TYPE,
+            "SNAME": "IntelliCenter System",
+            "SERVICE": None,
+        },
+    )
+
+    sensor = SystemModeSensor(mock_coordinator, obj)
+
+    assert sensor.native_value is None
+
+
+async def test_system_mode_sensor_is_updated(
+    hass: HomeAssistant,
+    pool_object_system: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """The sensor updates when the SERVICE attribute changes."""
+    sensor = SystemModeSensor(mock_coordinator, pool_object_system)
+
+    assert sensor.isUpdated({"_5451": {SERVICE_ATTR: "SERVICE"}}) is True
+    assert sensor.isUpdated({"_5451": {"OTHER": "value"}}) is False

@@ -66,6 +66,7 @@ REQUIRED_SYMBOLS = (
     "ICSystemInfo",
     "PoolModel",
     "PoolObject",
+    "SERVICE_ATTR",
     "discover_intellicenter_units",
     "ICUnit",
 )

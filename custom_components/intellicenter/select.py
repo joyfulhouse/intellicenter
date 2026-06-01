@@ -44,7 +44,6 @@ def _build_entities(
     """Build pump-mode select entities for the given candidate pool objects."""
     selects: list[PumpModeSelect] = []
 
-    pool_obj: PoolObject
     for pool_obj in candidates:
         # Create pump mode selector only for PMPCIRC objects where the parent pump
         # supports BOTH RPM (MAX_ATTR > 0) and GPM (MAXF_ATTR > 0) modes

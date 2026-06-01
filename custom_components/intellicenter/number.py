@@ -107,7 +107,6 @@ def _build_entities(
 
     numbers: list[PoolNumber | PumpSpeedNumber] = []
 
-    pool_obj: PoolObject
     for pool_obj in candidate_objects:
         if pool_obj.objtype == CHEM_TYPE:
             if pool_obj.subtype == "ICHLOR" and PRIM_ATTR in pool_obj.attribute_keys:

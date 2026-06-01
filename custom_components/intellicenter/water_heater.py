@@ -99,10 +99,8 @@ def _build_entities(
         key=lambda h: int(h[LISTORD_ATTR]) if h[LISTORD_ATTR] else 100,
     )
 
-    bodies_to_consider = bodies_affected_by(coordinator, candidates)
-
     water_heaters: list[PoolWaterHeater] = []
-    for body in bodies_to_consider:
+    for body in bodies_affected_by(coordinator, candidates):
         heater_list = [
             heater.objnam
             for heater in heaters

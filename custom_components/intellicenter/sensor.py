@@ -71,7 +71,6 @@ def _build_entities(
     """Build sensor entities for the given candidate pool objects."""
     sensors: list[PoolSensor] = []
 
-    obj: PoolObject
     for obj in candidates:
         if obj.objtype == SENSE_TYPE:
             sensors.append(

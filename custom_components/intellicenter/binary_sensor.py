@@ -55,7 +55,6 @@ def _build_entities(
     """Build binary sensor entities for the given candidate pool objects."""
     sensors: list[PoolBinarySensor | HeaterBinarySensor | ScheduleBinarySensor] = []
 
-    obj: PoolObject
     for obj in candidates:
         if obj.objtype == CIRCUIT_TYPE and obj.subtype == "FRZ":
             sensors.append(

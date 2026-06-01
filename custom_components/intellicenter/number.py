@@ -9,7 +9,7 @@ This module provides number entities for:
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 import logging
 from typing import Any
 
@@ -50,7 +50,7 @@ from pyintellicenter import (
     PoolObject,
 )
 
-from . import IntelliCenterConfigEntry, PoolEntity
+from . import IntelliCenterConfigEntry, PoolEntity, async_setup_pool_entities
 from .const import CONST_GPM, CONST_RPM
 from .coordinator import IntelliCenterCoordinator
 
@@ -98,18 +98,17 @@ PUMP_GPM_STEP = 5
 # -------------------------------------------------------------------------------------
 
 
-async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: IntelliCenterConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    """Load pool number entities based on a config entry."""
-    coordinator = entry.runtime_data
+def _build_entities(
+    coordinator: IntelliCenterCoordinator, candidates: Iterable[PoolObject]
+) -> list[PoolNumber | PumpSpeedNumber]:
+    """Build number entities for the given candidate pool objects."""
+    # Materialize so the candidate objects can be iterated more than once below.
+    candidate_objects = list(candidates)
 
     numbers: list[PoolNumber | PumpSpeedNumber] = []
 
     pool_obj: PoolObject
-    for pool_obj in coordinator.model:
+    for pool_obj in candidate_objects:
         if pool_obj.objtype == CHEM_TYPE:
             if pool_obj.subtype == "ICHLOR" and PRIM_ATTR in pool_obj.attribute_keys:
                 # IntelliChlor output percentage controls (CONFIG category)
@@ -231,7 +230,7 @@ async def async_setup_entry(
                     )
 
     # Add body max temperature setpoints (HITMP) - CONFIG category
-    for pool_obj in coordinator.model:
+    for pool_obj in candidate_objects:
         if pool_obj.objtype == BODY_TYPE and HITMP_ATTR in pool_obj.attribute_keys:
             numbers.append(
                 PoolNumber(
@@ -252,7 +251,7 @@ async def async_setup_entry(
 
     # Add pump circuit speed/flow setpoints (PMPCIRC) - CONFIG category
     # These allow control of variable speed pump settings per circuit
-    for pool_obj in coordinator.model:
+    for pool_obj in candidate_objects:
         if pool_obj.objtype == PMPCIRC_TYPE:
             # Get the parent pump to determine limits and type
             parent_objnam = pool_obj[PARENT_ATTR]
@@ -361,7 +360,16 @@ async def async_setup_entry(
                     )
                 )
 
-    async_add_entities(numbers)
+    return numbers
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: IntelliCenterConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Load pool number entities based on a config entry."""
+    async_setup_pool_entities(entry, async_add_entities, _build_entities)
 
 
 # -------------------------------------------------------------------------------------

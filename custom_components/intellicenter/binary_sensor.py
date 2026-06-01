@@ -10,6 +10,7 @@ This module provides binary sensor entities for:
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 import logging
 from typing import Any
 
@@ -39,7 +40,7 @@ from pyintellicenter import (
     PoolObject,
 )
 
-from . import IntelliCenterConfigEntry, PoolEntity
+from . import IntelliCenterConfigEntry, PoolEntity, async_setup_pool_entities
 from .coordinator import IntelliCenterCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -48,18 +49,14 @@ _LOGGER = logging.getLogger(__name__)
 PARALLEL_UPDATES = 0
 
 
-async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: IntelliCenterConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    """Load pool binary sensors based on a config entry."""
-    coordinator = entry.runtime_data
-
+def _build_entities(
+    coordinator: IntelliCenterCoordinator, candidates: Iterable[PoolObject]
+) -> list[PoolBinarySensor | HeaterBinarySensor | ScheduleBinarySensor]:
+    """Build binary sensor entities for the given candidate pool objects."""
     sensors: list[PoolBinarySensor | HeaterBinarySensor | ScheduleBinarySensor] = []
 
     obj: PoolObject
-    for obj in coordinator.model:
+    for obj in candidates:
         if obj.objtype == CIRCUIT_TYPE and obj.subtype == "FRZ":
             sensors.append(
                 PoolBinarySensor(
@@ -143,7 +140,16 @@ async def async_setup_entry(
                         entity_category=EntityCategory.DIAGNOSTIC,
                     )
                 )
-    async_add_entities(sensors)
+    return sensors
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: IntelliCenterConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Load pool binary sensors based on a config entry."""
+    async_setup_pool_entities(entry, async_add_entities, _build_entities)
 
 
 # -------------------------------------------------------------------------------------

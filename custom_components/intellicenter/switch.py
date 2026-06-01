@@ -6,6 +6,7 @@ superchlorinate mode, and vacation mode.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 import logging
 from typing import Any
 
@@ -27,7 +28,12 @@ from pyintellicenter import (
     PoolObject,
 )
 
-from . import IntelliCenterConfigEntry, OnOffControlMixin, PoolEntity
+from . import (
+    IntelliCenterConfigEntry,
+    OnOffControlMixin,
+    PoolEntity,
+    async_setup_pool_entities,
+)
 from .coordinator import IntelliCenterCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -36,18 +42,12 @@ _LOGGER = logging.getLogger(__name__)
 PARALLEL_UPDATES = 0
 
 
-async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: IntelliCenterConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    """Load Pentair switch entities based on a config entry."""
-    coordinator = entry.runtime_data
-
+def _build_entities(
+    coordinator: IntelliCenterCoordinator, candidates: Iterable[PoolObject]
+) -> list[PoolCircuit]:
+    """Build switch entities for the given candidate pool objects."""
     switches: list[PoolCircuit] = []
-
-    pool_obj: PoolObject
-    for pool_obj in coordinator.model:
+    for pool_obj in candidates:
         if pool_obj.objtype == BODY_TYPE:
             switches.append(PoolBody(coordinator, pool_obj))
         elif (
@@ -79,8 +79,16 @@ async def async_setup_entry(
         elif pool_obj.objtype == SYSTEM_TYPE:
             # Vacation mode uses convenience method
             switches.append(PoolVacation(coordinator, pool_obj))
+    return switches
 
-    async_add_entities(switches)
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: IntelliCenterConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Load Pentair switch entities based on a config entry."""
+    async_setup_pool_entities(entry, async_add_entities, _build_entities)
 
 
 class PoolCircuit(PoolEntity, OnOffControlMixin, SwitchEntity):

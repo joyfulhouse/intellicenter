@@ -25,6 +25,7 @@ returns the body to its previous mode.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 import logging
 from typing import Any
 
@@ -38,7 +39,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 from pyintellicenter import (
     BODY_ATTR,
-    BODY_TYPE,
     HEATER_ATTR,
     HEATER_TYPE,
     HTMODE_ATTR,
@@ -53,7 +53,12 @@ from pyintellicenter import (
     PoolObject,
 )
 
-from . import IntelliCenterConfigEntry, PoolEntity
+from . import (
+    IntelliCenterConfigEntry,
+    PoolEntity,
+    async_setup_pool_entities,
+    bodies_affected_by,
+)
 from .coordinator import IntelliCenterCoordinator
 
 # IntelliCenter subtype for multi-mode combo heaters (e.g. UltraTemp ETi Hybrid)
@@ -76,39 +81,46 @@ _LOGGER = logging.getLogger(__name__)
 PARALLEL_UPDATES = 0
 
 
+def _build_entities(
+    coordinator: IntelliCenterCoordinator, candidates: Iterable[PoolObject]
+) -> list[PoolWaterHeater]:
+    """Build water heater entities for bodies affected by the candidate objects.
+
+    A water heater belongs to a body of water but its existence depends on the
+    heaters wired to that body. A body is therefore (re)considered when the body
+    itself is a candidate OR when a candidate heater serves it, so that adding a
+    heater to an existing body surfaces a water heater entity too. Duplicate
+    entities for already-known bodies are filtered out by the caller via
+    ``unique_id``.
+    """
+    # All heaters, sorted by their UI order (objects without one go last).
+    heaters = sorted(
+        coordinator.model.get_by_type(HEATER_TYPE),
+        key=lambda h: int(h[LISTORD_ATTR]) if h[LISTORD_ATTR] else 100,
+    )
+
+    bodies_to_consider = bodies_affected_by(coordinator, candidates)
+
+    water_heaters: list[PoolWaterHeater] = []
+    for body in bodies_to_consider:
+        heater_list = [
+            heater.objnam
+            for heater in heaters
+            if body.objnam in heater[BODY_ATTR].split(" ")
+        ]
+        if heater_list:
+            water_heaters.append(PoolWaterHeater(coordinator, body, heater_list))
+
+    return water_heaters
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: IntelliCenterConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Load pool water heater entities based on a config entry."""
-    coordinator = entry.runtime_data
-
-    # here we try to figure out which heater, if any, can be used for a given
-    # body of water
-
-    # first find all heaters
-    # and sort them by their UI order (if they don't have one, use 100 and place them last)
-    heaters = sorted(
-        coordinator.model.get_by_type(HEATER_TYPE),
-        key=lambda h: int(h[LISTORD_ATTR]) if h[LISTORD_ATTR] else 100,
-    )
-
-    bodies = coordinator.model.get_by_type(BODY_TYPE)
-
-    water_heaters = []
-    body: PoolObject
-    for body in bodies:
-        heater_list = []
-        heater: PoolObject
-        for heater in heaters:
-            # if the heater supports this body, add it to the list
-            if body.objnam in heater[BODY_ATTR].split(" "):
-                heater_list.append(heater.objnam)
-        if heater_list:
-            water_heaters.append(PoolWaterHeater(coordinator, body, heater_list))
-
-    async_add_entities(water_heaters)
+    async_setup_pool_entities(entry, async_add_entities, _build_entities)
 
 
 # -------------------------------------------------------------------------------------

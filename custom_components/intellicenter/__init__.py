@@ -7,7 +7,7 @@ It supports Zeroconf discovery and local push updates for real-time responsivene
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 import contextlib
 import errno
 import logging
@@ -21,9 +21,13 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from pyintellicenter import (
+    BODY_ATTR,
+    BODY_TYPE,
+    HEATER_TYPE,
     STATUS_ATTR,
     ICConnectionError,
     ICModelController,
@@ -208,6 +212,95 @@ async def async_migrate_entry(
     _LOGGER.debug("Migrating from version %s.%s", entry.version, entry.minor_version)
     # Currently at version 1.1, no migration needed yet
     return True
+
+
+# -------------------------------------------------------------------------------------
+# Dynamic entity setup helper
+# -------------------------------------------------------------------------------------
+
+
+def async_setup_pool_entities(
+    entry: IntelliCenterConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+    build_entities: Callable[
+        [IntelliCenterCoordinator, Iterable[PoolObject]], list[Any]
+    ],
+) -> None:
+    """Create entities now and whenever new pool objects appear at runtime.
+
+    Every platform builds its entities by inspecting the objects in the pool
+    model. This helper runs that builder once for the objects present at setup,
+    then registers a coordinator listener so the same builder runs for any
+    equipment that is added later (issue #42) - for example a second IntelliChem
+    controller coming online - without requiring a Home Assistant restart.
+
+    Entities are de-duplicated by ``unique_id`` so an object can never produce a
+    duplicate entity, even though the coordinator already reports each new object
+    only once.
+
+    Args:
+        entry: The config entry whose ``runtime_data`` is the coordinator.
+        async_add_entities: The platform's add-entities callback.
+        build_entities: Builds the entity objects for a set of candidate pool
+            objects. Receives the coordinator (for cross-object lookups) and the
+            objects to consider; returns the list of entities to add.
+    """
+    coordinator = entry.runtime_data
+    created_unique_ids: set[str] = set()
+
+    @callback
+    def _add(candidates: Iterable[PoolObject]) -> None:
+        entities: list[Any] = []
+        for entity in build_entities(coordinator, candidates):
+            uid = entity.unique_id
+            if uid in created_unique_ids:
+                continue
+            created_unique_ids.add(uid)
+            entities.append(entity)
+        if entities:
+            async_add_entities(entities)
+
+    # Initial population from the objects discovered at setup.
+    _add(list(coordinator.model))
+
+    # Dynamic population for objects added after startup.
+    entry.async_on_unload(coordinator.async_add_new_objects_listener(_add))
+
+
+def bodies_affected_by(
+    coordinator: IntelliCenterCoordinator, candidates: Iterable[PoolObject]
+) -> list[PoolObject]:
+    """Return bodies of water touched by the candidate objects.
+
+    Heater-dependent platforms (water_heater, climate) create one entity per
+    body, but whether that entity exists depends on the heaters wired to the
+    body. A body is included when it is itself a candidate OR when a candidate
+    heater serves it, so adding a heater to an existing body re-evaluates that
+    body (issue #42). Duplicate entities for bodies that already have one are
+    filtered by ``async_setup_pool_entities`` via ``unique_id``.
+
+    Args:
+        coordinator: The coordinator providing the pool model.
+        candidates: The newly-considered pool objects.
+
+    Returns:
+        The list of body PoolObjects to (re)evaluate.
+    """
+    body_objnams: set[str] = set()
+    for obj in candidates:
+        if obj.objtype == BODY_TYPE:
+            body_objnams.add(obj.objnam)
+        elif obj.objtype == HEATER_TYPE:
+            served = obj[BODY_ATTR]
+            if served:
+                body_objnams.update(served.split(" "))
+
+    bodies: list[PoolObject] = []
+    for objnam in body_objnams:
+        body = coordinator.model[objnam]
+        if body is not None and body.objtype == BODY_TYPE:
+            bodies.append(body)
+    return bodies
 
 
 # -------------------------------------------------------------------------------------

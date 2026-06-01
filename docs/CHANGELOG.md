@@ -7,12 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- **Options flow 500 error** (#40) - Opening the integration options (the gear icon on the integration card) raised *"Config flow could not be loaded: 500 Internal Server Error"*. `OptionsFlowHandler` assigned `self.config_entry` in its `__init__`, but Home Assistant made `config_entry` a read-only property on the base `OptionsFlow` and removed the deprecated setter in 2025.12, so the assignment raised `AttributeError: property 'config_entry' ... has no setter` on current Home Assistant. The handler now relies on the `config_entry` that the base class provides. Thanks to @jeffstearns for the detailed report and traceback.
-- **SAm light show missing from effect list** (#47) - The SAm IntelliBrite light show (reported by IntelliCenter as `USE=SAMMOD`) was missing from the effect map, so selecting it from the controller or IntelliCenter web app left the Home Assistant light entity's effect showing null. Added the `SAMMOD` -> "SAm" mapping in pyintellicenter (>=0.1.17). Thanks to @CrewDawg72 for reporting.
+### Added
+- **Runtime detection of newly-added equipment** (#42) - Equipment added to the Pentair system after Home Assistant has started (for example a second IntelliChem controller coming online) now surfaces its sensors and controls automatically, without requiring a restart. The coordinator watches the pool model for previously-unseen objects and notifies each platform so it can create the matching entities at runtime. Thanks to @bhamiltoncx for the report.
 
 ### Changed
 - **Test/dev environment now tracks released Home Assistant** - Bumped the test stack to Home Assistant 2026.5.4 (Python 3.14.2+, `pytest-homeassistant-custom-component` 0.13.333) to match production. The previous pin (HA 2025.11.3) still shipped the deprecated options-flow `config_entry` setter (warn-only for custom integrations), which silently masked #40 in CI; tracking the shipped HA version ensures such removals are exercised before release.
+
+### Fixed
+- **Options flow 500 error** (#40) - Opening the integration options (the gear icon on the integration card) raised *"Config flow could not be loaded: 500 Internal Server Error"*. `OptionsFlowHandler` assigned `self.config_entry` in its `__init__`, but Home Assistant made `config_entry` a read-only property on the base `OptionsFlow` and removed the deprecated setter in 2025.12, so the assignment raised `AttributeError: property 'config_entry' ... has no setter` on current Home Assistant. The handler now relies on the `config_entry` that the base class provides. Thanks to @jeffstearns for the detailed report and traceback.
+- **SAm light show missing from effect list** (#47) - The SAm IntelliBrite light show (reported by IntelliCenter as `USE=SAMMOD`) was missing from the effect map, so selecting it from the controller or IntelliCenter web app left the Home Assistant light entity's effect showing null. Added the `SAMMOD` -> "SAm" mapping in pyintellicenter (>=0.1.17). Thanks to @CrewDawg72 for reporting.
 
 ---
 

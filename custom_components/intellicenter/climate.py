@@ -13,6 +13,7 @@ Climate entities support:
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 import logging
 from typing import Any
 
@@ -28,7 +29,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyintellicenter import (
     BODY_ATTR,
-    BODY_TYPE,
     HEATER_ATTR,
     HEATER_TYPE,
     HITMP_ATTR,
@@ -42,7 +42,12 @@ from pyintellicenter import (
     PoolObject,
 )
 
-from . import IntelliCenterConfigEntry, PoolEntity
+from . import (
+    IntelliCenterConfigEntry,
+    PoolEntity,
+    async_setup_pool_entities,
+    bodies_affected_by,
+)
 from .coordinator import IntelliCenterCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -51,40 +56,48 @@ _LOGGER = logging.getLogger(__name__)
 PARALLEL_UPDATES = 0
 
 
-async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: IntelliCenterConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    """Set up climate entities for bodies with cooling support."""
-    coordinator = entry.runtime_data
+def _build_entities(
+    coordinator: IntelliCenterCoordinator, candidates: Iterable[PoolObject]
+) -> list[PoolClimate]:
+    """Build climate entities for cooling-capable bodies affected by candidates.
 
+    Only bodies whose heat pump supports cooling get a climate entity. A body is
+    (re)evaluated when it is itself a candidate OR when a candidate heater serves
+    it (issue #42). Duplicate entities for already-known bodies are filtered by
+    the caller via ``unique_id``.
+    """
     # Find all heaters sorted by UI order
     heaters = sorted(
         coordinator.model.get_by_type(HEATER_TYPE),
         key=lambda h: int(h[LISTORD_ATTR]) if h[LISTORD_ATTR] else 100,
     )
 
-    bodies = coordinator.model.get_by_type(BODY_TYPE)
-
-    climate_entities = []
-    body: PoolObject
-    for body in bodies:
+    climate_entities: list[PoolClimate] = []
+    for body in bodies_affected_by(coordinator, candidates):
         # Check if this body supports cooling (has UltraTemp heat pump)
         if not coordinator.controller.body_supports_cooling(body.objnam):
             continue
 
         # Build list of heaters that support this body
-        heater_list = []
-        heater: PoolObject
-        for heater in heaters:
-            if body.objnam in heater[BODY_ATTR].split(" "):
-                heater_list.append(heater.objnam)
+        heater_list = [
+            heater.objnam
+            for heater in heaters
+            if body.objnam in heater[BODY_ATTR].split(" ")
+        ]
 
         if heater_list:
             climate_entities.append(PoolClimate(coordinator, body, heater_list))
 
-    async_add_entities(climate_entities)
+    return climate_entities
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: IntelliCenterConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up climate entities for bodies with cooling support."""
+    async_setup_pool_entities(entry, async_add_entities, _build_entities)
 
 
 class PoolClimate(PoolEntity, ClimateEntity):

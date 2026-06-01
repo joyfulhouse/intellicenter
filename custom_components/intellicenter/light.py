@@ -6,6 +6,7 @@ Supports color effects for IntelliBrite, MagicStream, and GloBrite lights.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 import logging
 from typing import Any, ClassVar
 
@@ -26,7 +27,7 @@ from pyintellicenter import (
     PoolObject,
 )
 
-from . import IntelliCenterConfigEntry, PoolEntity
+from . import IntelliCenterConfigEntry, PoolEntity, async_setup_pool_entities
 from .coordinator import IntelliCenterCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -35,18 +36,12 @@ _LOGGER = logging.getLogger(__name__)
 PARALLEL_UPDATES = 0
 
 
-async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: IntelliCenterConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    """Load pool lights based on a config entry."""
-    coordinator = entry.runtime_data
-
+def _build_entities(
+    coordinator: IntelliCenterCoordinator, candidates: Iterable[PoolObject]
+) -> list[PoolLight]:
+    """Build light entities for the given candidate pool objects."""
     lights: list[PoolLight] = []
-
-    obj: PoolObject
-    for obj in coordinator.model:
+    for obj in candidates:
         if obj.is_a_light:
             lights.append(
                 PoolLight(
@@ -70,8 +65,16 @@ async def async_setup_entry(
                     LIGHT_EFFECTS if supports_color else None,
                 )
             )
+    return lights
 
-    async_add_entities(lights)
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: IntelliCenterConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Load pool lights based on a config entry."""
+    async_setup_pool_entities(entry, async_add_entities, _build_entities)
 
 
 class PoolLight(PoolEntity, LightEntity):

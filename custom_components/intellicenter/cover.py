@@ -5,6 +5,7 @@ This module provides cover entities for pool covers and other motorized covers.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 import logging
 from typing import Any
 
@@ -24,7 +25,7 @@ from pyintellicenter import (
     PoolObject,
 )
 
-from . import IntelliCenterConfigEntry, PoolEntity
+from . import IntelliCenterConfigEntry, PoolEntity, async_setup_pool_entities
 from .coordinator import IntelliCenterCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -35,22 +36,24 @@ PARALLEL_UPDATES = 0
 # -------------------------------------------------------------------------------------
 
 
+def _build_entities(
+    coordinator: IntelliCenterCoordinator, candidates: Iterable[PoolObject]
+) -> list[PoolCover]:
+    """Build cover entities for the given candidate pool objects."""
+    covers: list[PoolCover] = []
+    for pool_obj in candidates:
+        if pool_obj.objtype == EXTINSTR_TYPE and pool_obj.subtype == "COVER":
+            covers.append(PoolCover(coordinator, pool_obj))
+    return covers
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: IntelliCenterConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Load pool cover entities based on a config entry."""
-    coordinator = entry.runtime_data
-
-    covers: list[PoolCover] = []
-
-    pool_obj: PoolObject
-    for pool_obj in coordinator.model:
-        if pool_obj.objtype == EXTINSTR_TYPE and pool_obj.subtype == "COVER":
-            covers.append(PoolCover(coordinator, pool_obj))
-
-    async_add_entities(covers)
+    async_setup_pool_entities(entry, async_add_entities, _build_entities)
 
 
 # -------------------------------------------------------------------------------------

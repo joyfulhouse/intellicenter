@@ -8,6 +8,7 @@ notifications from the controller.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import logging
 from typing import Any
 
@@ -83,11 +84,17 @@ from pyintellicenter import (
     ICModelController,
     ICSystemInfo,
     PoolModel,
+    PoolObject,
 )
 
 from .const import DEFAULT_TRANSPORT, DOMAIN, TransportType
 
 _LOGGER = logging.getLogger(__name__)
+
+# Callback invoked when previously-unseen pool objects appear in the model at
+# runtime. Each platform registers one of these so it can create entities for
+# newly-added equipment without requiring a Home Assistant restart (issue #42).
+NewObjectsListener = Callable[[list[PoolObject]], None]
 
 # Default attribute tracking map - defines which attributes to monitor per object type
 DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
@@ -239,6 +246,18 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         self._stop_listener: CALLBACK_TYPE | None = None
         self._connected = False
 
+        # Dynamic-entity-addition state (issue #42).
+        # `_known_objnams` is the set of object identifiers the platforms have
+        # already created entities for. It is seeded once the initial connection
+        # completes (so the objects present at setup are not treated as "new"),
+        # then reconciled against the model whenever updates arrive or the
+        # connection is (re)established. `_started` gates detection so the burst
+        # of attribute updates emitted during the very first controller.start()
+        # is ignored - the seed captures that full initial object set instead.
+        self._known_objnams: set[str] = set()
+        self._started = False
+        self._new_objects_listeners: list[NewObjectsListener] = []
+
     @property
     def controller(self) -> ICModelController:
         """Return the ICModelController."""
@@ -275,6 +294,12 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         await self._handler.start()
         self._connected = True
 
+        # Snapshot the objects discovered during the initial connection. Anything
+        # that appears in the model after this point is treated as newly-added
+        # equipment and dispatched to the registered platform listeners.
+        self._known_objnams = {obj.objnam for obj in self._model}
+        self._started = True
+
     async def async_stop(self) -> None:
         """Stop the connection to the IntelliCenter."""
         # Cancel stop listener
@@ -300,6 +325,62 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         return {}
 
     @callback
+    def async_add_new_objects_listener(
+        self, listener: NewObjectsListener
+    ) -> CALLBACK_TYPE:
+        """Register a callback for newly-added pool objects.
+
+        Each platform registers a listener during setup so it can create
+        entities for equipment that appears after the integration has started
+        (issue #42), e.g. a second IntelliChem controller coming online. The
+        listener receives the list of new PoolObjects each time previously-unseen
+        objects are detected in the model.
+
+        Args:
+            listener: Callback invoked with the list of new PoolObjects.
+
+        Returns:
+            A callable that unregisters the listener.
+        """
+        self._new_objects_listeners.append(listener)
+
+        @callback
+        def _remove_listener() -> None:
+            self._new_objects_listeners.remove(listener)
+
+        return _remove_listener
+
+    @callback
+    def _async_detect_new_objects(self) -> None:
+        """Detect objects added to the model and notify platform listeners.
+
+        Compares the current model against the set of objects the platforms
+        already know about. Any new objects are recorded and dispatched to the
+        registered listeners so the platforms can create entities for them at
+        runtime. Does nothing until the initial connection has completed.
+        """
+        if not self._started:
+            return
+
+        new_objects = [
+            obj for obj in self._model if obj.objnam not in self._known_objnams
+        ]
+        if not new_objects:
+            return
+
+        # Record before notifying so a listener cannot observe the objects as
+        # "new" a second time (e.g. via a re-entrant refresh).
+        self._known_objnams.update(obj.objnam for obj in new_objects)
+
+        _LOGGER.debug(
+            "Detected %d new pool object(s): %s",
+            len(new_objects),
+            ", ".join(obj.objnam for obj in new_objects),
+        )
+        for listener in list(self._new_objects_listeners):
+            listener(new_objects)
+
+    @callback
     def async_set_updated_data(self, data: dict[str, dict[str, Any]]) -> None:
         """Handle push update from IntelliCenter.
 
@@ -310,6 +391,9 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
             data: Dictionary of object updates {objnam: {attr: value}}
         """
         self.data = data
+        # New equipment can enter the model on a reconnect (the controller
+        # re-fetches every object on start), so reconcile before fanning out.
+        self._async_detect_new_objects()
         self.async_update_listeners()
 
     @callback
@@ -320,6 +404,10 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
             connected: True if connected, False if disconnected
         """
         self._connected = connected
+        # A reconnect re-fetches the full object list into the model; surface any
+        # equipment that was added while the connection was down.
+        if connected:
+            self._async_detect_new_objects()
         # Notify all listeners of the connection state change
         self.async_update_listeners()
 

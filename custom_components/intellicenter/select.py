@@ -6,6 +6,7 @@ This module provides select entities for pump circuit mode selection
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 import logging
 from typing import Any
 
@@ -23,7 +24,7 @@ from pyintellicenter import (
     PoolObject,
 )
 
-from . import IntelliCenterConfigEntry, PoolEntity
+from . import IntelliCenterConfigEntry, PoolEntity, async_setup_pool_entities
 from .coordinator import IntelliCenterCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,18 +38,14 @@ PUMP_MODE_GPM = "GPM"
 PUMP_MODES = [PUMP_MODE_RPM, PUMP_MODE_GPM]
 
 
-async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: IntelliCenterConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    """Load Pentair select entities based on a config entry."""
-    coordinator = entry.runtime_data
-
+def _build_entities(
+    coordinator: IntelliCenterCoordinator, candidates: Iterable[PoolObject]
+) -> list[PumpModeSelect]:
+    """Build pump-mode select entities for the given candidate pool objects."""
     selects: list[PumpModeSelect] = []
 
     pool_obj: PoolObject
-    for pool_obj in coordinator.model:
+    for pool_obj in candidates:
         # Create pump mode selector only for PMPCIRC objects where the parent pump
         # supports BOTH RPM (MAX_ATTR > 0) and GPM (MAXF_ATTR > 0) modes
         if pool_obj.objtype == PMPCIRC_TYPE and SELECT_ATTR in pool_obj.attribute_keys:
@@ -94,7 +91,16 @@ async def async_setup_entry(
                 )
             )
 
-    async_add_entities(selects)
+    return selects
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: IntelliCenterConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Load Pentair select entities based on a config entry."""
+    async_setup_pool_entities(entry, async_add_entities, _build_entities)
 
 
 class PumpModeSelect(PoolEntity, SelectEntity):

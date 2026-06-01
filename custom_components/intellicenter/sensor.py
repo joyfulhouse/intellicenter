@@ -12,6 +12,7 @@ as they are user-entered configuration, not sensor readings.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 import logging
 from typing import Any
 
@@ -52,7 +53,7 @@ from pyintellicenter import (
     PoolObject,
 )
 
-from . import IntelliCenterConfigEntry, PoolEntity
+from . import IntelliCenterConfigEntry, PoolEntity, async_setup_pool_entities
 from .const import CONST_GPM, CONST_RPM
 from .coordinator import IntelliCenterCoordinator
 
@@ -64,18 +65,14 @@ PARALLEL_UPDATES = 0
 # -------------------------------------------------------------------------------------
 
 
-async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: IntelliCenterConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    """Load pool sensors based on a config entry."""
-    coordinator = entry.runtime_data
-
+def _build_entities(
+    coordinator: IntelliCenterCoordinator, candidates: Iterable[PoolObject]
+) -> list[PoolSensor]:
+    """Build sensor entities for the given candidate pool objects."""
     sensors: list[PoolSensor] = []
 
     obj: PoolObject
-    for obj in coordinator.model:
+    for obj in candidates:
         if obj.objtype == SENSE_TYPE:
             sensors.append(
                 PoolSensor(
@@ -301,7 +298,16 @@ async def async_setup_entry(
                         state_class=None,  # Non-numeric value
                     )
                 )
-    async_add_entities(sensors)
+    return sensors
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: IntelliCenterConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Load pool sensors based on a config entry."""
+    async_setup_pool_entities(entry, async_add_entities, _build_entities)
 
 
 # -------------------------------------------------------------------------------------

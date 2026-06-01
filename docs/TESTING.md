@@ -4,13 +4,15 @@ This document describes the automated testing infrastructure for the Pentair Int
 
 ## Test Framework
 
-This project uses `pytest` with the `pytest-homeassistant-custom-component` framework for automated testing. The test suite covers:
+This project uses `pytest` with the `pytest-homeassistant-custom-component` framework for automated testing. The integration test suite (257 tests across 13 files) covers:
 
 - **Config Flow Tests**: User setup, Zeroconf discovery, error handling
-- **Platform Tests**: Entity creation and behavior for all platforms (light, switch, sensor, etc.)
-- **Model Tests**: PoolModel and PoolObject state management
-- **Protocol Tests**: TCP communication and message handling (planned)
-- **Controller Tests**: Connection management and reconnection logic (planned)
+- **Integration/Setup Tests**: Entry setup and unload, retry on transient connection errors, connection handler behavior
+- **Platform Tests**: Entity creation and behavior for all platforms (light, switch, sensor, binary_sensor, water_heater, climate, number, cover)
+- **Diagnostics Tests**: Diagnostic data export
+- **Contract & Version Tests**: pyintellicenter library contract and version-sync guards
+
+**Protocol Tests**, **Controller Tests**, and **Model Tests** (TCP communication, connection management/reconnection, and PoolModel/PoolObject state) live in the standalone [pyintellicenter](https://github.com/joyfulhouse/pyintellicenter) repository, not here.
 
 ## Installation
 
@@ -120,26 +122,20 @@ Tests user-initiated setup and Zeroconf discovery:
 
 #### Integration Tests (`test_init.py`)
 
-Tests integration setup and lifecycle:
+Tests integration setup and lifecycle (21 tests):
 - ✅ Integration setup and entry loading
 - ✅ Entry unloading
-- ✅ Connection failure handling
+- ✅ Retry on transient connection errors (`ConfigEntryNotReady` so HA retries with backoff)
+- ✅ Loud failure on rejected-command / non-network errors
+- ✅ Clean teardown of the partially-started coordinator (no leaked reconnect task)
+- ✅ Connection handler behavior
 
-#### Model Tests (`test_model.py`)
-
-Tests PoolModel and PoolObject classes (24 tests):
-- ✅ PoolObject creation and properties
-- ✅ Light/switch/pump type detection
-- ✅ Status handling (on/off)
-- ✅ Attribute updates
-- ✅ PoolModel object management
-- ✅ Filtering by type/subtype
-- ✅ Parent-child relationships
-- ✅ Batch updates processing
+> **Model Tests**: PoolModel and PoolObject state-management tests live in the
+> [pyintellicenter](https://github.com/joyfulhouse/pyintellicenter) repository, not in this repo.
 
 #### Light Platform Tests (`test_light.py`)
 
-Comprehensive light entity tests (14 tests):
+Comprehensive light entity tests (47 tests, including parameterized effect tests):
 - ✅ Entity creation for IntelliBrite/regular lights/light shows
 - ✅ Turn on/off operations
 - ✅ Color effect support
@@ -149,67 +145,101 @@ Comprehensive light entity tests (14 tests):
 
 #### Switch Platform Tests (`test_switch.py`)
 
-Comprehensive switch entity tests (10 tests):
+Comprehensive switch entity tests (11 tests):
 - ✅ Entity creation for circuits and bodies
 - ✅ Turn on/off operations
 - ✅ Featured circuit filtering
 - ✅ Body (pool/spa) switch behavior
 - ✅ Vacation mode switch
 - ✅ State updates
+- ✅ Device class
 
 #### Sensor Platform Tests (`test_sensor.py`)
 
-Basic sensor tests (needs expansion):
-- ⚠️ Platform setup (stub only)
-- 🔄 Temperature sensors (planned)
-- 🔄 Power/RPM/GPM sensors (planned)
-- 🔄 Chemistry sensors (planned)
+Sensor entity tests (18 tests):
+- ✅ Temperature sensors
+- ✅ Power/RPM/GPM pump sensors
+- ✅ Chemistry sensors (pH device class, ORP, tank levels)
+- ✅ Platform setup and state updates
 
 #### Binary Sensor Tests (`test_binary_sensor.py`)
 
-Tests needed for:
-- 🔄 Pump status sensors
-- 🔄 Heater status sensors
-- 🔄 Schedule sensors
-- 🔄 Freeze protection sensor
+Binary sensor entity tests (15 tests):
+- ✅ Pump status sensors
+- ✅ Heater status sensors
+- ✅ Schedule sensors
+- ✅ Freeze protection sensor
 
-#### Water Heater Tests
+#### Water Heater Tests (`test_water_heater.py`)
 
-Tests needed for:
-- 🔄 Water heater entity creation
-- 🔄 Temperature setpoint changes
-- 🔄 Mode selection (heat/idle/off)
-- 🔄 Heater status tracking
+Water heater entity tests (46 tests):
+- ✅ Water heater entity creation
+- ✅ Temperature setpoint changes
+- ✅ Mode selection (heat/idle/off)
+- ✅ Heater status tracking
+- ✅ HCOMBO multi-mode operation (Gas Only / Heat Pump Only / Hybrid / Dual)
+- ✅ Last-used operation remembered and restored on turn-on
+- ✅ Bodies combining an HCOMBO with a standard heater
+
+#### Climate Tests (`test_climate.py`)
+
+UltraTemp heat pump climate tests (22 tests):
+- ✅ Heating/cooling modes and HVAC action
+- ✅ Setpoint changes and preset detection
+
+#### Number Platform Tests (`test_number.py`)
+
+Setpoint number entity tests (33 tests):
+- ✅ Chemistry setpoints and pump speed/flow targets
+
+#### Cover Platform Tests (`test_cover.py`)
+
+Pool cover entity tests (17 tests):
+- ✅ Open/close control and device class
+
+#### Diagnostics Tests (`test_diagnostics.py`)
+
+Diagnostic export tests (10 tests):
+- ✅ Connection metrics and config-entry diagnostics
+
+#### Contract & Version Tests
+
+- ✅ `test_library_contract.py` (2 tests): pyintellicenter API contract
+- ✅ `test_versions.py` (2 tests): manifest/pyproject version-sync guards
 
 ## Test Coverage Status
 
 ### Current Coverage
 
-**Total Tests**: 59 tests across 6 test files
+**Total Tests**: 257 tests across 13 test files
 
 | Component | Tests | Status |
 |-----------|-------|--------|
-| Config Flow | 8 tests | ✅ Complete |
-| Integration | 5 tests | ✅ Complete |
-| Model | 24 tests | ✅ Complete |
-| Light Platform | 14 tests | ✅ Complete |
-| Switch Platform | 10 tests | ✅ Complete |
-| Sensor Platform | 1 test | ⚠️ Needs expansion |
-| Binary Sensor | 0 tests | 🔄 Pending |
-| Water Heater | 0 tests | 🔄 Pending |
-| Number Platform | 0 tests | 🔄 Pending |
-| Cover Platform | 0 tests | 🔄 Pending |
-| Protocol Layer | 0 tests | 🔄 Pending |
-| Controller Layer | 0 tests | 🔄 Pending |
-| Diagnostics | 0 tests | 🔄 Pending |
+| Light Platform | 47 tests | ✅ Complete |
+| Water Heater | 46 tests | ✅ Complete |
+| Number Platform | 33 tests | ✅ Complete |
+| Climate Platform | 22 tests | ✅ Complete |
+| Integration / Setup | 21 tests | ✅ Complete |
+| Sensor Platform | 18 tests | ✅ Complete |
+| Cover Platform | 17 tests | ✅ Complete |
+| Binary Sensor | 15 tests | ✅ Complete |
+| Config Flow | 13 tests | ✅ Complete |
+| Switch Platform | 11 tests | ✅ Complete |
+| Diagnostics | 10 tests | ✅ Complete |
+| Library Contract | 2 tests | ✅ Complete |
+| Version Sync | 2 tests | ✅ Complete |
+| **Total** | **257 tests** | ✅ Complete |
+
+> Protocol, controller, and model tests are maintained in the standalone
+> [pyintellicenter](https://github.com/joyfulhouse/pyintellicenter) repository and are not counted here.
 
 ### Gold Quality Requirements Met
 
-✅ **Extensive automated test coverage** - 59 tests covering:
+✅ **Extensive automated test coverage** - 257 tests covering:
   - Config flow (user + Zeroconf)
-  - Platform entity creation
+  - Integration setup, unload, and retry-on-transient-error
+  - Platform entity creation across all platforms
   - Entity state management
-  - Model/object management
   - Turn on/off operations
   - State updates
 

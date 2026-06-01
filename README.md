@@ -30,17 +30,12 @@ This integration connects your Pentair IntelliCenter pool control system to Home
 - **Multi-Language**: User interface available in 12 languages
 - **Easy Reconfiguration**: Change connection settings without removing the integration
 
-## What's New in v3.7
+## What's New in v3.7.0
 
-This release adds new equipment support and critical fixes:
+This release adds hybrid heater support and improves setup reliability:
 
-- **Climate Entity**: Full UltraTemp heat pump support with heating and cooling modes, preset detection, and real-time HVAC action tracking
-- **VSF Pump Control**: Variable Speed/Flow pump mode selection with unified speed/flow setpoint entities
-- **IntelliChem Dosing Sensors**: Monitor acid and chlorine dosing volumes
-- **Pump Speed/Flow Control**: Number entities for setting variable speed pump RPM/GPM targets
-- **Water Heater Fixes**: Resolved operation mode validation errors when changing heater modes
-- **Light Effect Fix**: Color effect control now works correctly with pyintellicenter 0.1.7+
-- **Broader Pump Support**: Removed restrictive subtype checks, supporting more pump configurations
+- **HCOMBO Multi-Mode Heaters**: UltraTemp ETi Hybrid (HCOMBO) heaters now expose Gas Only, Heat Pump Only, Hybrid, and Dual operation modes. The last-used operation is remembered and restored on turn-on, and bodies that combine an HCOMBO with a standard heater are fully supported.
+- **Resilient Setup**: Transient connection failures during startup now trigger Home Assistant's automatic retry with backoff instead of a permanent setup error, so the integration recovers on its own when the IntelliCenter is briefly unreachable.
 
 ## Architecture
 
@@ -137,14 +132,14 @@ After setup, configure connection settings:
 
 | Category | Entity Type | Features |
 |----------|-------------|----------|
-| **Pool/Spa** | Switch, Sensors, Water Heater | On/off, temperature, heater control |
+| **Pool/Spa** | Switch, Sensors, Water Heater | On/off, temperature, heater control (incl. HCOMBO hybrid modes) |
 | **Lights** | Light | On/off, color effects (IntelliBrite, MagicStream) |
 | **Light Shows** | Light | Coordinated multi-light effects |
 | **Circuits** | Switch | All "Featured" circuits (cleaner, blower, etc.) |
 | **Pumps** | Binary Sensor, Sensors | Running status, power (W), speed (RPM), flow (GPM) |
 | **Chemistry** | Sensors, Number | pH, ORP, tank levels, setpoints (IntelliChem) |
 | **Heat Pumps** | Climate | UltraTemp heating/cooling with presets |
-| **Heaters** | Binary Sensor | Running status |
+| **Heaters** | Binary Sensor, Water Heater | Running status; HCOMBO (UltraTemp ETi Hybrid) Gas/Heat Pump/Hybrid/Dual modes |
 | **Schedules** | Binary Sensor | Active status (disabled by default) |
 | **System** | Switch, Binary Sensor, Sensors | Vacation mode, freeze protection, temperatures |
 | **Covers** | Cover | Pool cover open/close control |
@@ -367,7 +362,7 @@ This integration meets the **Platinum tier** quality standards for Home Assistan
 **Gold Requirements:**
 - Full translation support (12 languages)
 - Easy reconfiguration through the UI
-- Comprehensive automated testing (217 tests)
+- Comprehensive automated testing (257 tests)
 - Extensive user-friendly documentation
 - Automatic Zeroconf discovery
 

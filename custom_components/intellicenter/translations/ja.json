@@ -2,7 +2,6 @@
   "entity": {
     "sensor": {
       "system_mode": {
-        "name": "システムモード",
         "state": {
           "auto": "自動",
           "service": "サービス",

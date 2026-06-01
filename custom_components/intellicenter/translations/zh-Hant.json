@@ -2,7 +2,6 @@
   "entity": {
     "sensor": {
       "system_mode": {
-        "name": "系統模式",
         "state": {
           "auto": "自動",
           "service": "維護",

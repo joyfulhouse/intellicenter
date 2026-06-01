@@ -2,7 +2,6 @@
   "entity": {
     "sensor": {
       "system_mode": {
-        "name": "Systemmodus",
         "state": {
           "auto": "Automatik",
           "service": "Wartung",

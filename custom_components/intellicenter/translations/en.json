@@ -2,7 +2,6 @@
   "entity": {
     "sensor": {
       "system_mode": {
-        "name": "System mode",
         "state": {
           "auto": "Auto",
           "service": "Service",

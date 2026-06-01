@@ -626,8 +626,9 @@ async def test_system_mode_sensor_enum_contract(
     assert sensor.translation_key == "system_mode"
     # ENUM sensors must not carry a state_class.
     assert sensor.state_class is None
-    # Name must come from translations, not a hardcoded English string.
-    assert sensor.name is None
+    # Name is set explicitly (PoolEntity.name overrides HA's translation-based
+    # naming); per-state labels are localized via translation_key.
+    assert sensor.name == "System Mode"
     # Unique id includes the attribute key (not the default STATUS).
     assert sensor.unique_id == "test_entry__5451SERVICE"
 
@@ -663,6 +664,34 @@ async def test_system_mode_sensor_native_value_normalizes(
     sensor = SystemModeSensor(mock_coordinator, obj)
 
     assert sensor.native_value == expected
+
+
+@pytest.mark.parametrize("raw", ["", "UNKNOWN", "RUN", "Standby"])
+async def test_system_mode_sensor_unexpected_value_is_unknown(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+    raw: str,
+) -> None:
+    """An unexpected SERVICE value normalizes to None, never out of options.
+
+    Home Assistant raises ValueError if an enum sensor reports a state that is
+    not one of its declared options, so any value outside auto/service/timeout
+    must surface as unknown (None) rather than be returned verbatim.
+    """
+    obj = PoolObject(
+        "_5451",
+        {
+            "OBJTYP": SYSTEM_TYPE,
+            "SNAME": "IntelliCenter System",
+            "SERVICE": raw,
+        },
+    )
+
+    sensor = SystemModeSensor(mock_coordinator, obj)
+
+    assert sensor.native_value is None
+    # Whatever native_value returns must be a valid enum option (or None).
+    assert sensor.native_value in (None, *sensor.options)
 
 
 async def test_system_mode_sensor_native_value_none(

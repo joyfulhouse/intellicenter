@@ -402,11 +402,21 @@ SYSTEM_MODE_OPTIONS = ["auto", "service", "timeout"]
 class SystemModeSensor(PoolSensor):
     """System operating-mode sensor (Auto / Service / Time out).
 
-    IntelliCenter reports the system mode on the SYSTEM object via the SERVICE
-    attribute. This is exposed as an enum sensor whose name and option labels are
-    supplied by translations (via ``translation_key``), so it localizes for every
-    supported language rather than carrying a hardcoded English name.
+    IntelliCenter reports the operating mode on the SYSTEM object via the
+    SERVICE attribute. It is exposed as an enum sensor; the per-state labels
+    are localized via ``translation_key`` (``entity.sensor.system_mode.state``).
+    The entity name itself is set explicitly -- like the Firmware Version sensor
+    -- because ``PoolEntity.name`` overrides Home Assistant's translation-based
+    naming, so a ``translation_key`` name would never be consulted.
+
+    Only the ``AUTO`` value is hardware-confirmed; ``service`` and ``timeout``
+    are the documented modes (Pentair manuals) but their exact protocol strings
+    are inferred. Raw values are normalized case- and space-insensitively, and
+    any value outside the known options is reported as unknown so the enum
+    sensor never raises on an unexpected string.
     """
+
+    _attr_translation_key = "system_mode"
 
     def __init__(
         self,
@@ -419,34 +429,26 @@ class SystemModeSensor(PoolSensor):
             pool_object,
             device_class=SensorDeviceClass.ENUM,
             attribute_key=SERVICE_ATTR,
+            name="System Mode",
             icon="mdi:cog-sync",
             # ENUM sensors must not declare a state_class.
             state_class=None,
         )
         self._attr_options = SYSTEM_MODE_OPTIONS
-        self._attr_translation_key = "system_mode"
-
-    @property
-    def name(self) -> str | None:
-        """Return None so the name is resolved from translations.
-
-        ``PoolEntity.name`` would otherwise return the SYSTEM object's ``sname``.
-        Returning ``None`` lets Home Assistant build the name from
-        ``translation_key`` (``_attr_has_entity_name`` is set on the base class),
-        so the sensor is localized for every supported language.
-        """
-        return None
 
     @property
     def native_value(self) -> str | None:
-        """Return the normalized system mode.
+        """Return the normalized system mode, or None if unrecognized.
 
         The raw SERVICE value is normalized case- and space-insensitively so
         variants like "AUTO", "Service", or "TIME OUT" map onto the documented
-        ``auto``/``service``/``timeout`` options. Any unexpected value is returned
-        in its normalized form rather than dropped, so it remains visible.
+        ``auto``/``service``/``timeout`` options. A value outside that set is
+        reported as ``None`` (unknown) rather than returned verbatim, because
+        Home Assistant raises ``ValueError`` when an enum sensor's state is not
+        one of its declared ``options``.
         """
         raw_value = self._pool_object[self._attribute_key]
         if raw_value is None:
             return None
-        return str(raw_value).strip().lower().replace(" ", "")
+        normalized = str(raw_value).strip().lower().replace(" ", "")
+        return normalized if normalized in SYSTEM_MODE_OPTIONS else None

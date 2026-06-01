@@ -495,6 +495,68 @@ async def test_pmpcirc_select_built_when_parent_pump_arrives_later(
     )
 
 
+async def test_pmpcirc_number_built_when_parent_pump_arrives_later(
+    hass: HomeAssistant,
+    pool_model: PoolModel,
+) -> None:
+    """A PMPCIRC's number entity is built once its parent pump arrives later.
+
+    Regression test for the number-platform limit-upgrade gap (companion to the
+    select test above). Previously the number platform eagerly built a PMPCIRC
+    entity with guessed RPM-only defaults even when the parent pump was absent;
+    unique_id de-duplication then prevented the correct entity (e.g. the VSF
+    PumpSpeedNumber) from ever replacing it. The builder now skips while the
+    parent is absent, and the coordinator re-dispatch (issue #57) builds the
+    correct entity once the parent VSF pump appears.
+    """
+    from custom_components.intellicenter.number import (
+        PumpSpeedNumber,
+        async_setup_entry,
+    )
+
+    coordinator = _make_coordinator(hass, pool_model)
+
+    entry = MagicMock()
+    entry.runtime_data = coordinator
+    entry.async_on_unload = MagicMock()
+
+    added: list[Any] = []
+    await async_setup_entry(hass, entry, added.extend)
+
+    def added_for(objnam: str) -> list[Any]:
+        return [e for e in added if e._pool_object.objnam == objnam]
+
+    # The PMPCIRC child appears first, while its parent pump is still absent.
+    new_child = pool_model.add_object(PMPCIRC2_OBJNAM, dict(PMPCIRC2_PARAMS))
+    assert new_child is not None
+    assert pool_model[PUMP2_OBJNAM] is None  # parent genuinely not in the model
+
+    added.clear()
+    coordinator._async_detect_new_objects()
+
+    # With no parent pump, the pump type/limits are unknown, so NO number entity
+    # is created (it would otherwise be a wrong-class default that could never be
+    # upgraded). The child is recorded as known.
+    assert added_for(PMPCIRC2_OBJNAM) == []
+    assert PMPCIRC2_OBJNAM in coordinator._known_objnams
+
+    # The parent VSF pump arrives in a SEPARATE, later update.
+    new_pump = pool_model.add_object(PUMP2_OBJNAM, dict(PUMP2_PARAMS))
+    assert new_pump is not None
+
+    added.clear()
+    coordinator._async_detect_new_objects()
+
+    # The PMPCIRC is re-dispatched as a dependent; the number platform now builds
+    # the correct VSF entity (a single dynamic PumpSpeedNumber) for it.
+    pmpcirc_numbers = added_for(PMPCIRC2_OBJNAM)
+    assert pmpcirc_numbers, (
+        "number platform did not build an entity for the PMPCIRC once its "
+        "parent pump arrived"
+    )
+    assert any(isinstance(e, PumpSpeedNumber) for e in pmpcirc_numbers)
+
+
 async def test_pmpcirc_redispatched_when_parent_pump_arrives_later(
     hass: HomeAssistant,
     pool_model: PoolModel,

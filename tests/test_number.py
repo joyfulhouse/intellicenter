@@ -1108,3 +1108,54 @@ async def test_number_setup_creates_vf_pump_gpm_entity(
     assert len(pump_entities) == 1
     assert isinstance(pump_entities[0], PoolNumber)
     assert "GPM" in pump_entities[0].name
+
+
+async def test_number_pmpcirc_skipped_when_parent_pump_absent(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+) -> None:
+    """No pump-circuit number is built while the parent pump is absent.
+
+    Regression test for the number-platform limit-upgrade gap: building a
+    PMPCIRC entity before its parent pump is known would lock in guessed
+    RPM-only defaults that unique_id de-duplication could never upgrade once
+    the real (e.g. VSF or VF) pump arrives. The builder must skip instead and
+    rely on the coordinator re-dispatch (issue #57).
+    """
+    from custom_components.intellicenter.number import _build_entities
+
+    model = PoolModel()
+    model.add_objects(
+        [
+            {
+                "objnam": "CIRC01",
+                "params": {
+                    "OBJTYP": CIRCUIT_TYPE,
+                    "SUBTYP": "GENERIC",
+                    "SNAME": "Pool Circuit",
+                },
+            },
+            {
+                "objnam": "PMPCIRC01",
+                "params": {
+                    "OBJTYP": PMPCIRC_TYPE,
+                    "SNAME": "Pool Pump Circuit 1",
+                    "PARENT": "PUMP1",  # parent pump intentionally NOT in the model
+                    "CIRCUIT": "CIRC01",
+                    "SELECT": "RPM",
+                    "SPEED": "2400",
+                },
+            },
+        ]
+    )
+    mock_coordinator.model = model
+
+    entities = _build_entities(mock_coordinator, list(model))
+
+    pmpcirc_entities = [
+        e
+        for e in entities
+        if getattr(e, "_pool_object", None) is not None
+        and e._pool_object.objnam == "PMPCIRC01"
+    ]
+    assert pmpcirc_entities == []

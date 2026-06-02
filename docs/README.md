@@ -8,7 +8,7 @@ Technical documentation for developers working on the Pentair IntelliCenter Home
 | **Quality Scale** | Platinum |
 | **Test Coverage** | 257 tests |
 | **Home Assistant** | 2025.11+ required |
-| **pyintellicenter** | 0.1.16+ required |
+| **pyintellicenter** | 0.1.19+ required |
 
 ## Documentation Index
 

@@ -7,10 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.7.0] - 2026-06-01
+
 ### Added
 - **System operating mode sensor (Auto / Service / Time out)** - Exposes the IntelliCenter system operating mode that the Pentair app shows as a dashboard banner. IntelliCenter reports it on the SYSTEM object's `SERVICE` attribute; the integration surfaces it as an enum sensor (`auto`/`service`/`timeout`) with per-state labels localized across all 12 supported languages. Requires pyintellicenter >= 0.1.18 (which exports the `SERVICE_ATTR` constant). Only the `AUTO` value is hardware-confirmed; the Service/Timeout protocol strings are inferred from Pentair documentation and normalized case/space-insensitively, with any unexpected value reported as unknown. Thanks to the Home Assistant community member (dbb1) who requested it.
 - **Runtime detection of newly-added equipment** (#42) - Equipment added to the Pentair system after Home Assistant has started (for example a second IntelliChem controller coming online) now surfaces its sensors and controls automatically, without requiring a restart. The coordinator watches the pool model for previously-unseen objects and notifies each platform so it can create the matching entities at runtime. Thanks to @bhamiltoncx for the report.
 - **Runtime detection now covers dependent equipment** (#57) - Extends the runtime detection above to equipment whose entities depend on another object: a heater added to a body that already has a water heater / climate entity now updates that entity's available modes in place (derived from the live model), and a pump circuit (`PMPCIRC`) that arrives before its parent pump is re-evaluated once the pump appears. Neither requires a restart any more.
+- **HCOMBO operation modes** - Water heater entities backed by an HCOMBO heater now expose all four sub-modes as selectable operation modes: Gas Only, Heat Pump Only, Hybrid, and Dual. The last-used operation is remembered and restored on turn-on. Bodies with both an HCOMBO and a standard heater are fully supported.
 
 ### Changed
 - **Test/dev environment now tracks released Home Assistant** - Bumped the test stack to Home Assistant 2026.5.4 (Python 3.14.2+, `pytest-homeassistant-custom-component` 0.13.333) to match production. The previous pin (HA 2025.11.3) still shipped the deprecated options-flow `config_entry` setter (warn-only for custom integrations), which silently masked #40 in CI; tracking the shipped HA version ensures such removals are exercised before release.
@@ -18,19 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Options flow 500 error** (#40) - Opening the integration options (the gear icon on the integration card) raised *"Config flow could not be loaded: 500 Internal Server Error"*. `OptionsFlowHandler` assigned `self.config_entry` in its `__init__`, but Home Assistant made `config_entry` a read-only property on the base `OptionsFlow` and removed the deprecated setter in 2025.12, so the assignment raised `AttributeError: property 'config_entry' ... has no setter` on current Home Assistant. The handler now relies on the `config_entry` that the base class provides. Thanks to @jeffstearns for the detailed report and traceback.
+- **Retry setup on transient connection errors** (#41) - When Home Assistant restarts while IntelliCenter (or its bridge) is briefly unreachable or still booting, setup now raises `ConfigEntryNotReady` so HA retries with exponential backoff instead of leaving the entry in a permanent error state requiring a manual reload. Only connection-level failures are retried; a rejected command or non-network error still fails loudly, and the partially started coordinator is always torn down (no leaked reconnect task). Thanks to @jeffstearns for the report.
 - **SAm light show missing from effect list** (#47) - The SAm IntelliBrite light show (reported by IntelliCenter as `USE=SAMMOD`) was missing from the effect map, so selecting it from the controller or IntelliCenter web app left the Home Assistant light entity's effect showing null. Added the `SAMMOD` -> "SAm" mapping in pyintellicenter (>=0.1.17). Thanks to @CrewDawg72 for reporting.
-- **Pump-circuit setpoints no longer lock in guessed defaults** - A pump circuit (`PMPCIRC`) that briefly appeared before its parent pump caused the number platform to build a speed/flow setpoint with default RPM-only limits; because Home Assistant de-duplicates entities by unique id, that placeholder could never be upgraded to the correct control once the real pump (RPM-only, GPM-only, or dual-mode VSF) arrived in a later update. The number platform now defers entity creation until the parent pump is known (mirroring the select platform), so the runtime re-dispatch builds the correct entity and limits the first time. Follow-up to #57.
-
----
-
-## [3.7.0] - 2026-05-31
-
-### Fixed
-- **Retry setup on transient connection errors** (#41) - When Home Assistant restarts while IntelliCenter (or its bridge) is briefly unreachable or still booting, setup now raises `ConfigEntryNotReady` so HA retries with exponential backoff instead of leaving the entry in a permanent error state requiring a manual reload. Only connection-level failures are retried; a rejected command or non-network error still fails loudly, and the partially started coordinator is always torn down (no leaked reconnect task).
 - **HCOMBO heater control** - Multi-mode heaters (e.g. Pentair UltraTemp ETi Hybrid, subtype `HCOMBO`) can now be turned on and off correctly. IntelliCenter ignores `HEATER` attribute changes for HCOMBO heaters; the fix routes all control through the body's `MODE` attribute instead.
-
-### Added
-- **HCOMBO operation modes** - Water heater entities backed by an HCOMBO heater now expose all four sub-modes as selectable operation modes: Gas Only, Heat Pump Only, Hybrid, and Dual. The last-used operation is remembered and restored on turn-on. Bodies with both an HCOMBO and a standard heater are fully supported.
+- **Pump-circuit setpoints no longer lock in guessed defaults** - A pump circuit (`PMPCIRC`) that briefly appeared before its parent pump caused the number platform to build a speed/flow setpoint with default RPM-only limits; because Home Assistant de-duplicates entities by unique id, that placeholder could never be upgraded to the correct control once the real pump (RPM-only, GPM-only, or dual-mode VSF) arrived in a later update. The number platform now defers entity creation until the parent pump is known (mirroring the select platform), so the runtime re-dispatch builds the correct entity and limits the first time. Follow-up to #57.
 
 ---
 

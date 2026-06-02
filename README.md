@@ -8,7 +8,8 @@ Control your Pentair IntelliCenter pool system directly from Home Assistant with
 [![CI][ci-badge]][ci-workflow]
 [![Quality Scale][quality-badge]][quality-scale]
 [![Project Maintenance][maintenance-shield]][user_profile]
-[![Buy Me A Coffee][bmc-shield]][bmc]
+[![GitHub Sponsors][gh-sponsors-shield]][gh-sponsors]
+[![Ko-fi][kofi-shield]][kofi]
 
 ## What Does This Integration Do?
 
@@ -348,9 +349,9 @@ See [docs/](docs/) for architecture documentation and development guidelines.
 
 ## Support Development
 
-This integration is built and maintained in my spare time, with real hardware and tooling costs behind every release. If it's useful to you, consider chipping in to help offset development and testing — it's genuinely appreciated and helps keep the project moving.
+This integration is built and maintained in my spare time, with real hardware and tooling costs behind every release. If it's useful to you, consider sponsoring the project or leaving a tip to help offset development and testing — it's genuinely appreciated and helps keep the project moving.
 
-[![Buy Me A Coffee][bmc-shield]][bmc]
+[![GitHub Sponsors][gh-sponsors-shield]][gh-sponsors] [![Ko-fi][kofi-shield]][kofi]
 
 ## License
 
@@ -397,5 +398,7 @@ We extend our sincere gratitude for their foundational work that made this integ
 [quality-scale]: https://www.home-assistant.io/docs/quality_scale/
 [maintenance-shield]: https://img.shields.io/badge/maintainer-joyfulhouse-blue.svg?style=for-the-badge
 [user_profile]: https://github.com/joyfulhouse
-[bmc-shield]: https://img.shields.io/badge/Buy_Me_A_Coffee-support-FFDD00.svg?style=for-the-badge&logo=buymeacoffee&logoColor=black
-[bmc]: https://buymeacoffee.com/btli
+[gh-sponsors-shield]: https://img.shields.io/badge/Sponsor-GitHub-EA4AAA.svg?style=for-the-badge&logo=githubsponsors&logoColor=white
+[gh-sponsors]: https://github.com/sponsors/btli
+[kofi-shield]: https://img.shields.io/badge/Ko--fi-support-FF5E5B.svg?style=for-the-badge&logo=ko-fi&logoColor=white
+[kofi]: https://ko-fi.com/bryanli

@@ -211,7 +211,7 @@ Add these to your README to show CI/CD status:
 ✅ Active Code Ownership
 ✅ Authentication Handling
 
-See [QUALITY_SCALE_COMPLIANCE.md](../../QUALITY_SCALE_COMPLIANCE.md) for complete details.
+See [QUALITY_SCALE_COMPLIANCE.md](../../docs/QUALITY_SCALE_COMPLIANCE.md) for complete details.
 
 ---
 

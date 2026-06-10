@@ -327,7 +327,7 @@ async def test_water_heater_set_temperature_invalid(
     pool_object_body_with_heater: PoolObject,
     mock_coordinator: MagicMock,
 ) -> None:
-    """An unparseable temperature raises a clean HomeAssistantError."""
+    """An unparsable temperature raises a clean HomeAssistantError."""
     water_heater = PoolWaterHeater(
         mock_coordinator,
         pool_object_body_with_heater,

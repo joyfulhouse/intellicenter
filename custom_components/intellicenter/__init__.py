@@ -322,7 +322,7 @@ def safe_int(value: Any) -> int | None:
 
 
 def _heater_sort_key(heater: PoolObject) -> int:
-    """Sort heaters by LISTORD; unparseable or missing values sort last."""
+    """Sort heaters by LISTORD; unparsable or missing values sort last."""
     order = safe_int(heater[LISTORD_ATTR])
     return order if order is not None else 100
 
@@ -674,7 +674,7 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
 
 # Under static type checking the mixin is treated as an ``Entity`` subclass so
 # mypy can resolve the ``Entity`` members it uses (``hass``,
-# ``async_write_ha_state``) without re-declaring them - re-declaring
+# ``async_write_ha_state``) without redeclaring them - redeclaring
 # ``async_write_ha_state`` would clash with its ``@final`` marker on ``Entity``.
 # At runtime the mixin stays a plain ``object`` subclass, so the method
 # resolution order of the concrete entity classes is unchanged.

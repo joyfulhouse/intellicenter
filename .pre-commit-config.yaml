@@ -1,7 +1,7 @@
 repos:
   # Ruff - Fast Python linter and formatter (replaces black, isort, flake8, pyupgrade)
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.4
+    rev: v0.14.14
     hooks:
       # Run the linter
       - id: ruff
@@ -9,7 +9,7 @@ repos:
       # Run the formatter
       - id: ruff-format
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.3.0
+    rev: v2.4.2
     hooks:
       - id: codespell
         args:
@@ -18,7 +18,7 @@ repos:
           - --quiet-level=2
         exclude_types: [csv, json]
   - repo: https://github.com/PyCQA/bandit
-    rev: 1.7.10
+    rev: 1.9.4
     hooks:
       - id: bandit
         args:
@@ -26,12 +26,16 @@ repos:
           - --format=custom
           - --configfile=pyproject.toml
         additional_dependencies: ["bandit[toml]"]
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.13.0
+  # mypy runs from the project environment (uv) so it sees homeassistant and
+  # pyintellicenter; the isolated mirrors-mypy env produced false positives.
+  - repo: local
     hooks:
       - id: mypy
-        args: [--ignore-missing-imports]
-        additional_dependencies: []
+        name: mypy
+        entry: uv run mypy custom_components/intellicenter/ --ignore-missing-imports
+        language: system
+        types: [python]
+        pass_filenames: false
         files: ^custom_components/intellicenter/
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0

@@ -1,0 +1,8 @@
+# Relaxed defaults for this repo: GitHub Actions files use the `on:` keyword
+# (a yamllint truthy false-positive) and readable workflow lines up to 120.
+extends: default
+rules:
+  line-length:
+    max: 120
+  truthy:
+    check-keys: false

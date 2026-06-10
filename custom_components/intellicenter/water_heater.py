@@ -315,7 +315,7 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
         """Return current operation.
 
         This reflects the configured heater mode, independent of whether the
-        body is currently running (STATUS). A user can pre-select a heater for
+        body is currently running (STATUS). A user can preselect a heater for
         a body even when it's off (e.g., setting the Spa heater while in Pool
         mode). The real-time heating activity is exposed via the heating_status
         extra state attribute.

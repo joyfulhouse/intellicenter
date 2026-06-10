@@ -455,6 +455,14 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         # equipment that was added while the connection was down.
         if connected:
             self._async_detect_new_objects()
+        # Clear the last push diff before fanning out. PoolEntity's update handler
+        # writes state either when its attribute is in the diff or when the diff is
+        # empty (= connection event); leaving the stale last-push diff in place would
+        # make every entity NOT named in it skip the write, so availability changes
+        # would never render (entities stuck "available" through an outage, or stuck
+        # "unavailable" after a reconnect). Entities read their values from the live
+        # model objects, not from this diff, so clearing it loses nothing.
+        self.data = {}
         # Notify all listeners of the connection state change
         self.async_update_listeners()
 

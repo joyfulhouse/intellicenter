@@ -547,13 +547,24 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
             updated_obj = self.coordinator.model[self._pool_object.objnam]
             if updated_obj:
                 self._pool_object = updated_obj
-            # Clear optimistic state if this entity uses OnOffControlMixin
-            if hasattr(self, "_clear_optimistic_state"):
-                self._clear_optimistic_state()
+            self._clear_optimistic_state()
             self.async_write_ha_state()
         elif not updates:
-            # Connection state change - update availability
+            # Connection event (the coordinator cleared its diff): re-render every
+            # entity so availability changes take effect, and drop any optimistic
+            # state - after a reconnect the model is the fresh source of truth, and
+            # a command issued around a disconnect may never produce the echo update
+            # that would otherwise clear it.
+            self._clear_optimistic_state()
             self.async_write_ha_state()
+
+    @callback
+    def _clear_optimistic_state(self) -> None:
+        """Clear any optimistic state once authoritative data arrives.
+
+        No-op here; entities that render optimistically (e.g. via
+        ``OnOffControlMixin``) override this.
+        """
 
     def pentairTemperatureSettings(self) -> str:
         """Return the native temperature unit from the Pentair system.

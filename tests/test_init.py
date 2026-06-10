@@ -13,6 +13,8 @@ import pytest
 
 from custom_components.intellicenter import (
     PLATFORMS,
+    OnOffControlMixin,
+    PoolEntity,
     async_setup,
     async_setup_entry,
     async_unload_entry,
@@ -368,3 +370,102 @@ class TestIntelliCenterCoordinator:
         system_info = coordinator.system_info
         # Initially None since controller hasn't started
         assert system_info is None or system_info is coordinator._controller.system_info
+
+
+# -------------------------------------------------------------------------------------
+# Connection-state propagation (regression tests)
+# -------------------------------------------------------------------------------------
+
+
+def _make_started_coordinator(hass: HomeAssistant) -> IntelliCenterCoordinator:
+    """Build a real coordinator with two circuits, as if connected and started."""
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = "test_entry_123"
+    entry.data = {CONF_HOST: "192.168.1.100"}
+
+    coordinator = IntelliCenterCoordinator(hass, entry, host="192.168.1.100")
+    coordinator.model.add_object(
+        "C0001", {"OBJTYP": "CIRCUIT", "SNAME": "Pool Light", "STATUS": "ON"}
+    )
+    coordinator.model.add_object(
+        "C0002", {"OBJTYP": "CIRCUIT", "SNAME": "Spa Jets", "STATUS": "OFF"}
+    )
+    coordinator._connected = True
+    return coordinator
+
+
+class TestConnectionStatePropagation:
+    """Connection-state changes must re-render EVERY entity (finding: stale diff).
+
+    The coordinator's ``data`` holds the last push diff. A connection-state
+    change used to fan out with that stale diff still in place, so any entity
+    whose attribute was not in it skipped ``async_write_ha_state`` - entities
+    stayed "available" with stale values through an outage, or stayed
+    "unavailable" after a reconnect.
+    """
+
+    async def test_connection_state_change_clears_stale_diff(
+        self, hass: HomeAssistant
+    ) -> None:
+        """async_set_connection_state must clear the last push diff."""
+        coordinator = _make_started_coordinator(hass)
+
+        coordinator.async_set_updated_data({"C0001": {"STATUS": "OFF"}})
+        assert coordinator.data == {"C0001": {"STATUS": "OFF"}}
+
+        coordinator.async_set_connection_state(False)
+        assert coordinator.data == {}
+        assert coordinator.connected is False
+
+    async def test_entity_not_in_last_diff_renders_unavailable_on_disconnect(
+        self, hass: HomeAssistant
+    ) -> None:
+        """An entity absent from the last push diff still renders a disconnect."""
+        coordinator = _make_started_coordinator(hass)
+
+        c0002 = coordinator.model["C0002"]
+        assert c0002 is not None
+        entity = PoolEntity(coordinator, c0002)
+        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]
+
+        # A push for a DIFFERENT object leaves C0002 out of the diff.
+        coordinator.async_set_updated_data({"C0001": {"STATUS": "OFF"}})
+        entity._handle_coordinator_update()
+        entity.async_write_ha_state.assert_not_called()
+
+        # Disconnect: the entity must re-render as unavailable even though it
+        # was not named in the last push diff.
+        coordinator.async_set_connection_state(False)
+        entity._handle_coordinator_update()
+        entity.async_write_ha_state.assert_called_once()
+        assert entity.available is False
+
+        # Reconnect: it must come back too.
+        entity.async_write_ha_state.reset_mock()
+        coordinator.async_set_connection_state(True)
+        entity._handle_coordinator_update()
+        entity.async_write_ha_state.assert_called_once()
+        assert entity.available is True
+
+    async def test_connection_event_clears_optimistic_state(
+        self, hass: HomeAssistant
+    ) -> None:
+        """A connection event drops optimistic state (model is source of truth)."""
+
+        class _OnOffEntity(OnOffControlMixin, PoolEntity):
+            pass
+
+        coordinator = _make_started_coordinator(hass)
+        c0002 = coordinator.model["C0002"]
+        assert c0002 is not None
+        entity = _OnOffEntity(coordinator, c0002)
+        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]
+
+        entity._optimistic_state = True
+        assert entity.is_on is True  # optimistic, real STATUS is OFF
+
+        coordinator.async_set_connection_state(True)
+        entity._handle_coordinator_update()
+
+        assert entity._optimistic_state is None
+        assert entity.is_on is False  # back to the model's truth

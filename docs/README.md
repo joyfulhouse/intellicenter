@@ -14,9 +14,17 @@ Technical documentation for developers working on the Pentair IntelliCenter Home
 
 | Document | Description |
 |----------|-------------|
-| [CHANGELOG.md](./CHANGELOG.md) | Version history and release notes |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | Technical architecture and design |
+| [DEVELOPMENT.md](./DEVELOPMENT.md) | Development environment and workflow |
+| [TESTING.md](./TESTING.md) | Test suite layout and how to run it |
+| [VALIDATION.md](./VALIDATION.md) | Manual validation procedures |
 | [QUALITY_SCALE_COMPLIANCE.md](./QUALITY_SCALE_COMPLIANCE.md) | Home Assistant quality scale compliance |
+| [valve-control-implementation.md](./valve-control-implementation.md) | Valve control protocol notes and reference |
+| [info.md](./info.md) | HACS info panel content |
+| [../CHANGELOG.md](../CHANGELOG.md) | Version history and release notes |
+
+> Internal design notes, session logs, and process artifacts live in
+> [`claude/`](claude/) and are not part of the user-facing documentation.
 
 ## Project Structure
 

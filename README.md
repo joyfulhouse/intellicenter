@@ -4,11 +4,11 @@ Control your Pentair IntelliCenter pool system directly from Home Assistant with
 
 [![GitHub Release][releases-shield]][releases]
 [![License][license-shield]](LICENSE)
-[![HACS][hacsbadge]][hacs]
-[![CI][ci-badge]][ci-workflow]
-[![Quality Scale][quality-badge]][quality-scale]
-[![Project Maintenance][maintenance-shield]][user_profile]
-[![GitHub Sponsors][gh-sponsors-shield]][gh-sponsors]
+[![HACS][hacs-shield]][hacs]
+[![CI][ci-shield]][ci]
+[![Quality Scale][quality-shield]][quality]
+[![Project Maintenance][maintenance-shield]][maintenance]
+[![GitHub Sponsors][sponsors-shield]][sponsors]
 [![Ko-fi][kofi-shield]][kofi]
 
 ## What Does This Integration Do?
@@ -65,24 +65,13 @@ Before installing this integration, you need:
 
 ## Installation
 
-### HACS (Recommended)
+See **[INSTALL.md](INSTALL.md)** for the complete guide.
 
-1. Open HACS → Integrations
-2. Search for "Pentair IntelliCenter"
-3. Click Install
-4. Restart Home Assistant
+**Quick version (HACS):** add this repository as a custom repository in HACS,
+install **Pentair IntelliCenter**, restart Home Assistant, then add the
+integration from **Settings → Devices & Services**.
 
-> **Note:** If you don't find the integration, you can add it as a custom repository:
-> HACS → ⋮ → Custom repositories → Add `https://github.com/joyfulhouse/intellicenter` as Integration
-
-### Manual Installation
-
-```bash
-cd /config/custom_components
-git clone https://github.com/joyfulhouse/intellicenter.git intellicenter
-```
-
-Restart Home Assistant after installation.
+[![Open in HACS][hacs-repo-shield]][hacs-repo]
 
 ## Configuration
 
@@ -351,7 +340,7 @@ See [docs/](docs/) for architecture documentation and development guidelines.
 
 This integration is built and maintained in my spare time, with real hardware and tooling costs behind every release. If it's useful to you, consider sponsoring the project or leaving a tip to help offset development and testing — it's genuinely appreciated and helps keep the project moving.
 
-[![GitHub Sponsors][gh-sponsors-shield]][gh-sponsors] [![Ko-fi][kofi-shield]][kofi]
+[![GitHub Sponsors][sponsors-shield]][sponsors] [![Ko-fi][kofi-shield]][kofi]
 
 ## License
 
@@ -390,15 +379,17 @@ We extend our sincere gratitude for their foundational work that made this integ
 [releases-shield]: https://img.shields.io/github/v/release/joyfulhouse/intellicenter?style=for-the-badge
 [releases]: https://github.com/joyfulhouse/intellicenter/releases
 [license-shield]: https://img.shields.io/github/license/joyfulhouse/intellicenter?style=for-the-badge
-[hacs]: https://hacs.xyz
-[hacsbadge]: https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=for-the-badge
-[ci-badge]: https://img.shields.io/github/actions/workflow/status/joyfulhouse/intellicenter/ci.yml?branch=main&label=CI&style=for-the-badge
-[ci-workflow]: https://github.com/joyfulhouse/intellicenter/actions/workflows/ci.yml
-[quality-badge]: https://img.shields.io/badge/quality_scale-platinum-e5e4e2?style=for-the-badge
-[quality-scale]: https://www.home-assistant.io/docs/quality_scale/
-[maintenance-shield]: https://img.shields.io/badge/maintainer-joyfulhouse-blue.svg?style=for-the-badge
-[user_profile]: https://github.com/joyfulhouse
-[gh-sponsors-shield]: https://img.shields.io/badge/Sponsor-GitHub-EA4AAA.svg?style=for-the-badge&logo=githubsponsors&logoColor=white
-[gh-sponsors]: https://github.com/sponsors/btli
+[hacs-shield]: https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=for-the-badge
+[hacs]: https://github.com/hacs/integration
+[hacs-repo-shield]: https://my.home-assistant.io/badges/hacs_repository.svg
+[hacs-repo]: https://my.home-assistant.io/redirect/hacs_repository/?owner=joyfulhouse&repository=intellicenter&category=integration
+[ci-shield]: https://img.shields.io/github/actions/workflow/status/joyfulhouse/intellicenter/ci.yml?branch=main&label=CI&style=for-the-badge
+[ci]: https://github.com/joyfulhouse/intellicenter/actions/workflows/ci.yml
+[quality-shield]: https://img.shields.io/badge/quality_scale-platinum-e5e4e2?style=for-the-badge
+[quality]: https://www.home-assistant.io/docs/quality_scale/
+[maintenance-shield]: https://img.shields.io/badge/maintainer-%40btli-blue.svg?style=for-the-badge
+[maintenance]: https://github.com/btli
+[sponsors-shield]: https://img.shields.io/badge/Sponsor-GitHub-EA4AAA.svg?style=for-the-badge&logo=githubsponsors&logoColor=white
+[sponsors]: https://github.com/sponsors/btli
 [kofi-shield]: https://img.shields.io/badge/Ko--fi-support-FF5E5B.svg?style=for-the-badge&logo=ko-fi&logoColor=white
 [kofi]: https://ko-fi.com/bryanli

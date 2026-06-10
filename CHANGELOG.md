@@ -2,7 +2,7 @@
 
 All notable changes to the Pentair IntelliCenter integration will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
@@ -53,7 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [3.6.5] - 2026-03-06
+## [3.6.5] - 2026-03-05
 
 ### Fixed
 - Decoupled water heater operation from body STATUS for independent control (#35)
@@ -306,7 +306,7 @@ This integration builds upon the foundational work of the original IntelliCenter
 - **[@dwradcliffe/intellicenter](https://github.com/dwradcliffe/intellicenter)** - Original implementation that pioneered Home Assistant support for Pentair IntelliCenter
 - **[@jlvaillant/intellicenter](https://github.com/jlvaillant/intellicenter)** - Enhanced fork with additional features
 
-See [ACKNOWLEDGMENTS.md](./ACKNOWLEDGMENTS.md) for full credits.
+See the [Credits](README.md#credits) section of the README for full attributions.
 
 ---
 
@@ -325,6 +325,8 @@ See [ACKNOWLEDGMENTS.md](./ACKNOWLEDGMENTS.md) for full credits.
 
 ---
 
+[Unreleased]: https://github.com/joyfulhouse/intellicenter/compare/v3.7.0...HEAD
+[3.7.0]: https://github.com/joyfulhouse/intellicenter/compare/v3.6.6...v3.7.0
 [3.6.6]: https://github.com/joyfulhouse/intellicenter/compare/v3.6.5...v3.6.6
 [3.6.5]: https://github.com/joyfulhouse/intellicenter/compare/v3.6.4...v3.6.5
 [3.6.4]: https://github.com/joyfulhouse/intellicenter/compare/v3.6.3...v3.6.4

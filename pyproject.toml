@@ -9,7 +9,7 @@ readme = "README.md"
 requires-python = ">=3.14.2"
 dependencies = [
     "homeassistant>=2025.11.3",
-    "pyintellicenter>=0.1.19",
+    "pyintellicenter>=0.1.20",
 ]
 
 [tool.ruff]

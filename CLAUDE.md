@@ -101,7 +101,7 @@ uv pip install -e /Users/bryanli/Projects/joyfulhouse/python/pyintellicenter
 ```
 
 For normal test/CI runs the published release is used (per `manifest.json`:
-`pyintellicenter>=0.1.19`). Keep `pyproject.toml`'s pin and `uv.lock` in sync with
+`pyintellicenter>=0.1.20`). Keep `pyproject.toml`'s pin and `uv.lock` in sync with
 `manifest.json` — they have drifted in the past.
 
 ### Testing
@@ -188,7 +188,7 @@ The integration follows a layered architecture:
 
 2. **Protocol/Model Layer** (`pyintellicenter` - external package)
    - Separate repository: https://github.com/joyfulhouse/pyintellicenter (checked out at `/Users/bryanli/Projects/joyfulhouse/python/pyintellicenter`)
-   - Installed via `manifest.json` requirements: `pyintellicenter>=0.1.19`
+   - Installed via `manifest.json` requirements: `pyintellicenter>=0.1.20`
    - `controller.py` - Controller classes (all `IC`-prefixed):
      - `ICBaseController`: connection + command handling; exposes `ICSystemInfo` and `ICConnectionMetrics`
      - `ICModelController`: manages `PoolModel` state, tracks attribute changes, and provides domain control/query helpers (lights, pumps, heaters, bodies, chemistry). NOTE: this class is large (~1,200 lines / 130+ methods) and is the main refactor target

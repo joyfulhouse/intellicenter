@@ -288,12 +288,18 @@ async def test_climate_hvac_action_cooling(
     pool_object_body_with_ultratemp: PoolObject,
     mock_coordinator: MagicMock,
 ) -> None:
-    """Test HVAC action is cooling when actively cooling."""
+    """Test HVAC action is cooling when actively cooling.
+
+    Realistic UltraTemp cooling state: is_body_heating() is just HTMODE != "0"
+    and is therefore ALSO True while the heat pump cools, so the entity must
+    check cooling first. (The old test mocked the impossible heating=False /
+    cooling=True combination, which masked the ordering bug.)
+    """
     mock_coordinator.controller.system_info = MagicMock()
     type(mock_coordinator.controller.system_info).uses_metric = property(
         lambda self: False
     )
-    mock_coordinator.controller.is_body_heating = MagicMock(return_value=False)
+    mock_coordinator.controller.is_body_heating = MagicMock(return_value=True)
     mock_coordinator.controller.is_body_cooling = MagicMock(return_value=True)
 
     climate = PoolClimate(
@@ -662,3 +668,29 @@ async def test_climate_is_updated(
 
     # Should not update on unrelated attribute
     assert climate.isUpdated({"POOL1": {"UNRELATED": "value"}}) is False
+
+
+async def test_heater_cool_attribute_is_tracked() -> None:
+    """Regression: COOL must be tracked or is_body_cooling() always sees None."""
+    from pyintellicenter import COOL_ATTR, HEATER_TYPE
+
+    from custom_components.intellicenter.coordinator import DEFAULT_ATTRIBUTES_MAP
+
+    assert COOL_ATTR in DEFAULT_ATTRIBUTES_MAP[HEATER_TYPE]
+
+
+async def test_climate_updates_on_heater_cool_change(
+    hass: HomeAssistant,
+    pool_object_body_with_ultratemp: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A COOL update on the heater object re-renders the climate entity."""
+    climate = PoolClimate(
+        mock_coordinator,
+        pool_object_body_with_ultratemp,
+        ["HTR01"],
+    )
+
+    # COOL arrives as an update for the HEATER objnam, not the body.
+    assert climate.isUpdated({"HTR01": {"COOL": "ON"}}) is True
+    assert climate.isUpdated({"HTR99": {"COOL": "ON"}}) is False

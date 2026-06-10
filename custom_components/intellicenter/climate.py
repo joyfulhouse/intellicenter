@@ -29,6 +29,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyintellicenter import (
+    COOL_ATTR,
     HEATER_ATTR,
     HITMP_ATTR,
     HTMODE_ATTR,
@@ -226,13 +227,16 @@ class PoolClimate(PoolEntity, ClimateEntity):
         if htmode == "0":
             return HVACAction.IDLE
 
+        # Cooling must be checked BEFORE heating: is_body_heating() is just
+        # HTMODE != "0", which is also true while an UltraTemp actively COOLS
+        # (the heat source is running). is_body_cooling() (heater COOL == ON)
+        # is the more specific signal, so it wins.
+        if self._controller.is_body_cooling(self._pool_object.objnam):
+            return HVACAction.COOLING
+
         # Check if actively heating
         if self._controller.is_body_heating(self._pool_object.objnam):
             return HVACAction.HEATING
-
-        # Check if actively cooling (UltraTemp heat pump)
-        if self._controller.is_body_cooling(self._pool_object.objnam):
-            return HVACAction.COOLING
 
         # Heater is enabled but not actively heating or cooling
         return HVACAction.IDLE
@@ -302,7 +306,7 @@ class PoolClimate(PoolEntity, ClimateEntity):
     def isUpdated(self, updates: dict[str, dict[str, Any]]) -> bool:
         """Return true if the entity is updated."""
         my_updates = updates.get(self._pool_object.objnam, {})
-        return bool(
+        if bool(
             my_updates
             and {
                 STATUS_ATTR,
@@ -313,4 +317,10 @@ class PoolClimate(PoolEntity, ClimateEntity):
                 LSTTMP_ATTR,
             }
             & my_updates.keys()
+        ):
+            return True
+        # hvac_action also depends on the heater objects' COOL attribute, which
+        # arrives as an update for the HEATER objnam, not the body.
+        return any(
+            COOL_ATTR in updates.get(heater, {}) for heater in self._heater_list
         )

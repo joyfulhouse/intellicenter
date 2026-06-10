@@ -27,6 +27,7 @@ from pyintellicenter import (
     CIRCGRP_TYPE,
     CIRCUIT_ATTR,
     CIRCUIT_TYPE,
+    COOL_ATTR,
     CYACID_ATTR,
     EXTINSTR_TYPE,
     FEATR_ATTR,
@@ -157,7 +158,10 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
     # objects entirely and the cover platform never sees them (the model only
     # admits objtypes present in this map).
     EXTINSTR_TYPE: {SNAME_ATTR, STATUS_ATTR, NORMAL_ATTR, SUBTYP_ATTR},
-    HEATER_TYPE: {SNAME_ATTR, BODY_ATTR, LISTORD_ATTR, SUBTYP_ATTR},
+    # COOL is required by is_body_cooling(): without tracking it the heater
+    # object's COOL attribute is never fetched and climate could never report
+    # the COOLING action.
+    HEATER_TYPE: {SNAME_ATTR, BODY_ATTR, COOL_ATTR, LISTORD_ATTR, SUBTYP_ATTR},
     PUMP_TYPE: {
         SNAME_ATTR,
         STATUS_ATTR,

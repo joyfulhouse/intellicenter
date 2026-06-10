@@ -466,3 +466,109 @@ async def test_reconfigure_flow_host_already_configured(
 
     assert result["type"] == FlowResultType.ABORT
     assert result["reason"] == "already_configured"
+
+
+# -------------------------------------------------------------------------------------
+# Discover step (library-based discovery) and exception-mapping regressions
+# -------------------------------------------------------------------------------------
+
+
+def _patch_discovery(units):
+    """Patch the discovery helpers used by the discover step."""
+    from unittest.mock import AsyncMock, patch as mock_patch
+
+    return (
+        mock_patch(
+            "custom_components.intellicenter.config_flow.discover_intellicenter_units",
+            AsyncMock(return_value=units),
+        ),
+        mock_patch(
+            "custom_components.intellicenter.config_flow.zeroconf.async_get_instance",
+            AsyncMock(return_value=MagicMock()),
+        ),
+    )
+
+
+async def test_discover_flow_success(
+    hass: HomeAssistant, mock_controller: MagicMock
+) -> None:
+    """Selecting a discovered unit creates an entry."""
+    from pyintellicenter import ICUnit
+
+    unit = ICUnit(name="IntelliCenter", host="192.168.1.50", port=6681, ws_port=6680)
+    discovery_patch, zc_patch = _patch_discovery([unit])
+
+    with discovery_patch, zc_patch:
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"setup_method": "discover"}
+        )
+        assert result["type"] == FlowResultType.FORM
+        assert result["step_id"] == "discover"
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"device": "192.168.1.50"}
+        )
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_HOST] == "192.168.1.50"
+
+
+async def test_discover_flow_selected_unit_cannot_connect(
+    hass: HomeAssistant, mock_controller: MagicMock
+) -> None:
+    """Regression: a failing discovered unit re-shows the form, not a crash.
+
+    The unit-selection call used to sit outside the step's try/except while the
+    helper deliberately re-raised CannotConnect, so the flow died with a
+    generic 'unknown error' dialog instead of showing cannot_connect.
+    """
+    from pyintellicenter import ICUnit
+
+    unit = ICUnit(name="IntelliCenter", host="192.168.1.50", port=6681, ws_port=6680)
+    discovery_patch, zc_patch = _patch_discovery([unit])
+    mock_controller.start.side_effect = ConnectionRefusedError()
+
+    with discovery_patch, zc_patch:
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"setup_method": "discover"}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"device": "192.168.1.50"}
+        )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "discover"
+    assert result["errors"] == {"base": "cannot_connect"}
+
+
+async def test_user_flow_ic_timeout_maps_to_cannot_connect(
+    hass: HomeAssistant, mock_controller: MagicMock
+) -> None:
+    """Regression: ICTimeoutError is a connection problem, not 'unknown'.
+
+    ICTimeoutError subclasses ICError, NOT the builtin TimeoutError, so the
+    old except tuple missed it and a slow-to-answer panel showed 'unknown'.
+    """
+    from pyintellicenter import ICTimeoutError
+
+    mock_controller.start.side_effect = ICTimeoutError("GetParamList timed out")
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"setup_method": "manual"}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_HOST: "192.168.1.100"}
+    )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "manual"
+    assert result["errors"] == {"base": "cannot_connect"}

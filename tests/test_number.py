@@ -1287,3 +1287,32 @@ async def test_number_secondary_chlorinator_aborts_without_primary(
         await number.async_set_native_value(40)
 
     mock_coordinator.controller.set_chlorinator_output.assert_not_called()
+
+
+async def test_number_without_device_class_always_has_the_attr(
+    hass: HomeAssistant,
+    pool_object_intellichlor: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Regression: _attr_device_class must exist even when none is given.
+
+    Newer HA cores declare _attr_device_class as an annotation with no class
+    default; the old conditional assignment left the attribute missing and
+    every no-device-class number raised AttributeError while being added
+    (caught live on the dev container, invisible under the pinned test HA).
+    """
+    number = PoolNumber(
+        mock_coordinator,
+        pool_object_intellichlor,
+        attribute_key=SEC_ATTR,
+        name="+ Output %",
+    )
+
+    # The attribute must be readable (HA stores it behind a descriptor; an
+    # unassigned one raises AttributeError on newer cores)...
+    assert number._attr_device_class is None
+    assert number.device_class is None
+    # ...and every capability property must be readable without raising.
+    assert number.native_min_value is not None
+    assert number.native_max_value is not None
+    assert number.native_unit_of_measurement is None

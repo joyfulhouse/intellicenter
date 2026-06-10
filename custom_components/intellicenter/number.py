@@ -422,8 +422,12 @@ class PoolNumber(PoolEntity, NumberEntity):
         self._attr_native_max_value = max_value
         self._attr_native_step = step
         self._integer_only = integer_only
-        if device_class:
-            self._attr_device_class = device_class
+        # Assign unconditionally: newer HA cores declare _attr_device_class as
+        # an annotation without a class-level default, so a conditional
+        # assignment leaves the attribute MISSING and any read of it raises
+        # AttributeError (every no-device-class number failed to add on the
+        # dev container while the pinned test HA still had a class default).
+        self._attr_device_class = device_class
         self._attr_mode = mode
         if entity_category:
             self._attr_entity_category = entity_category
@@ -435,21 +439,21 @@ class PoolNumber(PoolEntity, NumberEntity):
         Temperature entities report the panel's native unit (METRIC/ENGLISH)
         so Home Assistant converts the displayed value correctly.
         """
-        if self._attr_device_class == NumberDeviceClass.TEMPERATURE:
+        if self.device_class == NumberDeviceClass.TEMPERATURE:
             return self.pentairTemperatureSettings()
         return self._attr_native_unit_of_measurement
 
     @property
     def native_min_value(self) -> float:
         """Return the minimum value, panel-unit aware for temperatures."""
-        if self._attr_device_class == NumberDeviceClass.TEMPERATURE:
+        if self.device_class == NumberDeviceClass.TEMPERATURE:
             return body_temperature_limits(self.coordinator)[0]
         return self._attr_native_min_value
 
     @property
     def native_max_value(self) -> float:
         """Return the maximum value, panel-unit aware for temperatures."""
-        if self._attr_device_class == NumberDeviceClass.TEMPERATURE:
+        if self.device_class == NumberDeviceClass.TEMPERATURE:
             return body_temperature_limits(self.coordinator)[1]
         return self._attr_native_max_value
 

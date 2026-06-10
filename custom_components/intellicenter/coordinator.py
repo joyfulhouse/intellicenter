@@ -265,6 +265,14 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         self._known_objnams: set[str] = set()
         self._started = False
         self._new_objects_listeners: list[NewObjectsListener] = []
+        # Objects dispatched to the platforms while potentially incomplete: a
+        # runtime-added object is first seen with only the params its NotifyList
+        # carried; the controller backfills the remaining tracked attributes via
+        # RequestParamList in a LATER update. Each objnam here gets re-dispatched
+        # once, when its next attribute update (the backfill) arrives, so
+        # builders gated on attributes missing at first dispatch (e.g. pump
+        # PWR/RPM/GPM sensors) get a second chance.
+        self._pending_redispatch: set[str] = set()
 
     @property
     def controller(self) -> ICModelController:
@@ -359,13 +367,14 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         return _remove_listener
 
     @callback
-    def _async_detect_new_objects(self) -> None:
+    def _async_detect_new_objects(self) -> set[str]:
         """Detect objects added to the model and notify platform listeners.
 
         Compares the current model against the set of objects the platforms
         already know about. Any new objects are recorded and dispatched to the
         registered listeners so the platforms can create entities for them at
         runtime. Does nothing until the initial connection has completed.
+        Returns the objnams dispatched as new (empty when nothing changed).
 
         Both independent and dependent new equipment are handled. Independent
         objects (e.g. a newly-installed IntelliChem) dispatch on their own.
@@ -379,13 +388,13 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         makes re-dispatching an already-built dependent harmless.
         """
         if not self._started:
-            return
+            return set()
 
         new_objects = [
             obj for obj in self._model if obj.objnam not in self._known_objnams
         ]
         if not new_objects:
-            return
+            return set()
 
         # Re-evaluate already-known children whose parent is among the objects
         # that just arrived. Such a child was skipped earlier (its parent was
@@ -405,6 +414,8 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         # creation is additionally guarded by unique_id de-duplication in the
         # platforms. Dependents are already known, so they need no recording.
         self._known_objnams.update(new_objnams)
+        # Mark for a one-shot re-dispatch when the attribute backfill arrives.
+        self._pending_redispatch.update(new_objnams)
 
         dependents_note = ""
         if dependents:
@@ -432,6 +443,56 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
                 _LOGGER.exception(
                     "Error dispatching new pool objects to a platform listener"
                 )
+        return new_objnams
+
+    @callback
+    def _async_redispatch_backfilled(self, updated_objnams: set[str]) -> None:
+        """Re-dispatch newly-added objects once their attribute backfill arrives.
+
+        A runtime-added object reaches the platforms before the controller has
+        fetched its full tracked-attribute set, so builders that gate on those
+        attributes (pump PWR/RPM/GPM sensors, parent-pump limits) skip it. The
+        first subsequent update for such an object is its backfill: dispatch it
+        (and any dependents whose parent it is) one more time. ``unique_id``
+        de-duplication in the platforms makes this harmless for entities that
+        were already built.
+        """
+        if not self._pending_redispatch:
+            return
+        ready_objnams = self._pending_redispatch & updated_objnams
+        if not ready_objnams:
+            return
+        self._pending_redispatch -= ready_objnams
+
+        ready = [
+            obj
+            for objnam in ready_objnams
+            if (obj := self._model[objnam]) is not None
+        ]
+        # Children gated on a parent that was incomplete at first dispatch
+        # (e.g. a PMPCIRC whose pump lacked MIN/MAX limits) get re-evaluated too.
+        dependents = [
+            obj
+            for obj in self._model
+            if obj.objnam not in ready_objnams
+            and (obj[PARENT_ATTR] or "") in ready_objnams
+        ]
+        dispatched = ready + dependents
+        if not dispatched:
+            return
+
+        _LOGGER.debug(
+            "Re-dispatching %d backfilled pool object(s): %s",
+            len(dispatched),
+            ", ".join(obj.objnam for obj in dispatched),
+        )
+        for listener in list(self._new_objects_listeners):
+            try:
+                listener(dispatched)
+            except Exception:
+                _LOGGER.exception(
+                    "Error dispatching backfilled pool objects to a platform listener"
+                )
 
     @callback
     def async_set_updated_data(self, data: dict[str, dict[str, Any]]) -> None:
@@ -446,7 +507,10 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         self.data = data
         # New equipment can enter the model on a reconnect (the controller
         # re-fetches every object on start), so reconcile before fanning out.
-        self._async_detect_new_objects()
+        just_added = self._async_detect_new_objects()
+        # The update that introduced an object is not its backfill; only later
+        # updates for that object complete it.
+        self._async_redispatch_backfilled(set(data) - just_added)
         self.async_update_listeners()
 
     @callback

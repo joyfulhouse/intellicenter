@@ -54,7 +54,12 @@ from pyintellicenter import (
     PoolObject,
 )
 
-from . import IntelliCenterConfigEntry, PoolEntity, async_setup_pool_entities
+from . import (
+    IntelliCenterConfigEntry,
+    PoolEntity,
+    async_setup_pool_entities,
+    safe_int,
+)
 from .const import CONST_GPM, CONST_RPM
 from .coordinator import IntelliCenterCoordinator
 
@@ -144,11 +149,9 @@ def _build_entities(
                         entity_category=EntityCategory.DIAGNOSTIC,
                     )
                 )
-            if (
-                MAXF_ATTR in obj.attribute_keys
-                and obj[MAXF_ATTR]
-                and int(obj[MAXF_ATTR]) > 0
-            ):
+            # safe_int: a malformed MAXF/MINF must skip this sensor, not raise
+            # ValueError inside platform setup and take down every sensor.
+            if MAXF_ATTR in obj.attribute_keys and (safe_int(obj[MAXF_ATTR]) or 0) > 0:
                 sensors.append(
                     PoolSensor(
                         coordinator,
@@ -161,11 +164,7 @@ def _build_entities(
                         entity_category=EntityCategory.DIAGNOSTIC,
                     )
                 )
-            if (
-                MINF_ATTR in obj.attribute_keys
-                and obj[MINF_ATTR]
-                and int(obj[MINF_ATTR]) > 0
-            ):
+            if MINF_ATTR in obj.attribute_keys and (safe_int(obj[MINF_ATTR]) or 0) > 0:
                 sensors.append(
                     PoolSensor(
                         coordinator,

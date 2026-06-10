@@ -619,3 +619,80 @@ async def test_pmpcirc_not_redispatched_without_parent_arrival(
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+# -------------------------------------------------------------------------------------
+# Backfill re-dispatch: a runtime-added pump arrives WITHOUT its telemetry attrs
+# -------------------------------------------------------------------------------------
+
+PUMP3_OBJNAM = "PUMP3"
+# What the introducing NotifyList carries: identity only, no PWR/RPM/GPM yet.
+PUMP3_SPARSE_PARAMS: dict[str, str] = {
+    "OBJTYP": PUMP_TYPE,
+    "SUBTYP": "SPEED",
+    "SNAME": "Booster Pump",
+    "STATUS": "10",
+}
+# What the controller's RequestParamList backfill delivers afterwards.
+PUMP3_BACKFILL_UPDATE: dict[str, str] = {
+    "PWR": "850",
+    "RPM": "2400",
+    "MIN": "450",
+    "MAX": "3450",
+}
+
+
+async def test_pump_sensors_built_after_attribute_backfill(
+    hass: HomeAssistant,
+    pool_model: PoolModel,
+) -> None:
+    """Pump telemetry sensors are created once the attribute backfill arrives.
+
+    Regression: a runtime-added pump is dispatched to the platforms before the
+    controller has fetched its tracked attributes, so the power/RPM sensor
+    builders (gated on those attributes) skipped it - and nothing ever
+    reconsidered the pump, leaving the sensors missing until a reload. The
+    coordinator now re-dispatches an object once its first post-add update
+    (the backfill) lands.
+    """
+    from custom_components.intellicenter.sensor import async_setup_entry
+
+    coordinator = _make_coordinator(hass, pool_model)
+
+    entry = MagicMock()
+    entry.runtime_data = coordinator
+    entry.async_on_unload = MagicMock()
+
+    added: list[Any] = []
+    await async_setup_entry(hass, entry, added.extend)
+
+    def added_for(objnam: str) -> list[Any]:
+        return [e for e in added if e._pool_object.objnam == objnam]
+
+    # The NotifyList introduces the pump with only the notified params.
+    new_pump = pool_model.add_object(PUMP3_OBJNAM, dict(PUMP3_SPARSE_PARAMS))
+    assert new_pump is not None
+    added.clear()
+    coordinator.async_set_updated_data({PUMP3_OBJNAM: dict(PUMP3_SPARSE_PARAMS)})
+
+    # Sparse first dispatch: telemetry attrs absent, so no PWR/RPM sensors yet.
+    assert not [
+        e for e in added_for(PUMP3_OBJNAM) if e._attribute_key in ("PWR", "RPM")
+    ]
+    assert PUMP3_OBJNAM in coordinator._pending_redispatch
+
+    # The backfill applies the remaining tracked attributes to the model and
+    # surfaces as a normal update for the (now known) object.
+    new_pump.update(dict(PUMP3_BACKFILL_UPDATE))
+    added.clear()
+    coordinator.async_set_updated_data({PUMP3_OBJNAM: dict(PUMP3_BACKFILL_UPDATE)})
+
+    keys = {e._attribute_key for e in added_for(PUMP3_OBJNAM)}
+    assert "PWR" in keys, "power sensor missing after backfill re-dispatch"
+    assert "RPM" in keys, "rpm sensor missing after backfill re-dispatch"
+    assert PUMP3_OBJNAM not in coordinator._pending_redispatch
+
+    # The re-dispatch is one-shot: further updates add nothing new.
+    added.clear()
+    coordinator.async_set_updated_data({PUMP3_OBJNAM: {"RPM": "2600"}})
+    assert added_for(PUMP3_OBJNAM) == []

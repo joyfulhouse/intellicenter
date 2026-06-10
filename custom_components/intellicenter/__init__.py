@@ -305,6 +305,27 @@ def bodies_affected_by(
     return bodies
 
 
+def safe_int(value: Any) -> int | None:
+    """Convert a device-supplied value to int, or None if it isn't numeric.
+
+    Attribute values arrive from the panel as strings and are not guaranteed to
+    parse; an unguarded int() inside an entity builder or state property can
+    take down a whole platform on one malformed value.
+    """
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def _heater_sort_key(heater: PoolObject) -> int:
+    """Sort heaters by LISTORD; unparseable or missing values sort last."""
+    order = safe_int(heater[LISTORD_ATTR])
+    return order if order is not None else 100
+
+
 def heaters_for_body(
     coordinator: IntelliCenterCoordinator, body_objnam: str
 ) -> list[str]:
@@ -328,7 +349,7 @@ def heaters_for_body(
     """
     heaters = sorted(
         coordinator.model.get_by_type(HEATER_TYPE),
-        key=lambda h: int(h[LISTORD_ATTR]) if h[LISTORD_ATTR] else 100,
+        key=_heater_sort_key,
     )
     return [
         heater.objnam
@@ -613,14 +634,6 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
         except (ValueError, TypeError):
             return None
 
-    def _safe_int_conversion(self, value: Any) -> int | None:
-        """Safely convert a value to int."""
-        if value is None:
-            return None
-        try:
-            return int(value)
-        except (ValueError, TypeError):
-            return None
 
 
 # -------------------------------------------------------------------------------------

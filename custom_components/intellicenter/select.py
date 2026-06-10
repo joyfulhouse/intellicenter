@@ -24,7 +24,12 @@ from pyintellicenter import (
     PoolObject,
 )
 
-from . import IntelliCenterConfigEntry, PoolEntity, async_setup_pool_entities
+from . import (
+    IntelliCenterConfigEntry,
+    PoolEntity,
+    async_setup_pool_entities,
+    safe_int,
+)
 from .coordinator import IntelliCenterCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -56,18 +61,8 @@ def _build_entities(
             supports_rpm = False
             supports_gpm = False
             if parent_pump:
-                # Check MAX_ATTR for RPM support
-                if MAX_ATTR in parent_pump.attribute_keys and parent_pump[MAX_ATTR]:
-                    try:
-                        supports_rpm = int(parent_pump[MAX_ATTR]) > 0
-                    except (ValueError, TypeError):
-                        pass
-                # Check MAXF_ATTR for GPM support
-                if MAXF_ATTR in parent_pump.attribute_keys and parent_pump[MAXF_ATTR]:
-                    try:
-                        supports_gpm = int(parent_pump[MAXF_ATTR]) > 0
-                    except (ValueError, TypeError):
-                        pass
+                supports_rpm = (safe_int(parent_pump[MAX_ATTR]) or 0) > 0
+                supports_gpm = (safe_int(parent_pump[MAXF_ATTR]) or 0) > 0
 
             # Only create selector if pump supports both modes
             if not (supports_rpm and supports_gpm):

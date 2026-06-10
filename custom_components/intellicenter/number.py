@@ -58,6 +58,7 @@ from . import (
     PoolEntity,
     async_setup_pool_entities,
     body_temperature_limits,
+    safe_int,
 )
 from .const import CONST_GPM, CONST_RPM
 from .coordinator import IntelliCenterCoordinator
@@ -289,30 +290,20 @@ def _build_entities(
             gpm_max = 0  # Will be set from parent pump's MAXF_ATTR if supported
 
             if parent_pump:
-                if MIN_ATTR in parent_pump.attribute_keys and parent_pump[MIN_ATTR]:
-                    try:
-                        rpm_min = int(parent_pump[MIN_ATTR])
-                    except (ValueError, TypeError):
-                        pass
-                if MAX_ATTR in parent_pump.attribute_keys and parent_pump[MAX_ATTR]:
-                    try:
-                        rpm_max = int(parent_pump[MAX_ATTR])
-                    except (ValueError, TypeError):
-                        pass
-                if MINF_ATTR in parent_pump.attribute_keys and parent_pump[MINF_ATTR]:
-                    try:
-                        val = int(parent_pump[MINF_ATTR])
-                        if val > 0:
-                            gpm_min = val
-                    except (ValueError, TypeError):
-                        pass
-                if MAXF_ATTR in parent_pump.attribute_keys and parent_pump[MAXF_ATTR]:
-                    try:
-                        val = int(parent_pump[MAXF_ATTR])
-                        if val > 0:
-                            gpm_max = val
-                    except (ValueError, TypeError):
-                        pass
+                # RPM limits take the pump's value even when 0 (MAX=0 marks a
+                # flow-only pump); GPM limits only accept positive values.
+                rpm_min_val = safe_int(parent_pump[MIN_ATTR])
+                if rpm_min_val is not None:
+                    rpm_min = rpm_min_val
+                rpm_max_val = safe_int(parent_pump[MAX_ATTR])
+                if rpm_max_val is not None:
+                    rpm_max = rpm_max_val
+                gpm_min_val = safe_int(parent_pump[MINF_ATTR])
+                if gpm_min_val is not None and gpm_min_val > 0:
+                    gpm_min = gpm_min_val
+                gpm_max_val = safe_int(parent_pump[MAXF_ATTR])
+                if gpm_max_val is not None and gpm_max_val > 0:
+                    gpm_max = gpm_max_val
 
             # Determine pump capabilities from parent pump limits
             # VSF pumps have non-zero MAXF (flow) and MAX (RPM), supporting both modes

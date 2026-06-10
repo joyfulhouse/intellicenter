@@ -55,6 +55,7 @@ from . import (
     PoolEntity,
     async_setup_pool_entities,
     bodies_affected_by,
+    body_temperature_limits,
     heaters_for_body,
 )
 from .coordinator import IntelliCenterCoordinator
@@ -274,14 +275,12 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
     @property
     def min_temp(self) -> float:
         """Return the minimum value."""
-        system_info = self.coordinator.system_info
-        return 5.0 if system_info and system_info.uses_metric else 4.0
+        return body_temperature_limits(self.coordinator)[0]
 
     @property
     def max_temp(self) -> float:
         """Return the maximum temperature."""
-        system_info = self.coordinator.system_info
-        return 40.0 if system_info and system_info.uses_metric else 104.0
+        return body_temperature_limits(self.coordinator)[1]
 
     @property
     def current_temperature(self) -> float | None:

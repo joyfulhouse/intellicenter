@@ -556,7 +556,8 @@ async def test_water_heater_min_max_temp_fahrenheit(
         ["HTR01"],
     )
 
-    assert water_heater.min_temp == 4.0
+    # 40 F is the panel's real floor; a dropped-zero typo (4.0) shipped for years
+    assert water_heater.min_temp == 40.0
     assert water_heater.max_temp == 104.0
 
 

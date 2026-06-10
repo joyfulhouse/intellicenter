@@ -337,6 +337,29 @@ def heaters_for_body(
     ]
 
 
+def body_temperature_limits(
+    coordinator: IntelliCenterCoordinator,
+) -> tuple[float, float]:
+    """Return the valid body temperature setpoint range in the panel's unit.
+
+    IntelliCenter accepts body setpoints of 40-104 °F; on METRIC systems the
+    equivalent 5-40 °C. This is the single source for every platform exposing
+    body temperature setpoints (water_heater, climate, number/HITMP) - the
+    limits were previously hard-coded per platform and had drifted (a 4 °F
+    floor typo in water_heater).
+
+    Args:
+        coordinator: The coordinator providing the system info.
+
+    Returns:
+        (min, max) in the panel's native temperature unit.
+    """
+    system_info = coordinator.system_info
+    if system_info is not None and system_info.uses_metric:
+        return (5.0, 40.0)
+    return (40.0, 104.0)
+
+
 # -------------------------------------------------------------------------------------
 # Base Entity Class
 # -------------------------------------------------------------------------------------

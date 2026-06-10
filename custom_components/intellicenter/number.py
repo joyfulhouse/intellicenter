@@ -53,7 +53,12 @@ from pyintellicenter import (
     PoolObject,
 )
 
-from . import IntelliCenterConfigEntry, PoolEntity, async_setup_pool_entities
+from . import (
+    IntelliCenterConfigEntry,
+    PoolEntity,
+    async_setup_pool_entities,
+    body_temperature_limits,
+)
 from .const import CONST_GPM, CONST_RPM
 from .coordinator import IntelliCenterCoordinator
 
@@ -84,9 +89,8 @@ CYACID_MIN = 0
 CYACID_MAX = 200
 CYACID_STEP = 1
 
-# Temperature setpoint ranges (Fahrenheit)
-TEMP_SETPOINT_MIN = 40
-TEMP_SETPOINT_MAX = 104
+# Temperature setpoint step; min/max come from body_temperature_limits() so the
+# range follows the panel's METRIC/ENGLISH unit (40-104 F / 5-40 C).
 TEMP_SETPOINT_STEP = 1
 
 # Pump speed/flow ranges (defaults, actual limits come from pump MIN/MAX attributes)
@@ -238,8 +242,11 @@ def _build_entities(
                 PoolNumber(
                     coordinator,
                     pool_obj,
-                    min_value=TEMP_SETPOINT_MIN,
-                    max_value=TEMP_SETPOINT_MAX,
+                    # min/max/unit are derived live from the panel's METRIC/
+                    # ENGLISH mode via PoolNumber's temperature-aware
+                    # properties; hardcoded Fahrenheit bounds made this entity
+                    # unusable on METRIC systems (every valid Celsius setpoint
+                    # was out of the 40-104 range).
                     step=TEMP_SETPOINT_STEP,
                     attribute_key=HITMP_ATTR,
                     name="+ Max Temperature",
@@ -428,6 +435,31 @@ class PoolNumber(PoolEntity, NumberEntity):
         self._attr_mode = mode
         if entity_category:
             self._attr_entity_category = entity_category
+
+    @property
+    def native_unit_of_measurement(self) -> str | None:
+        """Return the unit of measurement.
+
+        Temperature entities report the panel's native unit (METRIC/ENGLISH)
+        so Home Assistant converts the displayed value correctly.
+        """
+        if self._attr_device_class == NumberDeviceClass.TEMPERATURE:
+            return self.pentairTemperatureSettings()
+        return self._attr_native_unit_of_measurement
+
+    @property
+    def native_min_value(self) -> float:
+        """Return the minimum value, panel-unit aware for temperatures."""
+        if self._attr_device_class == NumberDeviceClass.TEMPERATURE:
+            return body_temperature_limits(self.coordinator)[0]
+        return self._attr_native_min_value
+
+    @property
+    def native_max_value(self) -> float:
+        """Return the maximum value, panel-unit aware for temperatures."""
+        if self._attr_device_class == NumberDeviceClass.TEMPERATURE:
+            return body_temperature_limits(self.coordinator)[1]
+        return self._attr_native_max_value
 
     @property
     def native_value(self) -> float | int | None:

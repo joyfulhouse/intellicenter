@@ -1160,3 +1160,59 @@ async def test_number_pmpcirc_skipped_when_parent_pump_absent(
         and e._pool_object.objnam == "PMPCIRC01"
     ]
     assert pmpcirc_entities == []
+
+
+# -------------------------------------------------------------------------------------
+# Body max-temperature (HITMP) entity: panel-unit-aware limits (regression)
+# -------------------------------------------------------------------------------------
+
+
+def _make_hitmp_number(mock_coordinator: MagicMock) -> PoolNumber:
+    """Build the body Max Temperature number entity like the platform does."""
+    from homeassistant.components.number import NumberDeviceClass, NumberMode
+
+    body = PoolObject(
+        "POOL1",
+        {"OBJTYP": BODY_TYPE, "SUBTYP": "POOL", "SNAME": "Pool", "HITMP": "30"},
+    )
+    return PoolNumber(
+        mock_coordinator,
+        body,
+        step=1,
+        attribute_key="HITMP",
+        name="+ Max Temperature",
+        device_class=NumberDeviceClass.TEMPERATURE,
+        mode=NumberMode.BOX,
+        integer_only=True,
+    )
+
+
+async def test_hitmp_limits_and_unit_fahrenheit(
+    hass: HomeAssistant, mock_coordinator: MagicMock
+) -> None:
+    """ENGLISH panel: 40-104 F with an explicit Fahrenheit native unit."""
+    number = _make_hitmp_number(mock_coordinator)
+
+    assert number.native_min_value == 40.0
+    assert number.native_max_value == 104.0
+    assert number.native_unit_of_measurement == "°F"
+
+
+async def test_hitmp_limits_and_unit_celsius(
+    hass: HomeAssistant, mock_coordinator: MagicMock
+) -> None:
+    """Regression: METRIC panel must allow 5-40 C, not the Fahrenheit range.
+
+    Hardcoded 40-104 bounds with no native unit made every valid Celsius
+    setpoint (5-39) raise ServiceValidationError and displayed raw values
+    without unit conversion.
+    """
+    type(mock_coordinator.system_info).uses_metric = property(lambda self: True)
+
+    number = _make_hitmp_number(mock_coordinator)
+
+    assert number.native_min_value == 5.0
+    assert number.native_max_value == 40.0
+    assert number.native_unit_of_measurement == "°C"
+    # A mid-range Celsius value reads back fine
+    assert number.native_value == 30

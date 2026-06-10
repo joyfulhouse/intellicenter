@@ -217,7 +217,8 @@ async def test_diagnostics_entry_info(
     result = await async_get_config_entry_diagnostics(hass, entry)
 
     assert result["entry"]["entry_id"] == "test_entry_123"
-    assert result["entry"]["title"] == "My IntelliCenter"
+    # The title is the PROPNAME (often a street address) - must be redacted.
+    assert result["entry"]["title"] == "**REDACTED**"
     # Host should be redacted
     assert result["entry"]["data"][CONF_HOST] == "**REDACTED**"
 

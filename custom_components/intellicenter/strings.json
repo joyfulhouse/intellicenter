@@ -63,7 +63,8 @@
       "already_configured": "This IntelliCenter device is already configured.",
       "cannot_connect": "Failed to connect to the discovered device.",
       "unknown": "An unexpected error occurred during setup.",
-      "reconfigure_successful": "Configuration updated successfully."
+      "reconfigure_successful": "Configuration updated successfully.",
+      "unique_id_mismatch": "The device at this address is a different IntelliCenter than the one this entry was set up with. To add it, create a new entry instead."
     }
   },
   "options": {

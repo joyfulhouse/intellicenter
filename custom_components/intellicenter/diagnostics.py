@@ -24,6 +24,9 @@ TO_REDACT = {
     "HOST",
     "PROPNAME",  # Pool system name (could identify the owner)
     "propName",
+    # The config flow sets the entry title to PROPNAME, so an unredacted title
+    # leaks the exact value the PROPNAME entries above are hiding.
+    "title",
 }
 
 

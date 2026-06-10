@@ -321,6 +321,4 @@ class PoolClimate(PoolEntity, ClimateEntity):
             return True
         # hvac_action also depends on the heater objects' COOL attribute, which
         # arrives as an update for the HEATER objnam, not the body.
-        return any(
-            COOL_ATTR in updates.get(heater, {}) for heater in self._heater_list
-        )
+        return any(COOL_ATTR in updates.get(heater, {}) for heater in self._heater_list)

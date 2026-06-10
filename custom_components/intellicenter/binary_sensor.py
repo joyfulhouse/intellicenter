@@ -220,8 +220,17 @@ class HeaterBinarySensor(PoolEntity, BinarySensorEntity):
             **kwargs: Additional arguments passed to PoolEntity
         """
         super().__init__(coordinator, pool_object, **kwargs)
-        body_attr = pool_object[BODY_ATTR]
-        self._bodies: set[str] = set(body_attr.split(" ")) if body_attr else set()
+
+    @property
+    def _bodies(self) -> set[str]:
+        """Return the objnams of the bodies this heater serves, derived live.
+
+        Reading BODY from the live pool object (instead of freezing it at
+        construction - the issue-#57 staleness class) means a heater rewired
+        to a different body keeps reporting correctly without a reload.
+        """
+        body_attr = self._pool_object[BODY_ATTR]
+        return set(body_attr.split(" ")) if body_attr else set()
 
     @property
     def is_on(self) -> bool:
@@ -233,7 +242,9 @@ class HeaterBinarySensor(PoolEntity, BinarySensorEntity):
             if (
                 body[STATUS_ATTR] == STATUS_ON
                 and body[HEATER_ATTR] == self._pool_object.objnam
-                and body[HTMODE_ATTR] != "0"
+                # A missing HTMODE means "unknown", not "heating": None != "0"
+                # is True, so an explicit not-in check is required.
+                and body[HTMODE_ATTR] not in (None, "0")
             ):
                 return True
         return False

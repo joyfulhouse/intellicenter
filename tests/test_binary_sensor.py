@@ -465,3 +465,48 @@ async def test_binary_sensor_state_updates(
 
     # Verify state changed
     assert sensor.is_on is True
+
+
+async def test_heater_sensor_tracks_rewired_bodies(
+    hass: HomeAssistant,
+    pool_object_heater_sensor: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Regression: the served-body set must be derived live, not frozen.
+
+    The bodies were parsed from BODY once at construction, so a heater
+    rewired to a different body at runtime kept reporting against the stale
+    set until restart (the issue-#57 staleness class).
+    """
+    sensor = HeaterBinarySensor(mock_coordinator, pool_object_heater_sensor)
+
+    before = sensor._bodies
+
+    # The panel rewires the heater to another body at runtime.
+    pool_object_heater_sensor.update({"BODY": "B1102"})
+
+    assert sensor._bodies == {"B1102"}
+    assert sensor._bodies != before
+
+
+async def test_heater_sensor_unknown_htmode_is_not_heating(
+    hass: HomeAssistant,
+    pool_object_heater_sensor: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Regression: a missing HTMODE must not report 'heating' (None != '0')."""
+    # Body on, this heater selected, but HTMODE never delivered.
+    pool_body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "HEATER": pool_object_heater_sensor.objnam,
+        },
+    )
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_body)
+
+    sensor = HeaterBinarySensor(mock_coordinator, pool_object_heater_sensor)
+    assert sensor.is_on is False

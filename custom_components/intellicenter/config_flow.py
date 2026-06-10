@@ -475,6 +475,14 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):
                 transport = user_input.get(CONF_TRANSPORT, DEFAULT_TRANSPORT)
                 system_info = await self._get_system_info(host, transport)
 
+                # The entry must keep pointing at the SAME panel: silently
+                # rebinding it to different hardware would corrupt entity
+                # history and lets a later zeroconf rediscovery of the original
+                # panel flip CONF_HOST back - the host would oscillate between
+                # two devices with no error shown.
+                await self.async_set_unique_id(system_info.unique_id)
+                self._abort_if_unique_id_mismatch(reason="unique_id_mismatch")
+
                 # Check if this host is different and not already configured
                 if host != reconfigure_entry.data.get(CONF_HOST):
                     # Check if another entry uses this host
@@ -490,6 +498,10 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):
                     title=system_info.prop_name,
                     data={CONF_HOST: host, CONF_TRANSPORT: transport},
                 )
+            except AbortFlow:
+                # e.g. unique_id_mismatch - must reach the flow manager, not
+                # the generic 'unknown' bucket below.
+                raise
             except InvalidHost:
                 errors["base"] = "invalid_host"
             except CannotConnect:

@@ -441,11 +441,13 @@ async def test_reconfigure_flow_host_already_configured(
     hass: HomeAssistant, mock_controller: MagicMock
 ) -> None:
     """Test reconfigure flow when new host is already configured by another entry."""
-    # Create two entries
+    # Create two entries. entry1 carries the unique_id the mocked panel
+    # reports so the reconfigure identity guard passes and the flow reaches
+    # the host-conflict check.
     entry1 = MockConfigEntry(
         domain=DOMAIN,
         data={CONF_HOST: "192.168.1.99"},
-        unique_id="unique-id-1",
+        unique_id="test-unique-id-123",
     )
     entry1.add_to_hass(hass)
 
@@ -572,3 +574,33 @@ async def test_user_flow_ic_timeout_maps_to_cannot_connect(
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "manual"
     assert result["errors"] == {"base": "cannot_connect"}
+
+
+async def test_reconfigure_flow_rejects_different_panel(
+    hass: HomeAssistant, mock_controller: MagicMock
+) -> None:
+    """Regression: reconfigure must not silently rebind to different hardware.
+
+    Without the identity guard, pointing the entry at another panel kept the
+    old unique_id, and a later zeroconf rediscovery of the original panel
+    would flip CONF_HOST back - the host oscillated between two devices.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_HOST: "192.168.1.99"},
+        unique_id="the-original-panel",
+    )
+    entry.add_to_hass(hass)
+
+    # The mocked controller reports a DIFFERENT panel identity
+    # ("test-unique-id-123") for the new host.
+    result = await entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_HOST: "192.168.1.42"},
+    )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "unique_id_mismatch"
+    # The entry was not rebound.
+    assert entry.data[CONF_HOST] == "192.168.1.99"

@@ -20,6 +20,7 @@ from pyintellicenter import (
 )
 import pytest
 
+from custom_components.intellicenter.coordinator import DEFAULT_ATTRIBUTES_MAP
 from custom_components.intellicenter.number import PoolNumber, PumpSpeedNumber
 
 pytestmark = pytest.mark.asyncio
@@ -28,7 +29,7 @@ pytestmark = pytest.mark.asyncio
 @pytest.fixture
 def pool_model_with_intellichlor() -> PoolModel:
     """Return a PoolModel with IntelliChlor."""
-    model = PoolModel()
+    model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
     model.add_objects(
         [
             {
@@ -372,7 +373,7 @@ async def test_number_no_bodies_configured(
     mock_coordinator: MagicMock,
 ) -> None:
     """Test number setup when no bodies are configured."""
-    model = PoolModel()
+    model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
     model.add_objects(
         [
             {
@@ -414,7 +415,7 @@ async def test_number_no_bodies_configured(
 @pytest.fixture
 def pool_model_with_pmpcirc() -> PoolModel:
     """Return a PoolModel with a variable speed/flow pump and circuit settings."""
-    model = PoolModel()
+    model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
     model.add_objects(
         [
             {
@@ -963,7 +964,7 @@ async def test_pump_speed_number_default_mode_when_none(
 @pytest.fixture
 def pool_model_with_vs_pump() -> PoolModel:
     """Return a PoolModel with a variable speed (VS) pump (RPM only)."""
-    model = PoolModel()
+    model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
     model.add_objects(
         [
             {
@@ -1006,7 +1007,7 @@ def pool_model_with_vs_pump() -> PoolModel:
 @pytest.fixture
 def pool_model_with_vf_pump() -> PoolModel:
     """Return a PoolModel with a variable flow (VF) pump (GPM only)."""
-    model = PoolModel()
+    model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
     model.add_objects(
         [
             {
@@ -1124,7 +1125,7 @@ async def test_number_pmpcirc_skipped_when_parent_pump_absent(
     """
     from custom_components.intellicenter.number import _build_entities
 
-    model = PoolModel()
+    model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
     model.add_objects(
         [
             {

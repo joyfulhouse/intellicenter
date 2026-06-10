@@ -13,6 +13,7 @@ from pyintellicenter import (
 )
 import pytest
 
+from custom_components.intellicenter.coordinator import DEFAULT_ATTRIBUTES_MAP
 from custom_components.intellicenter.cover import PoolCover
 
 pytestmark = pytest.mark.asyncio
@@ -21,7 +22,7 @@ pytestmark = pytest.mark.asyncio
 @pytest.fixture
 def pool_model_with_cover() -> PoolModel:
     """Return a PoolModel with a cover."""
-    model = PoolModel()
+    model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
     model.add_objects(
         [
             {
@@ -372,3 +373,37 @@ async def test_cover_device_class(
     cover = PoolCover(mock_coordinator, pool_object_cover_normally_closed)
 
     assert cover.device_class == CoverDeviceClass.SHADE
+
+
+async def test_production_attribute_map_admits_covers() -> None:
+    """Regression: EXTINSTR must be in the production tracking map.
+
+    PoolModel only admits objtypes present in its attribute map. Without an
+    EXTINSTR entry, cover objects were silently dropped on real hardware and
+    the platform never created any entities (tests previously passed only
+    because fixtures used the library's all-attributes default map).
+    """
+    assert EXTINSTR_TYPE in DEFAULT_ATTRIBUTES_MAP
+    assert {STATUS_ATTR, NORMAL_ATTR} <= DEFAULT_ATTRIBUTES_MAP[EXTINSTR_TYPE]
+
+    model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
+    admitted = model.add_object(
+        "COVER9",
+        {"OBJTYP": EXTINSTR_TYPE, "SUBTYP": "COVER", "SNAME": "Cover", "STATUS": "ON"},
+    )
+    assert admitted is not None
+    assert model["COVER9"] is not None
+
+
+async def test_cover_unknown_position_when_attributes_missing(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+) -> None:
+    """is_closed must be None (unknown), not a fabricated 'closed', without data."""
+    cover_obj = PoolObject(
+        "COVER3",
+        {"OBJTYP": EXTINSTR_TYPE, "SUBTYP": "COVER", "SNAME": "Bare Cover"},
+    )
+    cover = PoolCover(mock_coordinator, cover_obj)
+
+    assert cover.is_closed is None

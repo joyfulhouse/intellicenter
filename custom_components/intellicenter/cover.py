@@ -86,14 +86,18 @@ class PoolCover(PoolEntity, CoverEntity):
         )
 
     @property
-    def is_closed(self) -> bool:
-        """Return true if cover is closed."""
+    def is_closed(self) -> bool | None:
+        """Return true if cover is closed, or None if the state is unknown."""
+        # Without both attributes the position cannot be derived; report unknown
+        # rather than fabricating "closed" (safety automations may key off this).
+        raw_status = self._pool_object[STATUS_ATTR]
+        raw_normal = self._pool_object[NORMAL_ATTR]
+        if raw_status is None or raw_normal is None:
+            return None
         # The cover is closed if:
         # - STATUS is ON and NORMAL is ON (cover is normally closed)
         # - STATUS is OFF and NORMAL is OFF (cover is normally open)
-        status = self._pool_object[STATUS_ATTR] == STATUS_ON
-        normal = self._pool_object[NORMAL_ATTR] == STATUS_ON
-        return bool(status == normal)
+        return bool((raw_status == STATUS_ON) == (raw_normal == STATUS_ON))
 
     async def async_open_cover(self, **kwargs: Any) -> None:
         """Open the cover."""

@@ -11,7 +11,10 @@ from pyintellicenter import (
 )
 import pytest
 
-from custom_components.intellicenter.coordinator import IntelliCenterCoordinator
+from custom_components.intellicenter.coordinator import (
+    DEFAULT_ATTRIBUTES_MAP,
+    IntelliCenterCoordinator,
+)
 from custom_components.intellicenter.diagnostics import (
     async_get_config_entry_diagnostics,
 )
@@ -22,7 +25,7 @@ pytestmark = pytest.mark.asyncio
 @pytest.fixture
 def pool_model_for_diagnostics() -> PoolModel:
     """Return a PoolModel for diagnostics testing."""
-    model = PoolModel()
+    model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
     model.add_objects(
         [
             {

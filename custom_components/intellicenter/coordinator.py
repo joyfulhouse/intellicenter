@@ -28,6 +28,7 @@ from pyintellicenter import (
     CIRCUIT_ATTR,
     CIRCUIT_TYPE,
     CYACID_ATTR,
+    EXTINSTR_TYPE,
     FEATR_ATTR,
     FREEZE_ATTR,
     GPM_ATTR,
@@ -43,6 +44,7 @@ from pyintellicenter import (
     MIN_ATTR,
     MINF_ATTR,
     MODE_ATTR,
+    NORMAL_ATTR,
     ORPHI_ATTR,
     ORPLO_ATTR,
     ORPSET_ATTR,
@@ -151,6 +153,10 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
         # IntelliChlor sensors
         SALT_ATTR,
     },
+    # External instruments (pool covers). Without this entry PoolModel drops the
+    # objects entirely and the cover platform never sees them (the model only
+    # admits objtypes present in this map).
+    EXTINSTR_TYPE: {SNAME_ATTR, STATUS_ATTR, NORMAL_ATTR, SUBTYP_ATTR},
     HEATER_TYPE: {SNAME_ATTR, BODY_ATTR, LISTORD_ATTR, SUBTYP_ATTR},
     PUMP_TYPE: {
         SNAME_ATTR,

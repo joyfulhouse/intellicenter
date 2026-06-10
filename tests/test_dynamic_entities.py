@@ -32,7 +32,10 @@ from custom_components.intellicenter import (
     async_setup_pool_entities,
     bodies_affected_by,
 )
-from custom_components.intellicenter.coordinator import IntelliCenterCoordinator
+from custom_components.intellicenter.coordinator import (
+    DEFAULT_ATTRIBUTES_MAP,
+    IntelliCenterCoordinator,
+)
 
 # A second IntelliChem controller - the exact scenario reported in issue #42.
 # Includes both sensor readings (PHVAL/ORPVAL/tank levels) and the controllable
@@ -302,7 +305,7 @@ async def test_multiple_platforms_handle_new_object(
 
     for setup in (sensor_setup, number_setup):
         # Fresh model per platform so the new object is genuinely absent at setup.
-        model = PoolModel()
+        model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
         model.add_objects(pool_model_data)
         mock_coordinator.model = model
 

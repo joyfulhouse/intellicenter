@@ -63,7 +63,7 @@ class IntegrationTester:
     def __init__(self, host: str, port: int = 6681):
         self.host = host
         self.port = port
-        self.model = PoolModel()
+        self.model = PoolModel()  # standalone hardware script: track all attributes
         self.controller: ICModelController | None = None
         self.handler: ICConnectionHandler | None = None
         self.results: list[IntegrationTestResult] = []

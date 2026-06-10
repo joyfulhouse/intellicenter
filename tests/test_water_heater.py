@@ -28,6 +28,7 @@ from pyintellicenter import (
 )
 import pytest
 
+from custom_components.intellicenter.coordinator import DEFAULT_ATTRIBUTES_MAP
 from custom_components.intellicenter.water_heater import PoolWaterHeater
 
 pytestmark = pytest.mark.asyncio
@@ -1714,7 +1715,7 @@ async def test_water_heater_second_heater_added_to_existing_body(
     created (the platform de-dups the rebuilt entity by ``unique_id``).
     """
     # A real model so the live heater derivation (get_by_type) actually runs.
-    model = PoolModel()
+    model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
     model.add_objects(
         [
             {

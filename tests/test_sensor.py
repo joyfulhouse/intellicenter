@@ -33,6 +33,7 @@ from pyintellicenter import (
 import pytest
 
 from custom_components.intellicenter.const import CONST_GPM, CONST_RPM
+from custom_components.intellicenter.coordinator import DEFAULT_ATTRIBUTES_MAP
 from custom_components.intellicenter.sensor import PoolSensor, SystemModeSensor
 
 pytestmark = pytest.mark.asyncio
@@ -582,7 +583,7 @@ async def test_system_mode_sensor_created(
     mock_coordinator: MagicMock,
 ) -> None:
     """A System Mode sensor is created for a SYSTEM object exposing SERVICE."""
-    model = PoolModel()
+    model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
     model.add_objects(
         [
             {

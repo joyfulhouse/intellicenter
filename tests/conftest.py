@@ -24,7 +24,10 @@ from pyintellicenter import (
 )
 import pytest
 
-from custom_components.intellicenter.coordinator import IntelliCenterCoordinator
+from custom_components.intellicenter.coordinator import (
+    DEFAULT_ATTRIBUTES_MAP,
+    IntelliCenterCoordinator,
+)
 
 # Enable custom integrations
 pytest_plugins = "pytest_homeassistant_custom_component"
@@ -257,7 +260,7 @@ def pool_model_data() -> list[dict[str, Any]]:
 @pytest.fixture
 def pool_model(pool_model_data: list[dict[str, Any]]) -> PoolModel:
     """Return a PoolModel with test data."""
-    model = PoolModel()
+    model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
     model.add_objects(pool_model_data)
     return model
 

@@ -4,8 +4,8 @@ from unittest.mock import MagicMock
 
 from homeassistant.components.light import ATTR_EFFECT
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from pyintellicenter import (
-    ACT_ATTR,
     LIGHT_EFFECTS,
     STATUS_ATTR,
     PoolModel,
@@ -431,26 +431,30 @@ async def test_light_state_update_with_each_effect(
     assert light.effect == LIGHT_EFFECTS[effect_code]
 
 
-async def test_light_invalid_effect_ignored(
+async def test_light_invalid_effect_raises(
     hass: HomeAssistant,
     pool_object_light: PoolObject,
     mock_coordinator: MagicMock,
     mock_write_ha_state: MagicMock,
 ) -> None:
-    """Test that invalid effect is ignored when turning on."""
+    """An unknown effect raises a clean error and the light is NOT turned on.
+
+    Previously the bad effect was silently dropped and the light still turned
+    on; now the service call fails visibly before any state is changed.
+    """
     light = PoolLight(mock_coordinator, pool_object_light, LIGHT_EFFECTS)
     light.hass = hass  # Required for async_create_task
 
     await hass.async_block_till_done()
-    await light.async_turn_on(**{ATTR_EFFECT: "Invalid Effect"})
+    with pytest.raises(HomeAssistantError):
+        await light.async_turn_on(**{ATTR_EFFECT: "Invalid Effect"})
+    await hass.async_block_till_done()
 
-    # Should still turn on, but without ACT_ATTR since effect is invalid
-    mock_coordinator.controller.request_changes.assert_called_once()
-    args = mock_coordinator.controller.request_changes.call_args[0]
-    assert args[0] == "LIGHT1"
-    assert args[1][STATUS_ATTR] == "ON"
-    # ACT_ATTR should NOT be present for invalid effect
-    assert ACT_ATTR not in args[1]
+    # Neither the effect nor the on-command reached the controller, and no
+    # optimistic state was rendered.
+    mock_coordinator.controller.set_light_effect.assert_not_called()
+    mock_coordinator.controller.request_changes.assert_not_called()
+    assert light._optimistic_state is None
 
 
 async def test_light_unknown_effect_code_returns_none(
@@ -466,3 +470,34 @@ async def test_light_unknown_effect_code_returns_none(
 
     # Effect should be None for unknown codes
     assert light.effect is None
+
+
+async def test_light_effect_command_failure_raises_and_stays_off(
+    hass: HomeAssistant,
+    pool_object_light: PoolObject,
+    mock_coordinator: MagicMock,
+    mock_write_ha_state: MagicMock,
+) -> None:
+    """Regression: a failed effect write surfaces and the light is not shown on.
+
+    set_light_effect used to be guarded only by `except ValueError`, so a
+    connection error escaped as a raw traceback AFTER the optimistic on-state
+    was rendered - leaving the UI showing ON for a light that never received
+    a command.
+    """
+    from pyintellicenter import ICConnectionError
+
+    mock_coordinator.controller.set_light_effect.side_effect = ICConnectionError(
+        "Not connected"
+    )
+
+    light = PoolLight(mock_coordinator, pool_object_light, LIGHT_EFFECTS)
+    light.hass = hass
+
+    with pytest.raises(HomeAssistantError):
+        await light.async_turn_on(**{ATTR_EFFECT: "Party"})
+    await hass.async_block_till_done()
+
+    # The on-command never fired and no optimistic state survives.
+    mock_coordinator.controller.request_changes.assert_not_called()
+    assert light._optimistic_state is None

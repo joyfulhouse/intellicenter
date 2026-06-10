@@ -13,17 +13,22 @@ from typing import Any
 from homeassistant.components.light import ATTR_EFFECT, LightEntity
 from homeassistant.components.light.const import ColorMode, LightEntityFeature
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyintellicenter import (
     CIRCUIT_ATTR,
     LIGHT_EFFECTS,
     STATUS_ATTR,
-    STATUS_OFF,
     USE_ATTR,
     PoolObject,
 )
 
-from . import IntelliCenterConfigEntry, PoolEntity, async_setup_pool_entities
+from . import (
+    IntelliCenterConfigEntry,
+    OnOffControlMixin,
+    PoolEntity,
+    async_setup_pool_entities,
+)
 from .coordinator import IntelliCenterCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -73,11 +78,12 @@ async def async_setup_entry(
     async_setup_pool_entities(entry, async_add_entities, _build_entities)
 
 
-class PoolLight(PoolEntity, LightEntity):
+class PoolLight(PoolEntity, OnOffControlMixin, LightEntity):
     """Representation of a Pentair light.
 
-    Supports basic on/off control and color effects for compatible lights
-    (IntelliBrite, MagicStream, GloBrite).
+    Supports basic on/off control (via OnOffControlMixin's optimistic
+    scaffolding) and color effects for compatible lights (IntelliBrite,
+    MagicStream, GloBrite).
     """
 
     _attr_color_mode = ColorMode.ONOFF
@@ -122,48 +128,24 @@ class PoolLight(PoolEntity, LightEntity):
         use_value = self._pool_object[USE_ATTR]
         return self._light_effects.get(use_value) if use_value else None
 
-    _optimistic_state: bool | None = None  # None = use real state
-
-    @property
-    def is_on(self) -> bool:
-        """Return the state of the light."""
-        # Use optimistic state if set, otherwise use real state
-        if self._optimistic_state is not None:
-            return self._optimistic_state
-        return bool(self._pool_object.status == self._pool_object.on_status)
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn off the light."""
-        # Optimistic update for immediate UI feedback
-        self._optimistic_state = False
-        self.async_write_ha_state()
-        self.request_changes({STATUS_ATTR: STATUS_OFF})
-
     async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn on the light."""
-        # Optimistic update for immediate UI feedback
-        self._optimistic_state = True
-        self.async_write_ha_state()
+        """Turn on the light, applying the requested effect first.
 
-        # Handle light effect using convenience method if specified
+        The effect write is awaited (and any failure raised) BEFORE the
+        optimistic on-state is rendered, so a light that cannot accept the
+        command never shows as on.
+        """
         if ATTR_EFFECT in kwargs and self._reversed_light_effects:
             effect = kwargs[ATTR_EFFECT]
             new_use = self._reversed_light_effects.get(effect)
-            if new_use:
-                try:
-                    # Use convenience method with validation
-                    await self._controller.set_light_effect(
-                        self._pool_object.objnam, new_use
-                    )
-                except ValueError:
-                    _LOGGER.warning("Invalid light effect: %s", effect)
+            if new_use is None:
+                raise HomeAssistantError(f"Unknown light effect: {effect}")
+            await self._async_execute_command(
+                self._controller.set_light_effect(self._pool_object.objnam, new_use)
+            )
 
-        # Turn on the light
-        self.request_changes({STATUS_ATTR: self._pool_object.on_status})
-
-    def _clear_optimistic_state(self) -> None:
-        """Clear optimistic state when real update is received."""
-        self._optimistic_state = None
+        # On/off (with optimistic UI feedback) comes from OnOffControlMixin.
+        await super().async_turn_on(**kwargs)
 
     def isUpdated(self, updates: dict[str, dict[str, Any]]) -> bool:
         """Return true if the entity is updated by the updates from IntelliCenter."""

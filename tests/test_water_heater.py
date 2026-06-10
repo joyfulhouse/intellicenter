@@ -12,6 +12,7 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from pyintellicenter import (
     BODY_TYPE,
     HEATER_ATTR,
@@ -326,17 +327,18 @@ async def test_water_heater_set_temperature_invalid(
     pool_object_body_with_heater: PoolObject,
     mock_coordinator: MagicMock,
 ) -> None:
-    """Test setting invalid temperature (should be handled gracefully)."""
+    """An unparseable temperature raises a clean HomeAssistantError."""
     water_heater = PoolWaterHeater(
         mock_coordinator,
         pool_object_body_with_heater,
         ["HTR01"],
     )
 
-    # This should log an error but not crash
-    await water_heater.async_set_temperature(**{ATTR_TEMPERATURE: "invalid"})
+    with pytest.raises(HomeAssistantError):
+        await water_heater.async_set_temperature(**{ATTR_TEMPERATURE: "invalid"})
 
-    # Should not call request_changes for invalid value
+    # Nothing reached the controller for the invalid value
+    mock_coordinator.controller.set_setpoint.assert_not_called()
     mock_coordinator.controller.request_changes.assert_not_called()
 
 
@@ -1799,3 +1801,29 @@ async def test_water_heater_second_heater_added_to_existing_body(
     # derived from the live model.
     assert "Gas Heater" in existing.operation_list
     assert "Solar Heater" in existing.operation_list
+
+
+async def test_water_heater_set_operation_mode_connection_error(
+    hass: HomeAssistant,
+    pool_object_body_with_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Regression: a library failure surfaces as HomeAssistantError.
+
+    Raw ICConnectionError used to escape the service call as an 'Unknown
+    error' traceback.
+    """
+    from pyintellicenter import ICConnectionError
+
+    mock_coordinator.controller.request_changes.side_effect = ICConnectionError(
+        "Not connected"
+    )
+
+    water_heater = PoolWaterHeater(
+        mock_coordinator,
+        pool_object_body_with_heater,
+        ["HTR01"],
+    )
+
+    with pytest.raises(HomeAssistantError):
+        await water_heater.async_set_operation_mode("Gas Heater")

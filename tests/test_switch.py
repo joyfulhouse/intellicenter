@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from pyintellicenter import (
     STATUS_ATTR,
     VACFLO_ATTR,
@@ -11,7 +12,7 @@ from pyintellicenter import (
 )
 import pytest
 
-from custom_components.intellicenter.switch import PoolBody, PoolCircuit
+from custom_components.intellicenter.switch import PoolBody, PoolCircuit, PoolVacation
 
 pytestmark = pytest.mark.asyncio
 
@@ -261,3 +262,54 @@ async def test_switch_device_class(
     circuit = PoolCircuit(mock_coordinator, pool_object_switch)
 
     assert circuit.device_class == SwitchDeviceClass.SWITCH
+
+
+async def test_circuit_failed_command_reverts_optimistic_state(
+    hass: HomeAssistant,
+    pool_object_switch: PoolObject,
+    mock_coordinator: MagicMock,
+    mock_write_ha_state: MagicMock,
+) -> None:
+    """Regression: a failed fire-and-forget command must drop optimistic state.
+
+    The write task swallowed every exception while the optimistic state could
+    only be cleared by a push echo - which never arrives when the command
+    failed - so the UI showed the wrong on/off state indefinitely.
+    """
+    from pyintellicenter import ICConnectionError
+
+    mock_coordinator.controller.request_changes.side_effect = ICConnectionError(
+        "Not connected"
+    )
+
+    switch = PoolCircuit(mock_coordinator, pool_object_switch)
+    switch.hass = hass
+
+    await switch.async_turn_on()
+    # The eagerly-started write task fails and reverts the optimistic state.
+    await hass.async_block_till_done()
+    assert switch._optimistic_state is None
+    assert mock_write_ha_state.call_count >= 2  # optimistic write + revert
+
+
+async def test_vacation_failed_command_raises_and_reverts(
+    hass: HomeAssistant,
+    pool_model: PoolModel,
+    mock_coordinator: MagicMock,
+    mock_write_ha_state: MagicMock,
+) -> None:
+    """A failed vacation-mode write raises HomeAssistantError and reverts."""
+    from pyintellicenter import ICConnectionError
+
+    mock_coordinator.controller.set_vacation_mode.side_effect = ICConnectionError(
+        "Not connected"
+    )
+
+    system_obj = pool_model["SYS01"]
+    vacation = PoolVacation(mock_coordinator, system_obj)
+    vacation.hass = hass
+
+    with pytest.raises(HomeAssistantError):
+        await vacation.async_turn_on()
+
+    assert vacation._optimistic_state is None

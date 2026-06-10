@@ -12,7 +12,8 @@ from typing import Any
 
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity
 from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyintellicenter import (
     BODY_TYPE,
@@ -146,7 +147,6 @@ class PoolVacation(PoolEntity, SwitchEntity):
     _attr_icon = "mdi:palm-tree"
     _attr_entity_category = EntityCategory.CONFIG
     _attr_entity_registry_enabled_default = True
-    _optimistic_state: bool | None = None
 
     def __init__(
         self,
@@ -170,17 +170,21 @@ class PoolVacation(PoolEntity, SwitchEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Enable vacation mode using convenience method."""
-        self._optimistic_state = True
-        self.async_write_ha_state()
-        await self._controller.set_vacation_mode(True)
+        await self._async_set_vacation_mode(True)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Disable vacation mode using convenience method."""
-        self._optimistic_state = False
-        self.async_write_ha_state()
-        await self._controller.set_vacation_mode(False)
+        await self._async_set_vacation_mode(False)
 
-    @callback
-    def _clear_optimistic_state(self) -> None:
-        """Clear optimistic state when real update is received."""
-        self._optimistic_state = None
+    async def _async_set_vacation_mode(self, state: bool) -> None:
+        """Write vacation mode optimistically, reverting if the command fails."""
+        self._optimistic_state = state
+        self.async_write_ha_state()
+        try:
+            await self._async_execute_command(self._controller.set_vacation_mode(state))
+        except HomeAssistantError:
+            # The panel never received the change: drop the optimistic state so
+            # the UI snaps back to reality, then surface the error to the call.
+            self._clear_optimistic_state()
+            self.async_write_ha_state()
+            raise

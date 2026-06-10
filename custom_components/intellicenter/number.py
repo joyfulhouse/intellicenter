@@ -27,6 +27,7 @@ from homeassistant.const import (
     EntityCategory,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyintellicenter import (
     ALK_ATTR,
@@ -479,23 +480,30 @@ class PoolNumber(PoolEntity, NumberEntity):
             CYACID_ATTR: ("set_cyanuric_acid", int),
         }
 
-        try:
-            if self._attribute_key in dispatch:
-                method_name, converter = dispatch[self._attribute_key]
-                method = getattr(controller, method_name)
-                await method(objnam, converter(value))
-            elif self._attribute_key == SEC_ATTR:
-                # Secondary chlorinator needs current primary preserved
-                current = controller.get_chlorinator_output(objnam)
-                primary = current.get("primary") or 0
-                await controller.set_chlorinator_output(objnam, primary, int(value))
-            else:
-                # Fallback for other number entities (e.g., HITMP)
-                self.request_changes({self._attribute_key: str(int(value))})
-        except ValueError as err:
-            _LOGGER.warning("Invalid setpoint value for %s: %s", objnam, err)
-        except Exception:
-            _LOGGER.exception("Failed to set value for %s", objnam)
+        # Failures raise HomeAssistantError (via _async_execute_command) so the
+        # service call reports the problem; previously they were swallowed and
+        # the call 'succeeded' while the UI value silently snapped back.
+        if self._attribute_key in dispatch:
+            method_name, converter = dispatch[self._attribute_key]
+            method = getattr(controller, method_name)
+            await self._async_execute_command(method(objnam, converter(value)))
+        elif self._attribute_key == SEC_ATTR:
+            # Secondary chlorinator needs the current primary preserved. If the
+            # primary output is unknown, abort rather than silently writing
+            # PRIM=0 (which would zero the primary chlorinator as a side effect).
+            current = controller.get_chlorinator_output(objnam)
+            primary = current.get("primary")
+            if primary is None:
+                raise HomeAssistantError(
+                    f"Cannot set secondary chlorinator output for {objnam}: "
+                    "primary output is not known yet"
+                )
+            await self._async_execute_command(
+                controller.set_chlorinator_output(objnam, primary, int(value))
+            )
+        else:
+            # Fallback for other number entities (e.g., HITMP)
+            self.request_changes({self._attribute_key: str(int(value))})
 
 
 # -------------------------------------------------------------------------------------

@@ -1216,3 +1216,74 @@ async def test_hitmp_limits_and_unit_celsius(
     assert number.native_unit_of_measurement == "°C"
     # A mid-range Celsius value reads back fine
     assert number.native_value == 30
+
+
+# -------------------------------------------------------------------------------------
+# Service-call error handling (regression)
+# -------------------------------------------------------------------------------------
+
+
+async def test_number_set_value_connection_error_raises(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Regression: failures must raise, not silently 'succeed'.
+
+    async_set_native_value used to catch every exception and only log, so the
+    service call reported success while the UI value snapped back.
+    """
+    from homeassistant.exceptions import HomeAssistantError
+    from pyintellicenter import ICConnectionError
+
+    mock_coordinator.controller.set_ph_setpoint.side_effect = ICConnectionError(
+        "Not connected"
+    )
+
+    chem = PoolObject(
+        "ICHEM1",
+        {
+            "OBJTYP": CHEM_TYPE,
+            "SUBTYP": "ICHEM",
+            "SNAME": "IntelliChem",
+            "PHSET": "7.4",
+        },
+    )
+    number = PoolNumber(
+        mock_coordinator,
+        chem,
+        attribute_key="PHSET",
+        name="+ pH Setpoint",
+    )
+
+    with pytest.raises(HomeAssistantError):
+        await number.async_set_native_value(7.4)
+
+
+async def test_number_secondary_chlorinator_aborts_without_primary(
+    hass: HomeAssistant,
+    pool_object_intellichlor: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Regression: unknown primary output must abort, not be zeroed.
+
+    The old code defaulted a missing primary to 0 and wrote it alongside the
+    secondary value - silently turning off the primary chlorinator.
+    """
+    from homeassistant.exceptions import HomeAssistantError
+
+    mock_coordinator.controller.get_chlorinator_output.return_value = {
+        "primary": None,
+        "secondary": 30,
+    }
+
+    number = PoolNumber(
+        mock_coordinator,
+        pool_object_intellichlor,
+        attribute_key=SEC_ATTR,
+        name="+ Output % (Spa)",
+    )
+
+    with pytest.raises(HomeAssistantError):
+        await number.async_set_native_value(40)
+
+    mock_coordinator.controller.set_chlorinator_output.assert_not_called()

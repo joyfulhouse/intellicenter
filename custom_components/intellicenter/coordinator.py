@@ -465,9 +465,7 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         self._pending_redispatch -= ready_objnams
 
         ready = [
-            obj
-            for objnam in ready_objnams
-            if (obj := self._model[objnam]) is not None
+            obj for objnam in ready_objnams if (obj := self._model[objnam]) is not None
         ]
         # Children gated on a parent that was incomplete at first dispatch
         # (e.g. a PMPCIRC whose pump lacked MIN/MAX limits) get re-evaluated too.

@@ -13,6 +13,7 @@ from pyintellicenter import (
     BODY_TYPE,
     CHEM_TYPE,
     GPM_ATTR,
+    LSTTMP_ATTR,
     ORPTNK_ATTR,
     ORPVAL_ATTR,
     ORPVOL_ATTR,
@@ -157,12 +158,16 @@ async def test_sensor_setup_creates_entities(
 
     await async_setup_entry(hass, mock_entry, capture_entities)
 
-    # Should create sensors for:
-    # - SENSE1 (air temp)
+    # Representative sensors created from the fixture (non-exhaustive — pumps
+    # also emit RPM/GPM limit sensors, IntelliChem emits dosing/diagnostic
+    # sensors, the SYSTEM object emits firmware/mode sensors, etc.):
+    # - SENSE1 (air temp = 1)
     # - PUMP1 (power, RPM, GPM = 3)
     # - CHEM1 (pH, ORP, pH tank, ORP tank = 4)
-    # - POOL1/SPA01 bodies (Last Temp = LSTTMP, one per body)
-    assert len(entities_added) >= 8
+    # - POOL1/SPA01 bodies (Last Temp = LSTTMP, one per body = 2)
+    # This is a conservative floor; the two body Last Temp sensors are asserted
+    # precisely in test_setup_creates_body_last_temp_sensors.
+    assert len(entities_added) >= 10
 
 
 async def test_temperature_sensor_properties(
@@ -700,7 +705,7 @@ async def test_body_last_temp_sensor_properties(
         mock_coordinator,
         pool_object_body,
         device_class=SensorDeviceClass.TEMPERATURE,
-        attribute_key="LSTTMP",
+        attribute_key=LSTTMP_ATTR,
         name="+ Last Temp",
     )
 
@@ -726,7 +731,7 @@ async def test_body_last_temp_unique_id_distinct_from_body_switch(
         mock_coordinator,
         pool_object_body,
         device_class=SensorDeviceClass.TEMPERATURE,
-        attribute_key="LSTTMP",
+        attribute_key=LSTTMP_ATTR,
         name="+ Last Temp",
     )
     body_switch = PoolBody(mock_coordinator, pool_object_body)

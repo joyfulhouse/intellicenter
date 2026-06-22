@@ -226,7 +226,7 @@ Entities are created based on equipment characteristics in the pool model:
   - Color effects only supported for `INTELLI`, `MAGIC2`, `GLOW` subtypes
 - **Light Shows**: Created for circuits with subtype `LITSHO`
 - **Switches**: Created for circuits marked as "Featured" (`FEATR_ATTR == "ON"`)
-- **Bodies of Water**: Create switch, temperature sensors, and water heater entities
+- **Bodies of Water**: Create a switch, a "Last Temp" temperature sensor (the body's `LSTTMP` last-recorded temperature, enabled by default — holds steady when the pump is off, unlike the physical Water Sensor), and water heater entities
 - **Heaters**: Standard heaters surface as a water_heater entity. HCOMBO (UltraTemp ETi Hybrid) heaters add multi-mode water_heater entities exposing Gas Only / Heat Pump Only / Hybrid / Dual operation modes (driven via the body `MODE` attribute, since IntelliCenter ignores `HEATER` writes for HCOMBO). The last-used operation is remembered and restored on turn-on; bodies with both an HCOMBO and a standard heater are supported.
 - **Pumps**: Create binary_sensor plus optional power/RPM/GPM sensors
 - **Schedules**: Create binary_sensors (disabled by default)

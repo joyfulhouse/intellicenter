@@ -161,7 +161,7 @@ async def test_sensor_setup_creates_entities(
     # - SENSE1 (air temp)
     # - PUMP1 (power, RPM, GPM = 3)
     # - CHEM1 (pH, ORP, pH tank, ORP tank = 4)
-    # Note: Body temps (POOL1/SPA01) are in water_heater, not sensors
+    # - POOL1/SPA01 bodies (Last Temp = LSTTMP, one per body)
     assert len(entities_added) >= 8
 
 
@@ -688,3 +688,75 @@ async def test_system_mode_sensor_is_updated(
 
     assert sensor.isUpdated({"_5451": {SERVICE_ATTR: "SERVICE"}}) is True
     assert sensor.isUpdated({"_5451": {"OTHER": "value"}}) is False
+
+
+async def test_body_last_temp_sensor_properties(
+    hass: HomeAssistant,
+    pool_object_body: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """The body last-temp sensor exposes LSTTMP, named '<body> Last Temp'."""
+    sensor = PoolSensor(
+        mock_coordinator,
+        pool_object_body,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        attribute_key="LSTTMP",
+        name="+ Last Temp",
+    )
+
+    assert sensor.name == "Pool Last Temp"
+    assert sensor.unique_id == "test_entry_POOL1LSTTMP"
+    assert sensor.native_value == 78
+    assert sensor.native_unit_of_measurement == str(UnitOfTemperature.FAHRENHEIT)
+    assert sensor._attr_device_class == SensorDeviceClass.TEMPERATURE
+    assert sensor._attr_state_class == SensorStateClass.MEASUREMENT
+    # Enabled by default: distinct, primary value (issue #75).
+    assert sensor.entity_registry_enabled_default is True
+
+
+async def test_body_last_temp_unique_id_distinct_from_body_switch(
+    hass: HomeAssistant,
+    pool_object_body: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """The last-temp sensor must not collide with the body switch's unique_id."""
+    from custom_components.intellicenter.switch import PoolBody
+
+    sensor = PoolSensor(
+        mock_coordinator,
+        pool_object_body,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        attribute_key="LSTTMP",
+        name="+ Last Temp",
+    )
+    body_switch = PoolBody(mock_coordinator, pool_object_body)
+
+    assert body_switch.unique_id == "test_entry_POOL1"
+    assert sensor.unique_id == "test_entry_POOL1LSTTMP"
+    assert sensor.unique_id != body_switch.unique_id
+
+
+async def test_setup_creates_body_last_temp_sensors(
+    hass: HomeAssistant,
+    pool_model: PoolModel,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Platform setup creates a Last Temp sensor for each body (Pool + Spa)."""
+    mock_coordinator.model = pool_model
+
+    mock_entry = MagicMock()
+    mock_entry.entry_id = "test_entry"
+    mock_entry.runtime_data = mock_coordinator
+
+    entities_added: list = []
+
+    def capture_entities(entities):
+        entities_added.extend(entities)
+
+    from custom_components.intellicenter.sensor import async_setup_entry
+
+    await async_setup_entry(hass, mock_entry, capture_entities)
+
+    names = [e.name for e in entities_added]
+    assert "Pool Last Temp" in names
+    assert "Spa Last Temp" in names

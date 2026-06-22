@@ -29,8 +29,10 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyintellicenter import (
+    BODY_TYPE,
     CHEM_TYPE,
     GPM_ATTR,
+    LSTTMP_ATTR,
     MAX_ATTR,
     MAXF_ATTR,
     MIN_ATTR,
@@ -87,6 +89,21 @@ def _build_entities(
                     attribute_key=SOURCE_ATTR,
                 )
             )
+        elif obj.objtype == BODY_TYPE:
+            # "Last Temp" = the body's last recorded (latched) temperature.
+            # Unlike the physical SENSE water probe (which cools in an
+            # above-ground pipe when the pump stops), LSTTMP holds the last
+            # circulating temperature, so it stays accurate when idle (#75).
+            if LSTTMP_ATTR in obj.attribute_keys:
+                sensors.append(
+                    PoolSensor(
+                        coordinator,
+                        obj,
+                        device_class=SensorDeviceClass.TEMPERATURE,
+                        attribute_key=LSTTMP_ATTR,
+                        name="+ Last Temp",
+                    )
+                )
         elif obj.objtype == PUMP_TYPE:
             if obj[PWR_ATTR]:
                 sensors.append(

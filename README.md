@@ -135,13 +135,13 @@ After setup, configure connection settings:
 | **System** | Switch, Binary Sensor, Sensors | Vacation mode, freeze protection, temperatures |
 | **Covers** | Cover | Pool cover open/close control |
 
-### Pool/Spa Sensors
+### Body (Pool/Spa) Last Temp Sensor
 
 - **Last Temp** (`sensor`, one per body, e.g. "Pool Last Temp"): the body's last
-  recorded water temperature (`LSTTMP`). Unlike the physical Water Sensor — whose
-  probe sits in an above-ground pipe and reads colder when the pump is off — the
-  Last Temp value latches the last circulating temperature, so it stays accurate
-  while the pump is idle.
+  recorded water temperature (`LSTTMP`), enabled by default. Unlike the physical
+  Water Sensor — whose probe sits in an above-ground pipe and reads colder when
+  the pump is off — the Last Temp value latches the last circulating temperature,
+  so it stays accurate while the pump is idle.
 
 ## Automation Examples
 

@@ -741,6 +741,32 @@ async def test_body_last_temp_unique_id_distinct_from_body_switch(
     assert sensor.unique_id != body_switch.unique_id
 
 
+async def test_body_last_temp_push_update(
+    hass: HomeAssistant,
+    pool_object_body: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """The Last Temp sensor reflects LSTTMP changes pushed by the controller."""
+    sensor = PoolSensor(
+        mock_coordinator,
+        pool_object_body,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        attribute_key=LSTTMP_ATTR,
+        name="+ Last Temp",
+    )
+
+    assert sensor.native_value == 78
+
+    # Only an LSTTMP change on this body triggers a state write.
+    assert sensor.isUpdated({"POOL1": {LSTTMP_ATTR: "81"}}) is True
+    assert sensor.isUpdated({"POOL1": {"OTHER": "value"}}) is False
+    assert sensor.isUpdated({"SPA01": {LSTTMP_ATTR: "81"}}) is False
+
+    # Applying the pushed value updates the reported temperature.
+    pool_object_body.update({LSTTMP_ATTR: "81"})
+    assert sensor.native_value == 81
+
+
 async def test_setup_creates_body_last_temp_sensors(
     hass: HomeAssistant,
     pool_model: PoolModel,
@@ -765,3 +791,13 @@ async def test_setup_creates_body_last_temp_sensors(
     names = [e.name for e in entities_added]
     assert "Pool Last Temp" in names
     assert "Spa Last Temp" in names
+
+    # Exactly one Last Temp sensor per body (Pool + Spa), each enabled by
+    # default and with a distinct unique_id (no collision with each other or
+    # the body switch/heater that share the same BODY object).
+    last_temp = [
+        e for e in entities_added if e.name in ("Pool Last Temp", "Spa Last Temp")
+    ]
+    assert len(last_temp) == 2
+    assert len({e.unique_id for e in last_temp}) == 2
+    assert all(e.entity_registry_enabled_default for e in last_temp)

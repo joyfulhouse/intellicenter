@@ -9,7 +9,7 @@
   "issue_tracker": "https://github.com/joyfulhouse/intellicenter/issues",
   "quality_scale": "platinum",
   "requirements": ["pyintellicenter>=0.1.20"],
-  "version": "3.8.0b1",
+  "version": "3.8.0b2",
   "zeroconf": [
     {"type": "_http._tcp.local.", "name": "pentair*"}
   ]

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Body "Last Temp" sensor** (#75) - Each body of water (Pool, Spa) now exposes a "Last Temp" temperature sensor (e.g. "Pool Last Temp") reading the IntelliCenter body's `LSTTMP` (last recorded temperature), enabled by default. Unlike the physical Water Sensor - whose probe sits in an above-ground pipe and reads colder when the pump is off - the Last Temp value latches the last circulating temperature, so it stays steady while the pump is idle. This restores the "last temp" entity that the original dwradcliffe integration provided. Thanks to @sheyman1 for the request.
+
 ## [3.7.0] - 2026-06-01
 
 ### Added

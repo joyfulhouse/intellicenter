@@ -1,6 +1,6 @@
 [project]
 name = "intellicenter"
-version = "3.8.0"
+version = "3.8.1b1"
 description = "Home Assistant custom integration for Pentair IntelliCenter"
 readme = "README.md"
 license = "GPL-3.0-only"

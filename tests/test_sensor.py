@@ -650,6 +650,10 @@ async def test_system_mode_sensor_enum_contract(
         ("TIMEOUT", "timeout"),
         ("TIME OUT", "timeout"),
         ("Time Out", "timeout"),
+        # Hardware protocol spelling: IntelliCenter reports the timed service
+        # mode as the misspelled "TIMOUT" (issue #80, hardware-confirmed).
+        ("TIMOUT", "timeout"),
+        ("timout", "timeout"),
         # Absent or unrecognized values surface as unknown (None). HA raises
         # ValueError if an enum sensor reports a state outside its options, so
         # anything other than auto/service/timeout must normalize to None.

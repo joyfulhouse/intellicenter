@@ -408,11 +408,22 @@ class PoolSensor(PoolEntity, SensorEntity):
         return self._attr_native_unit_of_measurement
 
 
-# The documented IntelliCenter system operating modes. Only "auto" is
-# hardware-confirmed (the SYSTEM object reports SERVICE='AUTO' in normal
-# automatic operation); the exact "service"/"timeout" protocol strings are
-# inferred from Pentair documentation and have not been observed on hardware.
+# The canonical IntelliCenter system operating modes exposed as enum states
+# (localized via the ``system_mode`` translation key).
 SYSTEM_MODE_OPTIONS = ["auto", "service", "timeout"]
+
+# Raw SERVICE protocol strings -> canonical option. Values are matched after
+# normalizing (lower-case, spaces removed). Two modes are hardware-confirmed:
+# ``AUTO`` in normal automatic operation, and ``TIMOUT`` -- Pentair's misspelled
+# protocol string for the timed service mode (issue #80), which would not match
+# the ``timeout`` option on its own. The indefinite ``SERVICE`` string is
+# documented but not yet observed on hardware.
+SYSTEM_MODE_ALIASES = {
+    "auto": "auto",
+    "service": "service",
+    "timeout": "timeout",
+    "timout": "timeout",  # hardware protocol spelling (issue #80)
+}
 
 
 class SystemModeSensor(PoolSensor):
@@ -425,11 +436,11 @@ class SystemModeSensor(PoolSensor):
     -- because ``PoolEntity.name`` overrides Home Assistant's translation-based
     naming, so a ``translation_key`` name would never be consulted.
 
-    Only the ``AUTO`` value is hardware-confirmed; ``service`` and ``timeout``
-    are the documented modes (Pentair manuals) but their exact protocol strings
-    are inferred. Raw values are normalized case- and space-insensitively, and
-    any value outside the known options is reported as unknown so the enum
-    sensor never raises on an unexpected string.
+    ``AUTO`` and ``TIMOUT`` are hardware-confirmed; the indefinite ``SERVICE``
+    string is documented but not yet observed. Raw values are normalized
+    case- and space-insensitively and mapped via ``SYSTEM_MODE_ALIASES``, and
+    any value outside the known set is reported as unknown so the enum sensor
+    never raises on an unexpected string.
     """
 
     _attr_translation_key = "system_mode"
@@ -456,8 +467,9 @@ class SystemModeSensor(PoolSensor):
     def native_value(self) -> str | None:
         """Return the normalized system mode, or None if unrecognized.
 
-        The raw SERVICE value is normalized case- and space-insensitively so
-        variants like "AUTO", "Service", or "TIME OUT" map onto the documented
+        The raw SERVICE value is normalized case- and space-insensitively and
+        resolved through ``SYSTEM_MODE_ALIASES`` so variants like "AUTO",
+        "Service", "TIME OUT", or the hardware spelling "TIMOUT" map onto the
         ``auto``/``service``/``timeout`` options. A value outside that set is
         reported as ``None`` (unknown) rather than returned verbatim, because
         Home Assistant raises ``ValueError`` when an enum sensor's state is not
@@ -467,4 +479,4 @@ class SystemModeSensor(PoolSensor):
         if raw_value is None:
             return None
         normalized = str(raw_value).strip().lower().replace(" ", "")
-        return normalized if normalized in SYSTEM_MODE_OPTIONS else None
+        return SYSTEM_MODE_ALIASES.get(normalized)

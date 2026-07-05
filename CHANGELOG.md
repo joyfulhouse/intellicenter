@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.8.1] - 2026-07-05
+
 ### Fixed
 - **System Mode showed "Unknown" in service/timeout mode** (#80) - IntelliCenter reports the timed service mode on the SYSTEM object's `SERVICE` attribute as the misspelled protocol string `TIMOUT` (no "E"). The System Mode sensor normalized it to `timout`, which is not one of the `auto`/`service`/`timeout` enum options, so it fell through to Unknown while the panel was actually in service/timeout mode. Raw `SERVICE` values are now resolved through an alias map, so both `TIMEOUT` and the hardware spelling `TIMOUT` map to `timeout`. `AUTO` and `TIMOUT` are now hardware-confirmed. Thanks to @nall for the report and the hardware-confirmed protocol string.
 

@@ -201,6 +201,104 @@ automation:
           message: "Freeze protection activated!"
 ```
 
+### Circulation Watchdog (Stuck Valve Detection)
+
+Valve actuators (including the IntelliValve) have no feedback path to
+IntelliCenter — the panel drives them blind over a 3-wire 24VAC interface, so
+neither IntelliCenter nor this integration can report a valve's position or
+mode directly. Notably, IntelliValves can come back up in SERVICE mode after a
+power outage and stay there until the MODE button is physically pressed,
+silently stopping proper circulation.
+
+Circulation problems can still be detected indirectly through the pump's
+hydraulic signature: for a variable-speed pump, power follows the affinity law
+(watts ∝ RPM³) with a plumbing-specific constant. A valve stuck in the wrong
+position changes the hydraulic curve, pushing power measurably off that line.
+
+To calibrate, note your pump's steady-state watts at each scheduled RPM and
+compute `watts / rpm³` (it should be nearly identical across speeds); use that
+as the constant below (`5.6e-8` is one real-world example).
+
+```yaml
+automation:
+  - alias: "Pool Circulation Watchdog"
+    trigger:
+      # Pump power off its normal curve for 20 min (tolerates transients)
+      - platform: template
+        value_template: >-
+          {% set rpm = states('sensor.pump_rpm') | float(0) %}
+          {% set power = states('sensor.pump_power') | float(0) %}
+          {% set expected = 5.6e-8 * rpm**3 %}
+          {{ is_state('binary_sensor.pump', 'on') and rpm >= 1000
+             and expected > 0
+             and ((power - expected) | abs / expected) > 0.15 }}
+        for: "00:20:00"
+        id: hydraulic_anomaly
+      # Panel left in service/timeout mode (e.g. after a power outage)
+      - platform: state
+        entity_id: sensor.system_mode
+        to:
+          - service
+          - timeout
+        for: "00:30:00"
+        id: panel_not_auto
+      # IntelliCenter reconnected after being unreachable
+      - platform: state
+        entity_id: sensor.system_mode
+        from: unavailable
+        for: "00:03:00"
+        id: reconnected
+    action:
+      - choose:
+          - conditions:
+              - condition: trigger
+                id: hydraulic_anomaly
+            sequence:
+              - service: notify.mobile_app
+                data:
+                  title: "Pool: Possible Stuck Valve"
+                  message: >-
+                    Pump power has been off its normal curve for 20+ min:
+                    {{ states('sensor.pump_power') }} W at
+                    {{ states('sensor.pump_rpm') }} RPM. A valve may be stuck
+                    in SERVICE mode — check the actuator MODE buttons.
+          - conditions:
+              - condition: trigger
+                id: panel_not_auto
+            sequence:
+              - service: notify.mobile_app
+                data:
+                  title: "Pool: Panel Not in Auto"
+                  message: >-
+                    IntelliCenter has been in
+                    '{{ states('sensor.system_mode') }}' mode for 30+ min.
+                    Schedules and valves are not running automatically.
+          - conditions:
+              - condition: trigger
+                id: reconnected
+            sequence:
+              - service: notify.mobile_app
+                data:
+                  title: "Pool: IntelliCenter Back Online"
+                  message: >-
+                    IntelliCenter reconnected after being unreachable — if this
+                    was a power outage, verify the valve actuator LEDs show
+                    AUTO (green), not SERVICE (yellow).
+    mode: single
+```
+
+Notes:
+
+- Entity names derive from your pool objects' names; substitute your own
+  (e.g. `sensor.pump_rpm`/`sensor.pump_power` come from the pump's power/RPM
+  sensors, `sensor.system_mode` from the System Mode sensor).
+- IntelliFlo VS pumps report 0 GPM (no flow meter) — power-at-RPM is the
+  usable signal. VSF/VF owners can additionally alert on abnormal GPM.
+- The 15% deviation threshold assumes ±2% normal spread with ~11% worst-case
+  steady-state excursions; widen it if your pump's bands are noisier.
+- Re-calibrate the constant after plumbing changes (new salt cell, filter,
+  heater bypass, etc.).
+
 ## Troubleshooting
 
 ### Integration Not Discovered

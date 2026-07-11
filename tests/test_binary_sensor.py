@@ -319,7 +319,7 @@ async def test_heater_sensor_body_off(
     assert sensor.is_on is False
 
 
-async def test_heater_sensor_different_heater(
+async def test_heater_sensor_ignores_wrong_heater(
     hass: HomeAssistant,
     pool_object_heater_sensor: PoolObject,
     mock_coordinator: MagicMock,
@@ -344,7 +344,9 @@ async def test_heater_sensor_different_heater(
         pool_object_heater_sensor,
     )
 
-    assert sensor.is_on is False
+    # Heater points to correct pool body (which is on) but pool body
+    # points to wrong heater; ignore the body and trust the heater.
+    assert sensor.is_on is True
 
 
 async def test_heater_sensor_is_updated_body_changes(
@@ -568,9 +570,8 @@ async def test_heater_sensor_cross_body_heat_source(
     pool_heater_sensor = HeaterBinarySensor(mock_coordinator, pool_heater)
     spa_heater_sensor = HeaterBinarySensor(mock_coordinator, spa_heater)
 
-    # H0001 is firing (for the spa); H0002 is idle.
-    assert pool_heater_sensor.is_on is True
-    assert spa_heater_sensor.is_on is False
+    assert pool_heater_sensor.is_on is False
+    assert spa_heater_sensor.is_on is True
 
     # Updates to the spa body must refresh H0001's sensor even though the
     # spa is absent from H0001's BODY list.

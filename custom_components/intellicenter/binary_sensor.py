@@ -235,18 +235,12 @@ class HeaterBinarySensor(PoolEntity, BinarySensorEntity):
 
     @property
     def is_on(self) -> bool:
-        """Return true if the heater is actively heating.
-
-        Every body in the model is scanned, not just those in this heater's
-        BODY list: the panel allows a body's heat source (HEATER) to point at
-        a heater whose BODY list does not include that body, and such heating
-        was invisible when only the heater's own BODY list was consulted.
-        """
-        for body in self.coordinator.model:
+        """Return true if at least one body associated with the heater is actively heating."""
+        for body_attr in self._bodies:
+            body = self.coordinator.model[body_attr]
             if (
-                body.objtype == BODY_TYPE
+                body
                 and body[STATUS_ATTR] == STATUS_ON
-                and body[HEATER_ATTR] == self._pool_object.objnam
                 # A missing HTMODE means "unknown", not "heating": None != "0"
                 # is True, so an explicit not-in check is required.
                 and body[HTMODE_ATTR] not in (None, "0")

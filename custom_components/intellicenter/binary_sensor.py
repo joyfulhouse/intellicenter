@@ -35,13 +35,16 @@ from pyintellicenter import (
     PUMP_STATUS_ON,
     PUMP_TYPE,
     SCHED_TYPE,
+    SERVICE_ATTR,
     STATUS_ATTR,
     STATUS_ON,
+    SYSTEM_TYPE,
     PoolObject,
 )
 
 from . import IntelliCenterConfigEntry, PoolEntity, async_setup_pool_entities
 from .coordinator import IntelliCenterCoordinator
+from .sensor import normalize_system_mode
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -51,9 +54,19 @@ PARALLEL_UPDATES = 0
 
 def _build_entities(
     coordinator: IntelliCenterCoordinator, candidates: Iterable[PoolObject]
-) -> list[PoolBinarySensor | HeaterBinarySensor | ScheduleBinarySensor]:
+) -> list[
+    PoolBinarySensor
+    | HeaterBinarySensor
+    | ScheduleBinarySensor
+    | SystemModeBinarySensor
+]:
     """Build binary sensor entities for the given candidate pool objects."""
-    sensors: list[PoolBinarySensor | HeaterBinarySensor | ScheduleBinarySensor] = []
+    sensors: list[
+        PoolBinarySensor
+        | HeaterBinarySensor
+        | ScheduleBinarySensor
+        | SystemModeBinarySensor
+    ] = []
 
     for obj in candidates:
         if obj.objtype == CIRCUIT_TYPE and obj.subtype == "FRZ":
@@ -139,6 +152,11 @@ def _build_entities(
                         entity_category=EntityCategory.DIAGNOSTIC,
                     )
                 )
+        elif obj.objtype == SYSTEM_TYPE and SERVICE_ATTR in obj.attribute_keys:
+            # Panel operating-mode problem indicator: on whenever the panel is
+            # not in normal automatic operation (Service or Time Out), e.g.
+            # left in service mode after maintenance or a power outage.
+            sensors.append(SystemModeBinarySensor(coordinator, obj))
     return sensors
 
 
@@ -311,3 +329,57 @@ class ScheduleBinarySensor(PoolEntity, BinarySensorEntity):
     def is_on(self) -> bool:
         """Return true if the schedule is currently active."""
         return bool(self._pool_object[self._attribute_key] == STATUS_ON)
+
+
+# -------------------------------------------------------------------------------------
+
+
+class SystemModeBinarySensor(PoolEntity, BinarySensorEntity):
+    """Problem sensor: on when the panel is not in normal automatic operation.
+
+    IntelliCenter suspends schedules (and therefore automatic valve and pump
+    control) while the panel is in Service or Time Out mode -- a state it can
+    be left in after maintenance or a power outage, silently stopping
+    circulation. This sensor mirrors the ``System Mode`` enum sensor's source
+    attribute (``SERVICE`` on the SYSTEM object, normalized through
+    ``normalize_system_mode()``) as a ``PROBLEM`` binary sensor so standard
+    problem-entity dashboards and alert automations pick it up without
+    custom template YAML.
+
+    ``is_on`` is True for ``service``/``timeout``, False for ``auto``, and
+    None (unknown) for unrecognized protocol values -- an unexpected string
+    must not raise a false alarm.
+    """
+
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:cog-off-outline"
+
+    def __init__(
+        self,
+        coordinator: IntelliCenterCoordinator,
+        pool_object: PoolObject,
+        **kwargs: Any,
+    ) -> None:
+        """Initialize the Not in Auto problem sensor.
+
+        Args:
+            coordinator: The coordinator for this integration
+            pool_object: The SYSTEM PoolObject
+            **kwargs: Additional arguments passed to PoolEntity
+        """
+        super().__init__(
+            coordinator,
+            pool_object,
+            attribute_key=SERVICE_ATTR,
+            name="Not in Auto",
+            **kwargs,
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return True when the panel mode is Service or Time Out."""
+        mode = normalize_system_mode(self._pool_object[self._attribute_key])
+        if mode is None:
+            return None
+        return mode != "auto"

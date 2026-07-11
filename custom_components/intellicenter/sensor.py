@@ -426,6 +426,24 @@ SYSTEM_MODE_ALIASES = {
 }
 
 
+def normalize_system_mode(raw_value: Any) -> str | None:
+    """Normalize a raw SERVICE protocol value to a canonical system mode.
+
+    The raw value is matched case- and space-insensitively against
+    ``SYSTEM_MODE_ALIASES`` so variants like "AUTO", "Service", "TIME OUT",
+    or the hardware spelling "TIMOUT" map onto ``auto``/``service``/
+    ``timeout``. Returns ``None`` for a missing or unrecognized value.
+
+    Shared by ``SystemModeSensor`` (enum sensor) and the binary_sensor
+    platform's ``SystemModeBinarySensor`` (Not in Auto problem sensor) so
+    both interpret the protocol identically.
+    """
+    if raw_value is None:
+        return None
+    normalized = str(raw_value).strip().lower().replace(" ", "")
+    return SYSTEM_MODE_ALIASES.get(normalized)
+
+
 class SystemModeSensor(PoolSensor):
     """System operating-mode sensor (Auto / Service / Time out).
 
@@ -467,16 +485,12 @@ class SystemModeSensor(PoolSensor):
     def native_value(self) -> str | None:
         """Return the normalized system mode, or None if unrecognized.
 
-        The raw SERVICE value is normalized case- and space-insensitively and
-        resolved through ``SYSTEM_MODE_ALIASES`` so variants like "AUTO",
-        "Service", "TIME OUT", or the hardware spelling "TIMOUT" map onto the
-        ``auto``/``service``/``timeout`` options. A value outside that set is
-        reported as ``None`` (unknown) rather than returned verbatim, because
-        Home Assistant raises ``ValueError`` when an enum sensor's state is not
-        one of its declared ``options``.
+        The raw SERVICE value is resolved through ``normalize_system_mode()``
+        so variants like "AUTO", "Service", "TIME OUT", or the hardware
+        spelling "TIMOUT" map onto the ``auto``/``service``/``timeout``
+        options. A value outside that set is reported as ``None`` (unknown)
+        rather than returned verbatim, because Home Assistant raises
+        ``ValueError`` when an enum sensor's state is not one of its declared
+        ``options``.
         """
-        raw_value = self._pool_object[self._attribute_key]
-        if raw_value is None:
-            return None
-        normalized = str(raw_value).strip().lower().replace(" ", "")
-        return SYSTEM_MODE_ALIASES.get(normalized)
+        return normalize_system_mode(self._pool_object[self._attribute_key])

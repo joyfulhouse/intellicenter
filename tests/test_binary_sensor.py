@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock
 
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from pyintellicenter import (
     BODY_TYPE,
@@ -12,6 +13,7 @@ from pyintellicenter import (
     HTMODE_ATTR,
     PUMP_TYPE,
     STATUS_ATTR,
+    SYSTEM_TYPE,
     PoolModel,
     PoolObject,
 )
@@ -20,6 +22,8 @@ import pytest
 from custom_components.intellicenter.binary_sensor import (
     HeaterBinarySensor,
     PoolBinarySensor,
+    SystemModeBinarySensor,
+    _build_entities,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -510,3 +514,100 @@ async def test_heater_sensor_unknown_htmode_is_not_heating(
 
     sensor = HeaterBinarySensor(mock_coordinator, pool_object_heater_sensor)
     assert sensor.is_on is False
+
+
+# -------------------------------------------------------------------------------------
+# System mode "Not in Auto" problem sensor
+
+
+@pytest.fixture
+def pool_object_system_mode() -> PoolObject:
+    """Return a SYSTEM PoolObject exposing the SERVICE operating-mode attribute."""
+    return PoolObject(
+        "_5451",
+        {
+            "OBJTYP": SYSTEM_TYPE,
+            "SNAME": "IntelliCenter System",
+            "MODE": "ENGLISH",
+            "VER": "2.0.0",
+            "SERVICE": "AUTO",
+        },
+    )
+
+
+async def test_system_mode_binary_sensor_created(
+    hass: HomeAssistant,
+    pool_object_system_mode: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A Not in Auto problem sensor is created for a SYSTEM object with SERVICE."""
+    sensors = _build_entities(mock_coordinator, [pool_object_system_mode])
+
+    problem_sensors = [s for s in sensors if isinstance(s, SystemModeBinarySensor)]
+    assert len(problem_sensors) == 1
+    sensor = problem_sensors[0]
+    assert sensor.device_class == BinarySensorDeviceClass.PROBLEM
+    assert sensor.entity_category == EntityCategory.DIAGNOSTIC
+
+
+async def test_system_mode_binary_sensor_not_created_without_service(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+) -> None:
+    """No Not in Auto sensor is created when SYSTEM lacks the SERVICE attribute."""
+    system_obj = PoolObject(
+        "_5451",
+        {
+            "OBJTYP": SYSTEM_TYPE,
+            "SNAME": "IntelliCenter System",
+            "MODE": "ENGLISH",
+        },
+    )
+    sensors = _build_entities(mock_coordinator, [system_obj])
+    assert not [s for s in sensors if isinstance(s, SystemModeBinarySensor)]
+
+
+@pytest.mark.parametrize(
+    ("raw_service", "expected"),
+    [
+        ("AUTO", False),
+        ("auto", False),
+        ("SERVICE", True),
+        ("Service", True),
+        ("TIMOUT", True),  # hardware protocol spelling (issue #80)
+        ("TIMEOUT", True),
+        ("Time Out", True),
+        ("GARBAGE", None),  # unknown mode -> unknown, never a false alarm
+        (None, None),
+    ],
+)
+async def test_system_mode_binary_sensor_is_on(
+    hass: HomeAssistant,
+    pool_object_system_mode: PoolObject,
+    mock_coordinator: MagicMock,
+    raw_service: str | None,
+    expected: bool | None,
+) -> None:
+    """is_on mirrors the normalized system mode: on iff not auto, unknown if unmapped."""
+    if raw_service is None:
+        pool_object_system_mode.update({"SERVICE": None})
+    else:
+        pool_object_system_mode.update({"SERVICE": raw_service})
+
+    sensor = SystemModeBinarySensor(mock_coordinator, pool_object_system_mode)
+    assert sensor.is_on is expected
+
+
+async def test_system_mode_binary_sensor_state_updates(
+    hass: HomeAssistant,
+    pool_object_system_mode: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """The sensor tracks SERVICE updates pushed by IntelliCenter."""
+    sensor = SystemModeBinarySensor(mock_coordinator, pool_object_system_mode)
+    assert sensor.is_on is False
+
+    updates = {"_5451": {"SERVICE": "TIMOUT"}}
+    assert sensor.isUpdated(updates) is True
+    pool_object_system_mode.update(updates["_5451"])
+    assert sensor.is_on is True

@@ -1,18 +1,32 @@
 # Valve Control Findings - Executive Summary
 
 **Date:** 2025-01-15
-**System:** IntelliCenter @ 10.100.11.60
-**Status:** ✅ CONFIRMED - Ready for Implementation
+**System:** Live IntelliCenter unit
+**Status:** ⚠️ SUPERSEDED — `ASSIGN` premise corrected 2026-07-11
 
 ---
 
+> ## ⚠️ Correction (2026-07-11)
+>
+> This summary (and the companion `docs/valve-control-implementation.md`)
+> mischaracterizes `ASSIGN` as the valve's *current position*. Verified
+> against live hardware: **`ASSIGN` is a static role assignment**
+> (`INTAKE`/`RETURN`/`NONE` — which plumbing function the valve output
+> serves). Valve actuators have **no feedback path** to IntelliCenter — no
+> position, no mode (an IntelliValve stuck in SERVICE after a power outage is
+> invisible to the panel). Writing `ASSIGN` re-configures the valve's role;
+> it does not rotate the actuator. See the README's
+> [Circulation Watchdog](../../README.md#circulation-watchdog-stuck-valve-detection)
+> section for the hardware-verified behavior and the indirect detection
+> approach.
+
 ## Quick Summary
 
-Valve control for the Pentair IntelliCenter Home Assistant integration is **fully feasible and ready to implement**. We have:
+Valve control for the Pentair IntelliCenter Home Assistant integration ~~is **fully feasible and ready to implement**~~ — **see correction above**: the protocol permits editing a valve's role assignment, not commanding/reading its position. The captures below remain accurate. We have:
 
 - ✅ Verified the protocol with a live system
 - ✅ Found 4 working VALVE objects
-- ✅ Confirmed 3-state control (NONE, INTAKE, RETURN)
+- ⚠️ ~~Confirmed 3-state control (NONE, INTAKE, RETURN)~~ 3-state **role assignment**, not position control
 - ✅ Created complete implementation guide
 - ✅ Written production-ready code with tests
 
@@ -22,7 +36,7 @@ Valve control for the Pentair IntelliCenter Home Assistant integration is **full
 
 ### Discovered Valves
 
-| Object ID | Name | Current Position | Parent Module |
+| Object ID | Name | Role Assignment | Parent Module |
 |-----------|------|-----------------|---------------|
 | VAL03 | Intake | `INTAKE` | M0102 |
 | VAL04 | Return | `RETURN` | M0102 |
@@ -96,12 +110,12 @@ Valve control for the Pentair IntelliCenter Home Assistant integration is **full
 
 ### Protocol Commands
 
-**Read Current Position:**
+**Read Role Assignment:**
 ```json
 GetParamList → Response includes ASSIGN: "INTAKE"
 ```
 
-**Change Position:**
+**Change Role Assignment (configuration write — does not rotate the actuator):**
 ```json
 SETPARAMLIST {"ASSIGN": "RETURN"} → Response: 200 OK
 ```
@@ -141,7 +155,7 @@ docs/
 ### Known Limitations
 
 1. **Hardware Dependent** - Requires IntelliCenter with valve modules
-2. **Position Feedback** - Relies on ASSIGN attribute (no separate confirmation)
+2. **Position Feedback** - None exists; ASSIGN is a role assignment, not position telemetry (see correction at top)
 3. **Physical Constraints** - Valve actuation takes 5-30 seconds
 4. **Single Valve Type** - Only "LEGACY" subtype observed so far
 
@@ -154,8 +168,8 @@ docs/
 1. **Review the guide**: Read `docs/valve-control-implementation.md`
 2. **Copy the code**: All code is written and tested
 3. **Run tests**: `pytest tests/test_select.py -v`
-4. **Test live**: Deploy to test system at 10.100.11.60
-5. **Verify operation**: Check all 4 valves change positions
+4. **Test live**: Deploy to the local test system
+5. **Verify operation**: Check all 4 valves' role assignments update
 
 ### For Future Enhancements
 
@@ -284,7 +298,10 @@ data:
 **A:** Protocol responds in <500ms, but physical actuation takes 5-30 seconds.
 
 ### Q: Can we detect if a valve is stuck?
-**A:** Not directly - would need to monitor ASSIGN changes over time (future enhancement).
+**A:** Not directly — there is no feedback path at all, and ASSIGN never
+changes with valve motion, so monitoring it would detect nothing. The working
+approach is indirect detection via the pump's hydraulic signature; see the
+README's "Circulation Watchdog (Stuck Valve Detection)" section.
 
 ### Q: Are there other valve types besides LEGACY?
 **A:** Not observed in test system, but code should handle unknown types gracefully.
@@ -316,6 +333,6 @@ Valve control implementation is **production-ready** with:
 ---
 
 **Prepared By:** Claude Code (Anthropic)
-**System Tested:** IntelliCenter @ 10.100.11.60
+**System Tested:** IntelliCenter @ <intellicenter-ip>
 **Integration:** joyfulhouse/intellicenter (Gold Quality Scale)
 **Last Updated:** 2025-01-15

@@ -1,15 +1,40 @@
 # Valve Control Implementation Guide
 
-**Status:** Ready for Implementation
-**Date:** 2025-01-15
-**Version:** 1.0
-**Tested On:** IntelliCenter @ 10.100.11.60 (4 valves confirmed)
+**Status:** ⚠️ Superseded — premise corrected (see below)
+**Date:** 2025-01-15 (correction: 2026-07-11)
+**Version:** 1.1
+**Tested On:** Live IntelliCenter system (4 valves confirmed)
 
 ---
 
+> ## ⚠️ Correction (2026-07-11)
+>
+> This document mischaracterizes the `ASSIGN` attribute as "current valve
+> position." Live-hardware investigation (see the README's
+> [Circulation Watchdog](../README.md#circulation-watchdog-stuck-valve-detection)
+> section) established:
+>
+> - **`ASSIGN` is a static role assignment** — it declares which plumbing
+>   function a valve output serves (`INTAKE`/`RETURN`/`NONE`). It is
+>   configuration, not telemetry, and does not change when the valve turns.
+> - **Valve actuators have no feedback path.** IntelliCenter drives them
+>   blind over a 3-wire 24VAC interface; neither position nor mode (e.g. an
+>   IntelliValve stuck in SERVICE) is ever reported back. `VALVE` objects
+>   expose no `STATUS`/`MODE` attribute.
+> - Writing `ASSIGN` therefore **re-configures the valve's role** in the
+>   system; it does not command the actuator to rotate. Actual valve motion
+>   is driven by IntelliCenter's body/circuit logic.
+>
+> The select-entity design below would build a configuration editor, not a
+> valve control — it is retained for the (accurate) protocol captures, but
+> the "position control" framing should not be implemented as designed.
+
 ## Executive Summary
 
-Valve control is **fully feasible** and ready for implementation. The IntelliCenter integration already has VALVE object type definitions, and the protocol has been verified against a live system with 4 working valves.
+~~Valve control is **fully feasible** and ready for implementation.~~ See the
+correction above: what the protocol allows is editing a valve's *role
+assignment*, not commanding or reading its *position*. The protocol captures
+in this document remain accurate.
 
 **Implementation Effort:** ~2 hours
 **Risk Level:** Low (follows established patterns)
@@ -32,7 +57,7 @@ Valve control is **fully feasible** and ready for implementation. The IntelliCen
 
 ### System Details
 
-**IntelliCenter IP:** 10.100.11.60
+**IntelliCenter IP:** <intellicenter-ip>
 **Protocol Port:** 6681
 **Valves Found:** 4
 
@@ -117,7 +142,7 @@ Valve control is **fully feasible** and ready for implementation. The IntelliCen
 | OBJTYP | `"VALVE"` | Object type identifier |
 | SUBTYP | `"LEGACY"` | Valve subtype (all valves) |
 | SNAME | Various | Friendly name for display |
-| ASSIGN | `"NONE"`, `"INTAKE"`, `"RETURN"` | **Current valve position** |
+| ASSIGN | `"NONE"`, `"INTAKE"`, `"RETURN"` | **Valve role assignment** (configuration — not live position; see correction above) |
 | DLY | `"OFF"` | Delay setting (unused in test system) |
 | PARENT | `"M0101"`, `"M0102"` | Parent module reference |
 | CIRCUIT | `"00000"` | Not linked to circuits |
@@ -166,7 +191,7 @@ VALVE_ATTRIBUTES = {
 }
 ```
 
-#### Change Valve Position
+#### Change Valve Role Assignment (configuration write — does not rotate the actuator)
 ```json
 {
   "messageID": "123",
@@ -766,7 +791,7 @@ pytest tests/test_select.py --cov=custom_components/intellicenter/select --cov-r
 
 #### Phase 1: Discovery
 1. Install integration in Home Assistant
-2. Configure with IP: 10.100.11.60
+2. Configure with IP: <intellicenter-ip>
 3. Verify 4 valve entities are created:
    - `select.intellicenter_intake`
    - `select.intellicenter_return`
@@ -1167,7 +1192,7 @@ automation:
 
 ### Version 1.0 (2025-01-15)
 - Initial documentation
-- Live system analysis completed (10.100.11.60)
+- Live system analysis completed (<intellicenter-ip>)
 - 4 valves discovered and documented
 - Full implementation guide created
 - Testing strategy defined
@@ -1178,7 +1203,7 @@ automation:
 ## Contributors
 
 - **Analysis:** Claude Code (Anthropic)
-- **Live System:** IntelliCenter @ 10.100.11.60
+- **Live System:** IntelliCenter @ <intellicenter-ip>
 - **Integration Base:** dwradcliffe/intellicenter (original)
 - **Repository:** joyfulhouse/intellicenter
 

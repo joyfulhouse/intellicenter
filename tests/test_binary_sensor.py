@@ -25,6 +25,15 @@ from custom_components.intellicenter.binary_sensor import (
 pytestmark = pytest.mark.asyncio
 
 
+def _mock_model(*objects: PoolObject) -> MagicMock:
+    """Return a coordinator-model mock that is iterable and indexable by objnam."""
+    by_name = {obj.objnam: obj for obj in objects}
+    model = MagicMock()
+    model.__getitem__ = MagicMock(side_effect=lambda objnam: by_name.get(objnam))
+    model.__iter__ = MagicMock(side_effect=lambda: iter(objects))
+    return model
+
+
 @pytest.fixture
 def pool_object_freeze() -> PoolObject:
     """Return a PoolObject representing a freeze protection circuit."""
@@ -243,8 +252,7 @@ async def test_heater_sensor_heating(
             "HTMODE": "1",  # Heating
         },
     )
-    mock_coordinator.model = MagicMock()
-    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_body)
+    mock_coordinator.model = _mock_model(pool_body)
 
     sensor = HeaterBinarySensor(
         mock_coordinator,
@@ -273,8 +281,7 @@ async def test_heater_sensor_not_heating(
             "HTMODE": "0",  # Not heating (at temperature)
         },
     )
-    mock_coordinator.model = MagicMock()
-    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_body)
+    mock_coordinator.model = _mock_model(pool_body)
 
     sensor = HeaterBinarySensor(
         mock_coordinator,
@@ -302,8 +309,7 @@ async def test_heater_sensor_body_off(
             "HTMODE": "1",
         },
     )
-    mock_coordinator.model = MagicMock()
-    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_body)
+    mock_coordinator.model = _mock_model(pool_body)
 
     sensor = HeaterBinarySensor(
         mock_coordinator,
@@ -331,8 +337,7 @@ async def test_heater_sensor_different_heater(
             "HTMODE": "1",
         },
     )
-    mock_coordinator.model = MagicMock()
-    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_body)
+    mock_coordinator.model = _mock_model(pool_body)
 
     sensor = HeaterBinarySensor(
         mock_coordinator,
@@ -411,10 +416,7 @@ async def test_heater_sensor_multiple_bodies(
             "HTMODE": "0",
         },
     )
-    mock_coordinator.model = MagicMock()
-    mock_coordinator.model.__getitem__ = MagicMock(
-        side_effect=lambda x: pool_body if x == "POOL1" else spa_body
-    )
+    mock_coordinator.model = _mock_model(pool_body, spa_body)
 
     sensor = HeaterBinarySensor(mock_coordinator, heater)
 
@@ -505,8 +507,71 @@ async def test_heater_sensor_unknown_htmode_is_not_heating(
             "HEATER": pool_object_heater_sensor.objnam,
         },
     )
-    mock_coordinator.model = MagicMock()
-    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_body)
+    mock_coordinator.model = _mock_model(pool_body)
 
     sensor = HeaterBinarySensor(mock_coordinator, pool_object_heater_sensor)
     assert sensor.is_on is False
+
+
+async def test_heater_sensor_cross_body_heat_source(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Regression: heating via a heater whose BODY list omits the body.
+
+    The panel allows a body's heat source (HEATER) to point at a heater
+    whose own BODY attribute does not include that body. Observed on a real
+    IntelliCenter: spa B1202 heats with HEATER=H0001 ("Pool Heater") while
+    H0001.BODY only lists the pool body B1101. The served-body scan missed
+    it, so neither heater sensor ever reported the spa heating.
+    """
+    pool_heater = PoolObject(
+        "H0001",
+        {
+            "OBJTYP": HEATER_TYPE,
+            "SUBTYP": "GENERIC",
+            "SNAME": "Pool Heater",
+            "BODY": "B1101",
+        },
+    )
+    spa_heater = PoolObject(
+        "H0002",
+        {
+            "OBJTYP": HEATER_TYPE,
+            "SUBTYP": "GENERIC",
+            "SNAME": "Spa Heater",
+            "BODY": "B1202",
+        },
+    )
+    pool_body = PoolObject(
+        "B1101",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "HEATER": "H0001",
+            "HTMODE": "0",
+        },
+    )
+    spa_body = PoolObject(
+        "B1202",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Spa",
+            "STATUS": "ON",
+            "HEATER": "H0001",  # Heat source outside this body's heater
+            "HTMODE": "1",  # Actively heating
+        },
+    )
+    mock_coordinator.model = _mock_model(pool_heater, spa_heater, pool_body, spa_body)
+
+    pool_heater_sensor = HeaterBinarySensor(mock_coordinator, pool_heater)
+    spa_heater_sensor = HeaterBinarySensor(mock_coordinator, spa_heater)
+
+    # H0001 is firing (for the spa); H0002 is idle.
+    assert pool_heater_sensor.is_on is True
+    assert spa_heater_sensor.is_on is False
+
+    # Updates to the spa body must refresh H0001's sensor even though the
+    # spa is absent from H0001's BODY list.
+    assert pool_heater_sensor.isUpdated({"B1202": {HTMODE_ATTR: "0"}}) is True

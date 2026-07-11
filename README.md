@@ -229,9 +229,8 @@ automation:
           {% set rpm = states('sensor.pump_rpm') | float(0) %}
           {% set power = states('sensor.pump_power') | float(0) %}
           {% set expected = 5.6e-8 * rpm**3 %}
-          {{ is_state('binary_sensor.pump', 'on') and rpm >= 1000
-             and expected > 0
-             and ((power - expected) | abs / expected) > 0.15 }}
+          {{ rpm >= 1300 and expected > 0
+             and (((power - expected) | abs) / expected) > 0.15 }}
         for: "00:20:00"
         id: hydraulic_anomaly
       # Panel left in service/timeout mode (e.g. after a power outage)
@@ -291,11 +290,17 @@ Notes:
 
 - Entity names derive from your pool objects' names; substitute your own
   (e.g. `sensor.pump_rpm`/`sensor.pump_power` come from the pump's power/RPM
-  sensors, `sensor.system_mode` from the System Mode sensor).
+  sensors, `sensor.system_mode` from the System Mode sensor, whose states are
+  exactly `auto`/`service`/`timeout`).
+- The pump doesn't need a separate "running" check — `rpm >= 1300` already
+  gates on it (an idle pump reports 0 RPM). The floor also keeps the check
+  above the power sensor's 25 W rounding step, which at very low speeds
+  (< ~120 W expected) would exceed the threshold on its own.
 - IntelliFlo VS pumps report 0 GPM (no flow meter) — power-at-RPM is the
   usable signal. VSF/VF owners can additionally alert on abnormal GPM.
-- The 15% deviation threshold assumes ±2% normal spread with ~11% worst-case
-  steady-state excursions; widen it if your pump's bands are noisier.
+- The 15% threshold covers a real system's observed ±2% normal spread and
+  ~11% worst-case steady-state excursions, plus headroom; start there and
+  widen it if you get false alarms.
 - Re-calibrate the constant after plumbing changes (new salt cell, filter,
   heater bypass, etc.).
 

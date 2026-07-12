@@ -5,6 +5,13 @@
 - Home Assistant 2025.11 or newer.
 - A Pentair IntelliCenter panel (i5P, i7P, i9P, or i10P) reachable on your local
   network (TCP port 6681).
+  - **Note**: Before installing this integration, make sure to
+    [upgrade your IntelliCenter firmware to the latest available
+    version](https://www.pentair.com/en-us/pool-spa/education-support/homeowner-support/software-downloads/intellicenter-control-system.html)
+    (as of this writing, 3.008 or later). This might require
+    downloading one or more firmware images to a FAT32-formatted USB
+    storage device if you are running 1.064 or earlier, since those
+    versions cannot auto-upgrade over the network.
 - [HACS](https://hacs.xyz) installed (recommended), or filesystem access to your
   Home Assistant `config` directory (for manual installation).
 

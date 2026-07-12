@@ -96,6 +96,15 @@ class PoolCover(PoolEntity, CoverEntity):
         return super().available and self._pool_object.status == STATUS_ON
 
     @property
+    def _position_attr(self) -> str:
+        """Return the attribute that carries the cover position.
+
+        Newer firmware exposes POSIT; older firmware (e.g. 1.064) omits it and
+        the position lives in STATUS instead.
+        """
+        return POSIT_ATTR if self._pool_object[POSIT_ATTR] is not None else STATUS_ATTR
+
+    @property
     def is_closed(self) -> bool | None:
         """Return true if cover is closed, or None if the state is unknown."""
         raw_position = self._pool_object[POSIT_ATTR]
@@ -119,19 +128,13 @@ class PoolCover(PoolEntity, CoverEntity):
         """Open the cover."""
         # To open the cover, set its position opposite of NORMAL.
         normal = self._pool_object[NORMAL_ATTR] == STATUS_ON
-        position_attr = (
-            POSIT_ATTR if self._pool_object[POSIT_ATTR] is not None else STATUS_ATTR
-        )
-        self.request_changes({position_attr: STATUS_OFF if normal else STATUS_ON})
+        self.request_changes({self._position_attr: STATUS_OFF if normal else STATUS_ON})
 
     async def async_close_cover(self, **kwargs: Any) -> None:
         """Close the cover."""
         # To close the cover, set its position to the same value as NORMAL.
         normal = self._pool_object[NORMAL_ATTR] == STATUS_ON
-        position_attr = (
-            POSIT_ATTR if self._pool_object[POSIT_ATTR] is not None else STATUS_ATTR
-        )
-        self.request_changes({position_attr: STATUS_ON if normal else STATUS_OFF})
+        self.request_changes({self._position_attr: STATUS_ON if normal else STATUS_OFF})
 
     def isUpdated(self, updates: dict[str, dict[str, str]]) -> bool:
         """Return true if the entity is updated by the updates from Intellicenter."""

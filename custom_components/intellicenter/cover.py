@@ -19,6 +19,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyintellicenter import (
     EXTINSTR_TYPE,
     NORMAL_ATTR,
+    POSIT_ATTR,
     STATUS_ATTR,
     STATUS_OFF,
     STATUS_ON,
@@ -42,7 +43,11 @@ def _build_entities(
     """Build cover entities for the given candidate pool objects."""
     covers: list[PoolCover] = []
     for pool_obj in candidates:
-        if pool_obj.objtype == EXTINSTR_TYPE and pool_obj.subtype == "COVER":
+        if (
+            pool_obj.objtype == EXTINSTR_TYPE
+            and pool_obj.subtype == "COVER"
+            and pool_obj.status == STATUS_ON
+        ):
             covers.append(PoolCover(coordinator, pool_obj))
     return covers
 
@@ -86,31 +91,50 @@ class PoolCover(PoolEntity, CoverEntity):
         )
 
     @property
+    def available(self) -> bool:
+        """Return whether the panel is connected and the cover is enabled."""
+        return super().available and self._pool_object.status == STATUS_ON
+
+    @property
     def is_closed(self) -> bool | None:
         """Return true if cover is closed, or None if the state is unknown."""
+        raw_position = self._pool_object[POSIT_ATTR]
+        if raw_position is None:
+            # IntelliCenter 1.064 and other older firmware omit POSIT entirely
+            # (GetParamList echoes the key back unset). Preserve the legacy
+            # STATUS-derived position instead of reporting a fixed bogus state.
+            raw_position = self._pool_object[STATUS_ATTR]
+
         # Without both attributes the position cannot be derived; report unknown
         # rather than fabricating "closed" (safety automations may key off this).
-        raw_status = self._pool_object[STATUS_ATTR]
         raw_normal = self._pool_object[NORMAL_ATTR]
-        if raw_status is None or raw_normal is None:
+        if raw_position is None or raw_normal is None:
             return None
         # The cover is closed if:
-        # - STATUS is ON and NORMAL is ON (cover is normally closed)
-        # - STATUS is OFF and NORMAL is OFF (cover is normally open)
-        return bool((raw_status == STATUS_ON) == (raw_normal == STATUS_ON))
+        # - position is ON and NORMAL is ON (cover is normally closed)
+        # - position is OFF and NORMAL is OFF (cover is normally open)
+        return bool((raw_position == STATUS_ON) == (raw_normal == STATUS_ON))
 
     async def async_open_cover(self, **kwargs: Any) -> None:
         """Open the cover."""
-        # To open the cover, we need to set STATUS opposite of NORMAL
+        # To open the cover, set its position opposite of NORMAL.
         normal = self._pool_object[NORMAL_ATTR] == STATUS_ON
-        self.request_changes({STATUS_ATTR: STATUS_OFF if normal else STATUS_ON})
+        position_attr = (
+            POSIT_ATTR if self._pool_object[POSIT_ATTR] is not None else STATUS_ATTR
+        )
+        self.request_changes({position_attr: STATUS_OFF if normal else STATUS_ON})
 
     async def async_close_cover(self, **kwargs: Any) -> None:
         """Close the cover."""
-        # To close the cover, we need to set STATUS same as NORMAL
+        # To close the cover, set its position to the same value as NORMAL.
         normal = self._pool_object[NORMAL_ATTR] == STATUS_ON
-        self.request_changes({STATUS_ATTR: STATUS_ON if normal else STATUS_OFF})
+        position_attr = (
+            POSIT_ATTR if self._pool_object[POSIT_ATTR] is not None else STATUS_ATTR
+        )
+        self.request_changes({position_attr: STATUS_ON if normal else STATUS_OFF})
 
     def isUpdated(self, updates: dict[str, dict[str, str]]) -> bool:
         """Return true if the entity is updated by the updates from Intellicenter."""
-        return self._check_attributes_updated(updates, STATUS_ATTR, NORMAL_ATTR)
+        return self._check_attributes_updated(
+            updates, STATUS_ATTR, POSIT_ATTR, NORMAL_ATTR
+        )

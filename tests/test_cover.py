@@ -7,6 +7,7 @@ from homeassistant.core import HomeAssistant
 from pyintellicenter import (
     EXTINSTR_TYPE,
     NORMAL_ATTR,
+    POSIT_ATTR,
     STATUS_ATTR,
     PoolModel,
     PoolObject,
@@ -31,7 +32,8 @@ def pool_model_with_cover() -> PoolModel:
                     "OBJTYP": EXTINSTR_TYPE,
                     "SUBTYP": "COVER",
                     "SNAME": "Pool Cover",
-                    "STATUS": "OFF",
+                    "STATUS": "ON",
+                    "POSIT": "OFF",
                     "NORMAL": "ON",  # Normally closed
                 },
             },
@@ -49,7 +51,8 @@ def pool_object_cover_normally_closed() -> PoolObject:
             "OBJTYP": EXTINSTR_TYPE,
             "SUBTYP": "COVER",
             "SNAME": "Pool Cover",
-            "STATUS": "OFF",
+            "STATUS": "ON",
+            "POSIT": "OFF",
             "NORMAL": "ON",  # Normally closed
         },
     )
@@ -64,7 +67,8 @@ def pool_object_cover_normally_open() -> PoolObject:
             "OBJTYP": EXTINSTR_TYPE,
             "SUBTYP": "COVER",
             "SNAME": "Spa Cover",
-            "STATUS": "OFF",
+            "STATUS": "ON",
+            "POSIT": "OFF",
             "NORMAL": "OFF",  # Normally open
         },
     )
@@ -98,6 +102,36 @@ async def test_cover_setup_creates_entities(
     assert entities_added[0]._pool_object.sname == "Pool Cover"
 
 
+async def test_cover_setup_skips_disabled_cover(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Test STATUS=OFF cover configuration placeholders create no entity."""
+    model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
+    model.add_object(
+        "COVER1",
+        {
+            "OBJTYP": EXTINSTR_TYPE,
+            "SUBTYP": "COVER",
+            "SNAME": "Disabled Cover",
+            "STATUS": "OFF",
+            "POSIT": "ON",
+            "NORMAL": "ON",
+        },
+    )
+    mock_coordinator.model = model
+    mock_entry = MagicMock()
+    mock_entry.entry_id = "test_entry"
+    mock_entry.runtime_data = mock_coordinator
+    entities_added = []
+
+    from custom_components.intellicenter.cover import async_setup_entry
+
+    await async_setup_entry(hass, mock_entry, entities_added.extend)
+
+    assert entities_added == []
+
+
 async def test_cover_entity_properties(
     hass: HomeAssistant,
     pool_object_cover_normally_closed: PoolObject,
@@ -127,64 +161,101 @@ async def test_cover_supported_features(
     assert features & CoverEntityFeature.CLOSE
 
 
-async def test_cover_normally_closed_is_closed_when_status_off(
+async def test_cover_normally_closed_is_open_when_position_off(
     hass: HomeAssistant,
     pool_object_cover_normally_closed: PoolObject,
     mock_coordinator: MagicMock,
 ) -> None:
-    """Test normally-closed cover is closed when STATUS=OFF."""
+    """Test normally-closed cover is open when POSIT=OFF."""
 
-    # STATUS=OFF, NORMAL=ON (normally closed)
-    # Cover is closed when status == normal (both ON or both OFF)
-    # Here: OFF != ON, so cover is OPEN
     cover = PoolCover(mock_coordinator, pool_object_cover_normally_closed)
 
-    # Since STATUS=OFF and NORMAL=ON, OFF != ON, so is_closed is False (open)
     assert cover.is_closed is False
 
 
-async def test_cover_normally_closed_is_closed_when_status_on(
+async def test_cover_normally_closed_is_closed_when_position_on(
     hass: HomeAssistant,
     pool_object_cover_normally_closed: PoolObject,
     mock_coordinator: MagicMock,
 ) -> None:
-    """Test normally-closed cover is closed when STATUS=ON."""
+    """Test normally-closed cover is closed when POSIT=ON."""
 
-    # Set STATUS=ON to match NORMAL=ON
-    pool_object_cover_normally_closed.update({STATUS_ATTR: "ON"})
+    pool_object_cover_normally_closed.update({POSIT_ATTR: "ON"})
 
     cover = PoolCover(mock_coordinator, pool_object_cover_normally_closed)
 
-    # STATUS=ON, NORMAL=ON, so is_closed is True
     assert cover.is_closed is True
 
 
-async def test_cover_normally_open_is_closed_when_status_off(
+async def test_cover_normally_open_is_closed_when_position_off(
     hass: HomeAssistant,
     pool_object_cover_normally_open: PoolObject,
     mock_coordinator: MagicMock,
 ) -> None:
-    """Test normally-open cover is closed when STATUS=OFF."""
+    """Test normally-open cover is closed when POSIT=OFF."""
 
     cover = PoolCover(mock_coordinator, pool_object_cover_normally_open)
 
-    # STATUS=OFF, NORMAL=OFF, OFF == OFF, so is_closed is True
     assert cover.is_closed is True
 
 
-async def test_cover_normally_open_is_open_when_status_on(
+async def test_cover_normally_open_is_open_when_position_on(
     hass: HomeAssistant,
     pool_object_cover_normally_open: PoolObject,
     mock_coordinator: MagicMock,
 ) -> None:
-    """Test normally-open cover is open when STATUS=ON."""
+    """Test normally-open cover is open when POSIT=ON."""
 
-    # Set STATUS=ON
-    pool_object_cover_normally_open.update({STATUS_ATTR: "ON"})
+    pool_object_cover_normally_open.update({POSIT_ATTR: "ON"})
 
     cover = PoolCover(mock_coordinator, pool_object_cover_normally_open)
 
-    # STATUS=ON, NORMAL=OFF, ON != OFF, so is_closed is False
+    assert cover.is_closed is False
+
+
+async def test_cover_position_and_enabled_availability_are_independent(
+    hass: HomeAssistant,
+    pool_object_cover_normally_closed: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Test POSIT drives position while STATUS gates entity availability."""
+    mock_coordinator.connected = True
+    cover = PoolCover(mock_coordinator, pool_object_cover_normally_closed)
+
+    assert cover.available is True
+    assert cover.is_closed is False
+
+    pool_object_cover_normally_closed.update({POSIT_ATTR: "ON"})
+    assert cover.is_closed is True
+
+    pool_object_cover_normally_closed.update({STATUS_ATTR: "OFF"})
+    assert cover.available is False
+    assert cover.is_closed is True
+
+    pool_object_cover_normally_closed.update({STATUS_ATTR: "ON"})
+    assert cover.available is True
+
+
+async def test_cover_position_falls_back_to_status_without_posit(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Test old firmware without POSIT continues to derive position from STATUS."""
+    cover_obj = PoolObject(
+        "COVER3",
+        {
+            "OBJTYP": EXTINSTR_TYPE,
+            "SUBTYP": "COVER",
+            "SNAME": "Legacy Cover",
+            "STATUS": "ON",
+            "NORMAL": "ON",
+        },
+    )
+    cover = PoolCover(mock_coordinator, cover_obj)
+
+    assert cover.is_closed is True
+
+    cover_obj.update({STATUS_ATTR: "OFF"})
     assert cover.is_closed is False
 
 
@@ -202,12 +273,11 @@ async def test_cover_open_normally_closed(
 
     await cover.async_open_cover()
 
-    # To open a normally-closed cover (NORMAL=ON), set STATUS opposite = OFF
+    # To open a normally-closed cover (NORMAL=ON), set POSIT opposite = OFF
     mock_coordinator.controller.request_changes.assert_called_once()
     args = mock_coordinator.controller.request_changes.call_args[0]
     assert args[0] == "COVER1"
-    assert STATUS_ATTR in args[1]
-    assert args[1][STATUS_ATTR] == "OFF"
+    assert args[1] == {POSIT_ATTR: "OFF"}
 
 
 async def test_cover_close_normally_closed(
@@ -224,12 +294,11 @@ async def test_cover_close_normally_closed(
 
     await cover.async_close_cover()
 
-    # To close a normally-closed cover (NORMAL=ON), set STATUS same = ON
+    # To close a normally-closed cover (NORMAL=ON), set POSIT same = ON
     mock_coordinator.controller.request_changes.assert_called_once()
     args = mock_coordinator.controller.request_changes.call_args[0]
     assert args[0] == "COVER1"
-    assert STATUS_ATTR in args[1]
-    assert args[1][STATUS_ATTR] == "ON"
+    assert args[1] == {POSIT_ATTR: "ON"}
 
 
 async def test_cover_open_normally_open(
@@ -246,12 +315,11 @@ async def test_cover_open_normally_open(
 
     await cover.async_open_cover()
 
-    # To open a normally-open cover (NORMAL=OFF), set STATUS opposite = ON
+    # To open a normally-open cover (NORMAL=OFF), set POSIT opposite = ON
     mock_coordinator.controller.request_changes.assert_called_once()
     args = mock_coordinator.controller.request_changes.call_args[0]
     assert args[0] == "COVER2"
-    assert STATUS_ATTR in args[1]
-    assert args[1][STATUS_ATTR] == "ON"
+    assert args[1] == {POSIT_ATTR: "ON"}
 
 
 async def test_cover_close_normally_open(
@@ -268,12 +336,44 @@ async def test_cover_close_normally_open(
 
     await cover.async_close_cover()
 
-    # To close a normally-open cover (NORMAL=OFF), set STATUS same = OFF
+    # To close a normally-open cover (NORMAL=OFF), set POSIT same = OFF
     mock_coordinator.controller.request_changes.assert_called_once()
     args = mock_coordinator.controller.request_changes.call_args[0]
     assert args[0] == "COVER2"
-    assert STATUS_ATTR in args[1]
-    assert args[1][STATUS_ATTR] == "OFF"
+    assert args[1] == {POSIT_ATTR: "OFF"}
+
+
+@pytest.mark.parametrize(
+    ("method_name", "expected_status"),
+    [("async_open_cover", "OFF"), ("async_close_cover", "ON")],
+)
+async def test_cover_commands_fall_back_to_status_without_posit(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+    method_name: str,
+    expected_status: str,
+) -> None:
+    """Test old firmware without POSIT preserves STATUS command behavior."""
+    cover_obj = PoolObject(
+        "COVER3",
+        {
+            "OBJTYP": EXTINSTR_TYPE,
+            "SUBTYP": "COVER",
+            "SNAME": "Legacy Cover",
+            "STATUS": "ON",
+            "NORMAL": "ON",
+        },
+    )
+    mock_coordinator.controller.request_changes = AsyncMock()
+    cover = PoolCover(mock_coordinator, cover_obj)
+    cover.hass = hass
+
+    await getattr(cover, method_name)()
+
+    await hass.async_block_till_done()
+    mock_coordinator.controller.request_changes.assert_awaited_once_with(
+        "COVER3", {STATUS_ATTR: expected_status}
+    )
 
 
 async def test_cover_is_updated_status(
@@ -287,6 +387,9 @@ async def test_cover_is_updated_status(
 
     # Should update on status change
     assert cover.isUpdated({"COVER1": {STATUS_ATTR: "ON"}}) is True
+
+    # Should update on position change
+    assert cover.isUpdated({"COVER1": {POSIT_ATTR: "ON"}}) is True
 
     # Should update on normal change
     assert cover.isUpdated({"COVER1": {NORMAL_ATTR: "OFF"}}) is True
@@ -330,17 +433,17 @@ async def test_cover_state_updates(
 
     cover = PoolCover(mock_coordinator, pool_object_cover_normally_closed)
 
-    # Initial state: STATUS=OFF, NORMAL=ON -> is_closed = False (open)
+    # Initial state: POSIT=OFF, NORMAL=ON -> is_closed = False (open)
     assert cover.is_closed is False
 
     # Simulate update from IntelliCenter
-    updates = {"COVER1": {STATUS_ATTR: "ON"}}
+    updates = {"COVER1": {POSIT_ATTR: "ON"}}
     assert cover.isUpdated(updates) is True
 
     # Apply the update
     pool_object_cover_normally_closed.update(updates["COVER1"])
 
-    # Verify state changed: STATUS=ON, NORMAL=ON -> is_closed = True
+    # Verify state changed: POSIT=ON, NORMAL=ON -> is_closed = True
     assert cover.is_closed is True
 
 
@@ -384,7 +487,9 @@ async def test_production_attribute_map_admits_covers() -> None:
     because fixtures used the library's all-attributes default map).
     """
     assert EXTINSTR_TYPE in DEFAULT_ATTRIBUTES_MAP
-    assert {STATUS_ATTR, NORMAL_ATTR} <= DEFAULT_ATTRIBUTES_MAP[EXTINSTR_TYPE]
+    assert {STATUS_ATTR, POSIT_ATTR, NORMAL_ATTR} <= DEFAULT_ATTRIBUTES_MAP[
+        EXTINSTR_TYPE
+    ]
 
     model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
     admitted = model.add_object(

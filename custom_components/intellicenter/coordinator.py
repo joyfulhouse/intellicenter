@@ -60,6 +60,7 @@ from pyintellicenter import (
     PHVAL_ATTR,
     PHVOL_ATTR,
     PMPCIRC_TYPE,
+    POSIT_ATTR,
     PRIM_ATTR,
     PUMP_TYPE,
     PWR_ATTR,
@@ -157,7 +158,13 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
     # External instruments (pool covers). Without this entry PoolModel drops the
     # objects entirely and the cover platform never sees them (the model only
     # admits objtypes present in this map).
-    EXTINSTR_TYPE: {SNAME_ATTR, STATUS_ATTR, NORMAL_ATTR, SUBTYP_ATTR},
+    EXTINSTR_TYPE: {
+        SNAME_ATTR,
+        STATUS_ATTR,
+        POSIT_ATTR,
+        NORMAL_ATTR,
+        SUBTYP_ATTR,
+    },
     # COOL is required by is_body_cooling(): without tracking it the heater
     # object's COOL attribute is never fetched and climate could never report
     # the COOLING action.

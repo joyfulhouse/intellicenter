@@ -32,15 +32,16 @@ This integration connects your Pentair IntelliCenter pool control system to Home
 - **Multi-Language**: User interface available in 12 languages
 - **Easy Reconfiguration**: Change connection settings without removing the integration
 
-## What's New in v3.8.0
+## What's New in v3.9.0
 
-This release adds the per-body Last Temp sensor and hardens connection, cover, config-flow, and temperature-limit handling:
+This release fixes cover semantics, heater detection, and adds firmware awareness — with major contributions from @bhamiltoncx:
 
-- **Body "Last Temp" Sensor**: Each body (Pool, Spa) now has a "Last Temp" sensor (e.g. *Pool Last Temp*) showing the IntelliCenter body's last recorded water temperature. Unlike the physical Water Sensor — whose probe sits in an above-ground pipe and reads colder when the pump is off — the Last Temp value holds the last circulating temperature, so it stays accurate while the pump is idle. Thanks to @sheyman1 for the request (#75).
-- **Reliable Availability**: Connection up/down now updates every entity, so values can no longer go stale during an outage or stick as unavailable after a reconnect.
-- **Pool Covers on Real Hardware**: External-instrument pool covers (`EXTINSTR`) are now created on actual systems (previously only appeared in tests).
-- **Resilient Config Flow**: A discovered unit that fails to connect re-shows the picker with a clear error instead of a generic 500.
-- **Panel-Aware Temperature Limits**: Water heater, climate, and the Max Temperature control share one set of unit-aware bounds (40-104 °F / 5-40 °C), fixing a spa minimum-temperature bug and METRIC-panel setpoints.
+- **Correct Pool Cover Behavior** (thanks @bhamiltoncx): the integration previously conflated a cover's *enabled* setting with its *position*. Covers disabled in Settings > Covers now show as unavailable instead of appearing active, and position comes from the panel's real position attribute (`POSIT`). On older firmware that doesn't report position (e.g. IC 1.064), the cover state shows unknown and open/close report a clear error — previously these commands silently toggled the cover's enabled setting instead of moving it.
+- **Cross-Body Heater Detection** (thanks @bhamiltoncx): a heater actively heating a body that isn't in its configured body list (possible on real panels) is now correctly reported as heating.
+- **Firmware Advisories**: the integration now recognizes firmware releases with documented problems (e.g. the withdrawn 2.x line) and raises a dismissible Repairs warning — and warns during initial setup before you finish adding the integration.
+- **"Not in Auto" Problem Sensor**: turns on when the panel is left in Service or Time Out mode (e.g. after maintenance or a power outage), which silently suspends schedules and automatic valve/pump control.
+- **Fully Localized**: all new warnings and errors are translated into the 12 supported languages.
+- **Circulation Watchdog Example**: new README automation example that detects a stuck valve indirectly from the pump's hydraulic signature (valve actuators have no feedback path to IntelliCenter).
 
 ## Architecture
 
@@ -136,7 +137,7 @@ After setup, configure connection settings:
 | **Heaters** | Binary Sensor, Water Heater | Running status; HCOMBO (UltraTemp ETi Hybrid) Gas/Heat Pump/Hybrid/Dual modes |
 | **Schedules** | Binary Sensor | Active status (disabled by default) |
 | **System** | Switch, Binary Sensor, Sensors | Vacation mode, freeze protection, temperatures, System Mode (`auto`/`service`/`timeout`), "Not in Auto" problem indicator, firmware advisories (a Repairs warning is raised for firmware with documented issues, e.g. the pulled 2.x line) |
-| **Covers** | Cover | Pool cover open/close control |
+| **Covers** | Cover | Pool cover position (`POSIT`) and open/close; covers disabled in Settings > Covers show unavailable; older firmware without position reporting shows unknown |
 
 ### Body (Pool/Spa) Last Temp Sensor
 

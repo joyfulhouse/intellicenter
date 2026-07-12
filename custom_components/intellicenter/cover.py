@@ -111,9 +111,12 @@ class PoolCover(PoolEntity, CoverEntity):
         """Return whether the panel is connected and the cover is enabled.
 
         STATUS is the Settings > Covers enabled flag; a disabled cover is a
-        configuration placeholder, not controllable equipment.
+        configuration placeholder, not controllable equipment. Only an
+        explicit OFF hides the entity — a cover missing STATUS entirely
+        (unobserved, but protocol-plausible) fails open rather than becoming
+        permanently unavailable.
         """
-        return super().available and self._pool_object.status == STATUS_ON
+        return super().available and self._pool_object.status != STATUS_OFF
 
     def _valid_position_state(self) -> tuple[bool, bool] | None:
         """Return (posit_is_on, normal_is_on), or None if either is invalid.

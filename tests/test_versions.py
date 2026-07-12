@@ -57,3 +57,26 @@ def test_pyintellicenter_pin_matches() -> None:
         f"pyintellicenter pin drift: manifest.json={manifest_spec!r} != "
         f"pyproject.toml={pyproject_spec!r}. Keep them in sync."
     )
+
+
+def test_uv_lock_satisfies_pyintellicenter_pin() -> None:
+    """The locked pyintellicenter version must satisfy the declared pin.
+
+    manifest.json <-> pyproject.toml drift is guarded above, but uv.lock is
+    hand-editable and survives partial bumps/bad merges; a lockfile pinning
+    an older library than the manifest requires would otherwise pass CI.
+    """
+    from packaging.requirements import Requirement
+    from packaging.version import Version
+
+    lock = tomllib.loads((_ROOT / "uv.lock").read_text())
+    locked = next((p for p in lock["package"] if p["name"] == "pyintellicenter"), None)
+    assert locked is not None, "uv.lock has no pyintellicenter entry"
+
+    spec = _pyintellicenter_spec(_manifest()["requirements"])
+    assert spec is not None
+    requirement = Requirement(spec)
+    assert Version(locked["version"]) in requirement.specifier, (
+        f"uv.lock pins pyintellicenter {locked['version']!r}, which does not "
+        f"satisfy the declared requirement {spec!r}. Run `uv lock`."
+    )

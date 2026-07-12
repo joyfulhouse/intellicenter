@@ -570,3 +570,30 @@ async def test_cover_unknown_position_when_attributes_missing(
     cover = PoolCover(mock_coordinator, cover_obj)
 
     assert cover.is_closed is None
+
+
+async def test_cover_missing_status_fails_open(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A cover with no STATUS attribute at all stays available (fail-open).
+
+    Only an explicit STATUS=OFF (disabled in Settings > Covers) hides the
+    entity; an absent STATUS must not make a working cover permanently
+    unavailable.
+    """
+    cover_obj = PoolObject(
+        "COVER5",
+        {
+            "OBJTYP": EXTINSTR_TYPE,
+            "SUBTYP": "COVER",
+            "SNAME": "No-Status Cover",
+            "POSIT": "ON",
+            "NORMAL": "ON",
+        },
+    )
+    mock_coordinator.connected = True
+    cover = PoolCover(mock_coordinator, cover_obj)
+
+    assert cover.available is True
+    assert cover.is_closed is True

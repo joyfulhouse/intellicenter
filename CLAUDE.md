@@ -19,7 +19,7 @@ This is a Home Assistant custom integration for Pentair IntelliCenter pool contr
 **Current Quality Scale**: **Platinum** ✅ (v3.1.0+)
 
 The integration meets **Platinum** quality scale requirements with:
-- 351 automated tests across all platforms
+- 365 automated tests across all platforms
 - Comprehensive type annotations (mypy strict mode)
 - Full code documentation
 - Production hardening (circuit breaker, metrics, health monitoring)
@@ -306,7 +306,7 @@ The integration has achieved **Platinum** quality scale (v3.0.0). The roadmap be
 - ✅ Supports translations (English in `strings.json`)
 - ✅ Extensive non-technical user documentation (README with troubleshooting, automation examples)
 - ⚠️ Firmware/software updates through HA - Not applicable (hardware doesn't support)
-- ✅ **Automated tests covering entire integration** - 351 tests across 15 test files
+- ✅ **Automated tests covering entire integration** - 365 tests across 15 test files
 - ✅ UI reconfiguration support (options flow for keepalive/reconnect settings)
 - ✅ Diagnostic capabilities (`diagnostics.py` with connection metrics)
 
@@ -346,7 +346,7 @@ The integration has achieved **Platinum** quality scale (v3.0.0). The roadmap be
 
 **Testing**: ✅ COMPLETE
 - ✅ **Comprehensive automated test suite** using `pytest-homeassistant-custom-component`:
-  - **Config flow tests**: 19 tests
+  - **Config flow tests**: 23 tests (incl. firmware warning step)
   - **Integration tests**: 24 tests (setup/unload, retry-on-transient-error, PoolConnectionHandler)
   - **Dynamic entity tests**: 18 tests (runtime equipment detection)
   - **Platform tests**:
@@ -355,14 +355,14 @@ The integration has achieved **Platinum** quality scale (v3.0.0). The roadmap be
     - Number: 39 tests (setpoint controls)
     - Sensor: 37 tests (incl. body Last Temp)
     - Climate: 24 tests (UltraTemp heat pump)
-    - Cover: 19 tests (device class)
-    - Binary Sensor: 29 tests (incl. Not in Auto problem sensor)
+    - Cover: 27 tests (STATUS enabled-flag gating, POSIT position)
+    - Binary Sensor: 31 tests (incl. Not in Auto problem sensor, cross-body heat source)
     - Switch: 13 tests (device class)
   - **Diagnostics tests**: 10 tests
   - **Firmware advisory tests**: 14 tests
   - **Library contract tests**: 3 tests
   - **Version sync tests**: 2 tests
-  - **Total**: 351 automated tests across 15 test files with TCP connection mocking
+  - **Total**: 365 automated tests across 15 test files with TCP connection mocking
   - Protocol, controller, and model tests are in the [pyintellicenter](https://github.com/joyfulhouse/pyintellicenter) repository
 - ✅ **Type checking**: mypy configuration (`mypy.ini`) with strict type checking enabled
 - ✅ **Code quality**: Pre-commit hooks configured with ruff, ruff-format, codespell, bandit
@@ -372,21 +372,21 @@ The integration has achieved **Platinum** quality scale (v3.0.0). The roadmap be
 **Platinum Quality Scale Status**: ✅ **ACHIEVED** (v3.1.0+)
 
 The integration now meets ALL Platinum quality requirements:
-1. ✅ **Bronze**: Automated test suite with 351 tests
+1. ✅ **Bronze**: Automated test suite with 365 tests
 2. ✅ **Silver**: Comprehensive troubleshooting documentation
 3. ✅ **Gold**: Extensive test coverage across all critical components
 4. ✅ **Platinum**: Complete implementation
    - ✅ Full type annotations in all critical modules
    - ✅ Comprehensive code comments explaining complex logic
    - ✅ Optimized async performance with orjson
-   - ✅ 351 automated tests covering config flow, setup/retry, and all platforms (protocol, controller, and model are tested in the pyintellicenter repository)
+   - ✅ 365 automated tests covering config flow, setup/retry, and all platforms (protocol, controller, and model are tested in the pyintellicenter repository)
    - ✅ mypy type checking configured
    - ✅ All pre-commit hooks passing
 
 **Platinum Achievements Summary**:
 - **Type Safety**: Complete type annotations with mypy strict mode
 - **Code Documentation**: Detailed docstrings and comments throughout
-- **Test Coverage**: 351 tests across 15 test files
+- **Test Coverage**: 365 tests across 15 test files
 - **Performance**: Optimized async architecture with orjson and minimal network overhead
 - **Code Quality**: Automated linting and formatting with ruff
 - **Production Hardening**: Circuit breaker, connection metrics, health monitoring

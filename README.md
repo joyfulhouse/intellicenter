@@ -475,7 +475,7 @@ This integration meets the **Platinum tier** quality standards for Home Assistan
 **Gold Requirements:**
 - Full translation support (12 languages)
 - Easy reconfiguration through the UI
-- Comprehensive automated testing (351 tests)
+- Comprehensive automated testing (365 tests)
 - Extensive user-friendly documentation
 - Automatic Zeroconf discovery
 

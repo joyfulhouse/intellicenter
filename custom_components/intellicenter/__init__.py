@@ -47,6 +47,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import IntelliCenterCoordinator
+from .firmware import async_check_firmware
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -158,6 +159,9 @@ async def async_setup_entry(
         entry.runtime_data = coordinator
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
         entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+        # Warn (via Repairs) if the panel runs firmware with documented issues;
+        # also clears stale advisories after a firmware upgrade + reload.
+        async_check_firmware(hass, entry, coordinator)
         setup_complete = True
     except Exception as err:
         if not connected and _is_transient_connection_error(err):

@@ -96,5 +96,15 @@
         "websocket": "WebSocket (port 6680)"
       }
     }
+  },
+  "issues": {
+    "firmware_2x": {
+      "title": "IntelliCenter 2.x firmware has serious known issues",
+      "description": "Your IntelliCenter panel is running firmware {firmware}. The 2.x line (2.006 / 2.017 / 2.026) has severe documented problems — broken schedules, pumps randomly commanded to 0 RPM, heater communication failures — and 2.006 and 2.026 were pulled by Pentair. The official upgrade path skips 2.x entirely: update to 3.004 and then 3.008 (update the wireless remote together with the panel), or revert to 1.064."
+    },
+    "firmware_outdated_1x": {
+      "title": "IntelliCenter firmware is outdated",
+      "description": "Your IntelliCenter panel is running firmware {firmware}. Releases before 1.064 are long superseded and have documented protocol limitations. Pentair's official upgrade path is 1.047 → 1.064 → 3.004 → 3.008; update the wireless remote together with the panel."
+    }
   }
 }

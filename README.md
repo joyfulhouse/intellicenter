@@ -135,7 +135,7 @@ After setup, configure connection settings:
 | **Heat Pumps** | Climate | UltraTemp heating/cooling with presets |
 | **Heaters** | Binary Sensor, Water Heater | Running status; HCOMBO (UltraTemp ETi Hybrid) Gas/Heat Pump/Hybrid/Dual modes |
 | **Schedules** | Binary Sensor | Active status (disabled by default) |
-| **System** | Switch, Binary Sensor, Sensors | Vacation mode, freeze protection, temperatures, System Mode (`auto`/`service`/`timeout`), "Not in Auto" problem indicator |
+| **System** | Switch, Binary Sensor, Sensors | Vacation mode, freeze protection, temperatures, System Mode (`auto`/`service`/`timeout`), "Not in Auto" problem indicator, firmware advisories (a Repairs warning is raised for firmware with documented issues, e.g. the pulled 2.x line) |
 | **Covers** | Cover | Pool cover open/close control |
 
 ### Body (Pool/Spa) Last Temp Sensor
@@ -475,7 +475,7 @@ This integration meets the **Platinum tier** quality standards for Home Assistan
 **Gold Requirements:**
 - Full translation support (12 languages)
 - Easy reconfiguration through the UI
-- Comprehensive automated testing (337 tests)
+- Comprehensive automated testing (351 tests)
 - Extensive user-friendly documentation
 - Automatic Zeroconf discovery
 

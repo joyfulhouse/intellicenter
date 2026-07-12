@@ -23,6 +23,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyintellicenter import (
     BODY_ATTR,
+    BODY_TYPE,
     CHEM_TYPE,
     CIRCUIT_TYPE,
     HEATER_ATTR,
@@ -253,10 +254,7 @@ class HeaterBinarySensor(PoolEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool:
         """Return true if the heater is actively heating."""
-        for body_objnam in self._bodies:
-            body = self.coordinator.model[body_objnam]
-            if body is None:
-                continue
+        for body in self.coordinator.model.get_by_type(BODY_TYPE):
             if (
                 body[STATUS_ATTR] == STATUS_ON
                 and body[HEATER_ATTR] == self._pool_object.objnam
@@ -271,7 +269,7 @@ class HeaterBinarySensor(PoolEntity, BinarySensorEntity):
         """Return true if the entity is updated by the updates from IntelliCenter.
 
         Checks both:
-        1. If any monitored body's heating-related attributes changed
+        1. If any body's heating-related attributes changed
         2. If the heater object itself was updated (e.g., availability change)
 
         Args:
@@ -280,8 +278,12 @@ class HeaterBinarySensor(PoolEntity, BinarySensorEntity):
         Returns:
             True if this heater sensor's state may have changed
         """
-        # Check if any monitored body had heating-related updates
-        for objnam in self._bodies & updates.keys():
+        # Check if any body's heating-related attributes changed. Include the
+        # heater's live BODY list as a fallback for objects not yet in the model.
+        body_objnams = self._bodies | {
+            body.objnam for body in self.coordinator.model.get_by_type(BODY_TYPE)
+        }
+        for objnam in body_objnams & updates.keys():
             if {STATUS_ATTR, HEATER_ATTR, HTMODE_ATTR} & updates[objnam].keys():
                 return True
 

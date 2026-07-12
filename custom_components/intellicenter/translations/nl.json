@@ -52,6 +52,10 @@
         "data_description": {
           "transport": "TCP is de standaard verbindingsmethode (poort 6681). WebSocket (poort 6680) kan betrouwbaarder zijn in sommige netwerkconfiguraties."
         }
+      },
+      "firmware_warning": {
+        "title": "Bekende firmwareproblemen gedetecteerd",
+        "description": "IntelliCenter-firmware {firmware} heeft gedocumenteerde bekende problemen. Meer informatie:\n{sources}\n\nDeze waarschuwing blokkeert de installatie niet. Selecteer Verzenden om door te gaan."
       }
     },
     "error": {
@@ -94,6 +98,16 @@
         "tcp": "TCP (poort 6681)",
         "websocket": "WebSocket (poort 6680)"
       }
+    }
+  },
+  "issues": {
+    "firmware_2x": {
+      "title": "IntelliCenter 2.x-firmware heeft ernstige bekende problemen",
+      "description": "Uw IntelliCenter-paneel draait firmware {firmware}. De 2.x-lijn (2.006 / 2.017 / 2.026) heeft ernstige gedocumenteerde problemen — kapotte schema's, pompen die willekeurig op 0 RPM worden gezet, communicatiefouten met verwarmingen — en 2.006 en 2.026 zijn door Pentair teruggetrokken. Het officiële upgradepad slaat 2.x volledig over: werk bij naar 3.004 en daarna 3.008 (werk de draadloze afstandsbediening samen met het paneel bij), of ga terug naar 1.064."
+    },
+    "firmware_outdated_1x": {
+      "title": "IntelliCenter-firmware is verouderd",
+      "description": "Uw IntelliCenter-paneel draait firmware {firmware}. Versies vóór 1.064 zijn allang vervangen en hebben gedocumenteerde protocolbeperkingen. Het officiële upgradepad van Pentair is 1.047 → 1.064 → 3.004 → 3.008; werk de draadloze afstandsbediening samen met het paneel bij."
     }
   }
 }

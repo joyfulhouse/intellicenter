@@ -52,6 +52,10 @@
         "data_description": {
           "transport": "TCP ist die Standard-Verbindungsmethode (Port 6681). WebSocket (Port 6680) kann bei einigen Netzwerkkonfigurationen zuverlässiger sein."
         }
+      },
+      "firmware_warning": {
+        "title": "Bekannte Firmware-Probleme erkannt",
+        "description": "Die IntelliCenter-Firmware {firmware} hat dokumentierte bekannte Probleme. Weitere Informationen:\n{sources}\n\nDiese Warnung blockiert die Einrichtung nicht. Wählen Sie „Senden“, um fortzufahren."
       }
     },
     "error": {
@@ -94,6 +98,16 @@
         "tcp": "TCP (Port 6681)",
         "websocket": "WebSocket (Port 6680)"
       }
+    }
+  },
+  "issues": {
+    "firmware_2x": {
+      "title": "IntelliCenter 2.x-Firmware hat schwerwiegende bekannte Probleme",
+      "description": "Ihr IntelliCenter-Panel läuft mit Firmware {firmware}. Die 2.x-Reihe (2.006 / 2.017 / 2.026) hat schwerwiegende dokumentierte Probleme — defekte Zeitpläne, Pumpen, die zufällig auf 0 U/min gesetzt werden, Kommunikationsfehler mit Heizungen — und 2.006 sowie 2.026 wurden von Pentair zurückgezogen. Der offizielle Upgrade-Pfad überspringt 2.x vollständig: Aktualisieren Sie auf 3.004 und dann 3.008 (Funkfernbedienung zusammen mit dem Panel aktualisieren) oder kehren Sie zu 1.064 zurück."
+    },
+    "firmware_outdated_1x": {
+      "title": "IntelliCenter-Firmware ist veraltet",
+      "description": "Ihr IntelliCenter-Panel läuft mit Firmware {firmware}. Versionen vor 1.064 sind längst überholt und haben dokumentierte Protokolleinschränkungen. Der offizielle Upgrade-Pfad von Pentair ist 1.047 → 1.064 → 3.004 → 3.008; aktualisieren Sie die Funkfernbedienung zusammen mit dem Panel."
     }
   }
 }

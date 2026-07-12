@@ -52,6 +52,10 @@
         "data_description": {
           "transport": "TCP es el método de conexión estándar (puerto 6681). WebSocket (puerto 6680) puede ser más fiable en algunas configuraciones de red."
         }
+      },
+      "firmware_warning": {
+        "title": "Se detectaron problemas conocidos de firmware",
+        "description": "El firmware de IntelliCenter {firmware} tiene problemas conocidos documentados. Más información:\n{sources}\n\nEsta advertencia no bloquea la configuración. Seleccione Enviar para continuar."
       }
     },
     "error": {
@@ -94,6 +98,16 @@
         "tcp": "TCP (puerto 6681)",
         "websocket": "WebSocket (puerto 6680)"
       }
+    }
+  },
+  "issues": {
+    "firmware_2x": {
+      "title": "El firmware IntelliCenter 2.x tiene problemas graves conocidos",
+      "description": "Su panel IntelliCenter ejecuta el firmware {firmware}. La línea 2.x (2.006 / 2.017 / 2.026) tiene problemas graves documentados — programaciones rotas, bombas puestas aleatoriamente a 0 RPM, fallos de comunicación con calentadores — y Pentair retiró 2.006 y 2.026. La ruta de actualización oficial omite 2.x por completo: actualice a 3.004 y luego a 3.008 (actualice el control remoto junto con el panel), o vuelva a 1.064."
+    },
+    "firmware_outdated_1x": {
+      "title": "El firmware de IntelliCenter está desactualizado",
+      "description": "Su panel IntelliCenter ejecuta el firmware {firmware}. Las versiones anteriores a 1.064 están superadas desde hace tiempo y tienen limitaciones de protocolo documentadas. La ruta de actualización oficial de Pentair es 1.047 → 1.064 → 3.004 → 3.008; actualice el control remoto junto con el panel."
     }
   }
 }

@@ -73,7 +73,8 @@ async def test_user_flow_warns_about_known_issue_firmware(
 
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "firmware_warning"
-    assert "IC: 2.006" in result["description_placeholders"]["warning"]
+    assert result["description_placeholders"]["firmware"] == "IC: 2.006"
+    assert "http" in result["description_placeholders"]["sources"]
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
@@ -271,7 +272,8 @@ async def test_zeroconf_flow_warns_about_known_issue_firmware(
 
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "firmware_warning"
-    assert "IC: 2.006" in result["description_placeholders"]["warning"]
+    assert result["description_placeholders"]["firmware"] == "IC: 2.006"
+    assert "http" in result["description_placeholders"]["sources"]
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 

@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from homeassistant.components.cover import CoverDeviceClass, CoverEntityFeature
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from pyintellicenter import (
     EXTINSTR_TYPE,
     NORMAL_ATTR,
@@ -106,7 +107,12 @@ async def test_cover_setup_skips_disabled_cover(
     hass: HomeAssistant,
     mock_coordinator: MagicMock,
 ) -> None:
-    """Test STATUS=OFF cover configuration placeholders create no entity."""
+    """A STATUS=OFF (disabled) cover still gets an entity, gated unavailable.
+
+    Creating the entity keeps the registry stable and lets a cover enabled
+    after setup come alive on the next push (STATUS updates an existing
+    object, which never re-triggers entity creation).
+    """
     model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
     model.add_object(
         "COVER1",
@@ -129,7 +135,9 @@ async def test_cover_setup_skips_disabled_cover(
 
     await async_setup_entry(hass, mock_entry, entities_added.extend)
 
-    assert entities_added == []
+    assert len(entities_added) == 1
+    mock_coordinator.connected = True
+    assert entities_added[0].available is False
 
 
 async def test_cover_entity_properties(
@@ -236,11 +244,15 @@ async def test_cover_position_and_enabled_availability_are_independent(
     assert cover.available is True
 
 
-async def test_cover_position_falls_back_to_status_without_posit(
+async def test_cover_position_unknown_without_posit(
     hass: HomeAssistant,
     mock_coordinator: MagicMock,
 ) -> None:
-    """Test old firmware without POSIT continues to derive position from STATUS."""
+    """Without POSIT (old firmware) position is unknown — never STATUS-derived.
+
+    STATUS is the Settings > Covers enabled flag (packet-capture confirmed),
+    so deriving position from it would fabricate state.
+    """
     cover_obj = PoolObject(
         "COVER3",
         {
@@ -253,10 +265,10 @@ async def test_cover_position_falls_back_to_status_without_posit(
     )
     cover = PoolCover(mock_coordinator, cover_obj)
 
-    assert cover.is_closed is True
+    assert cover.is_closed is None
 
     cover_obj.update({STATUS_ATTR: "OFF"})
-    assert cover.is_closed is False
+    assert cover.is_closed is None
 
 
 async def test_cover_open_normally_closed(
@@ -344,16 +356,19 @@ async def test_cover_close_normally_open(
 
 
 @pytest.mark.parametrize(
-    ("method_name", "expected_status"),
-    [("async_open_cover", "OFF"), ("async_close_cover", "ON")],
+    "method_name",
+    ["async_open_cover", "async_close_cover"],
 )
-async def test_cover_commands_fall_back_to_status_without_posit(
+async def test_cover_commands_refused_without_posit(
     hass: HomeAssistant,
     mock_coordinator: MagicMock,
     method_name: str,
-    expected_status: str,
 ) -> None:
-    """Test old firmware without POSIT preserves STATUS command behavior."""
+    """Without POSIT there is no position channel; commands must refuse.
+
+    Falling back to writing STATUS would toggle the cover's enabled flag in
+    Settings > Covers instead of moving it.
+    """
     cover_obj = PoolObject(
         "COVER3",
         {
@@ -368,12 +383,10 @@ async def test_cover_commands_fall_back_to_status_without_posit(
     cover = PoolCover(mock_coordinator, cover_obj)
     cover.hass = hass
 
-    await getattr(cover, method_name)()
+    with pytest.raises(HomeAssistantError):
+        await getattr(cover, method_name)()
 
-    await hass.async_block_till_done()
-    mock_coordinator.controller.request_changes.assert_awaited_once_with(
-        "COVER3", {STATUS_ATTR: expected_status}
-    )
+    mock_coordinator.controller.request_changes.assert_not_awaited()
 
 
 async def test_cover_is_updated_status(

@@ -44,7 +44,7 @@
       },
       "firmware_warning": {
         "title": "Known firmware issues detected",
-        "description": "{warning}\n\nThis warning does not block setup. Select Submit to continue."
+        "description": "IntelliCenter firmware {firmware} has documented known issues. Learn more:\n{sources}\n\nThis warning does not block setup. Select Submit to continue."
       },
       "reconfigure": {
         "title": "Reconfigure IntelliCenter",

@@ -52,6 +52,10 @@
         "data_description": {
           "transport": "TCP는 표준 연결 방법입니다 (포트 6681). WebSocket (포트 6680)은 일부 네트워크 구성에서 더 안정적일 수 있습니다."
         }
+      },
+      "firmware_warning": {
+        "title": "알려진 펌웨어 문제가 감지됨",
+        "description": "IntelliCenter 펌웨어 {firmware}에는 문서화된 알려진 문제가 있습니다. 자세히 알아보기:\n{sources}\n\n이 경고는 설정을 차단하지 않습니다. 계속하려면 제출을 선택하세요."
       }
     },
     "error": {
@@ -94,6 +98,16 @@
         "tcp": "TCP (포트 6681)",
         "websocket": "WebSocket (포트 6680)"
       }
+    }
+  },
+  "issues": {
+    "firmware_2x": {
+      "title": "IntelliCenter 2.x 펌웨어에 심각한 알려진 문제가 있습니다",
+      "description": "IntelliCenter 패널이 펌웨어 {firmware}를 실행 중입니다. 2.x 계열(2.006 / 2.017 / 2.026)에는 심각한 문서화된 문제가 있으며(스케줄 손상, 펌프가 무작위로 0 RPM으로 설정, 히터 통신 오류) 2.006과 2.026은 Pentair에서 철회했습니다. 공식 업그레이드 경로는 2.x를 완전히 건너뜁니다. 3.004로 업데이트한 후 3.008로 업데이트하거나(무선 리모컨을 패널과 함께 업데이트), 1.064로 되돌리세요."
+    },
+    "firmware_outdated_1x": {
+      "title": "IntelliCenter 펌웨어가 오래되었습니다",
+      "description": "IntelliCenter 패널이 펌웨어 {firmware}를 실행 중입니다. 1.064 이전 릴리스는 오래전에 대체되었으며 문서화된 프로토콜 제한이 있습니다. Pentair의 공식 업그레이드 경로는 1.047 → 1.064 → 3.004 → 3.008입니다. 무선 리모컨을 패널과 함께 업데이트하세요."
     }
   }
 }

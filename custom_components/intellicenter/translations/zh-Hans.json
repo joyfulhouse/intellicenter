@@ -52,6 +52,10 @@
         "data_description": {
           "transport": "TCP 是标准连接方式（端口 6681）。WebSocket（端口 6680）在某些网络配置中可能更可靠。"
         }
+      },
+      "firmware_warning": {
+        "title": "检测到已知固件问题",
+        "description": "IntelliCenter 固件 {firmware} 存在已记录的已知问题。了解更多：\n{sources}\n\n此警告不会阻止设置。选择提交以继续。"
       }
     },
     "error": {
@@ -94,6 +98,16 @@
         "tcp": "TCP（端口 6681）",
         "websocket": "WebSocket（端口 6680）"
       }
+    }
+  },
+  "issues": {
+    "firmware_2x": {
+      "title": "IntelliCenter 2.x 固件存在严重的已知问题",
+      "description": "您的 IntelliCenter 面板正在运行固件 {firmware}。2.x 系列(2.006 / 2.017 / 2.026)存在严重的已记录问题——日程损坏、水泵被随机设为 0 RPM、加热器通信故障——且 Pentair 已撤回 2.006 和 2.026。官方升级路径完全跳过 2.x:请更新到 3.004,然后更新到 3.008(无线遥控器需与面板一起更新),或恢复到 1.064。"
+    },
+    "firmware_outdated_1x": {
+      "title": "IntelliCenter 固件已过时",
+      "description": "您的 IntelliCenter 面板正在运行固件 {firmware}。1.064 之前的版本早已被取代,并存在已记录的协议限制。Pentair 官方升级路径为 1.047 → 1.064 → 3.004 → 3.008;无线遥控器需与面板一起更新。"
     }
   }
 }

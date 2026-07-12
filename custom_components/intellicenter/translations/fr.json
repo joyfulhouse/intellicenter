@@ -52,6 +52,10 @@
         "data_description": {
           "transport": "TCP est la méthode de connexion standard (port 6681). WebSocket (port 6680) peut être plus fiable dans certaines configurations réseau."
         }
+      },
+      "firmware_warning": {
+        "title": "Problèmes de micrologiciel connus détectés",
+        "description": "Le micrologiciel IntelliCenter {firmware} présente des problèmes connus documentés. En savoir plus :\n{sources}\n\nCet avertissement ne bloque pas la configuration. Sélectionnez Soumettre pour continuer."
       }
     },
     "error": {
@@ -94,6 +98,16 @@
         "tcp": "TCP (port 6681)",
         "websocket": "WebSocket (port 6680)"
       }
+    }
+  },
+  "issues": {
+    "firmware_2x": {
+      "title": "Le micrologiciel IntelliCenter 2.x présente de graves problèmes connus",
+      "description": "Votre panneau IntelliCenter utilise le micrologiciel {firmware}. La série 2.x (2.006 / 2.017 / 2.026) présente de graves problèmes documentés — programmations défaillantes, pompes commandées aléatoirement à 0 tr/min, pannes de communication avec les chauffages — et Pentair a retiré 2.006 et 2.026. Le chemin de mise à niveau officiel ignore entièrement 2.x : mettez à jour vers 3.004 puis 3.008 (mettez à jour la télécommande sans fil avec le panneau), ou revenez à 1.064."
+    },
+    "firmware_outdated_1x": {
+      "title": "Le micrologiciel IntelliCenter est obsolète",
+      "description": "Votre panneau IntelliCenter utilise le micrologiciel {firmware}. Les versions antérieures à 1.064 sont depuis longtemps dépassées et présentent des limitations de protocole documentées. Le chemin de mise à niveau officiel de Pentair est 1.047 → 1.064 → 3.004 → 3.008 ; mettez à jour la télécommande sans fil avec le panneau."
     }
   }
 }

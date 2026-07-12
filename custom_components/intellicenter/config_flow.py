@@ -114,7 +114,7 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):
         self._discovered_host: str | None = None
         self._discovered_name: str | None = None
         self._discovered_units: list[ICUnit] = []
-        self._firmware_warning: str | None = None
+        self._firmware_placeholders: dict[str, str] | None = None
         self._pending_entry: tuple[str, dict[str, Any]] | None = None
         self._reconfigure_entry: ConfigEntry | None = None
 
@@ -301,15 +301,20 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Allow setup to proceed after acknowledging a firmware warning."""
-        if self._pending_entry is None or self._firmware_warning is None:
+        if self._pending_entry is None or self._firmware_placeholders is None:
             return self.async_abort(reason="unknown")
 
         if user_input is None:
             return self._show_firmware_warning()
 
+        # The warning pause widens the window for a concurrent flow (zeroconf
+        # firing mid-acknowledgement, a double-opened dialog) to configure the
+        # same panel; re-check uniqueness right before creating the entry.
+        self._abort_if_unique_id_configured()
+
         title, data = self._pending_entry
         self._pending_entry = None
-        self._firmware_warning = None
+        self._firmware_placeholders = None
         return self.async_create_entry(title=title, data=data)
 
     def _show_pick_method_form(
@@ -413,10 +418,14 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):
         )
 
     def _show_firmware_warning(self) -> ConfigFlowResult:
-        """Show a non-blocking warning for firmware with documented issues."""
+        """Show a non-blocking warning for firmware with documented issues.
+
+        The warning prose lives in strings.json/translations (localizable);
+        only the firmware version and source links are passed as placeholders.
+        """
         return self.async_show_form(
             step_id="firmware_warning",
-            description_placeholders={"warning": self._firmware_warning or ""},
+            description_placeholders=self._firmware_placeholders or {},
         )
 
     def _create_entry_or_warn(
@@ -428,11 +437,12 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):
             advisories = matching_advisories(version, KNOWN_FIRMWARE_ISSUES)
             if advisories:
                 self._pending_entry = (system_info.prop_name, data)
-                self._firmware_warning = "\n\n".join(
-                    f"IntelliCenter firmware {system_info.sw_version} has documented "
-                    f"known issues. Learn more: {advisory.learn_more_url}"
-                    for advisory in advisories
-                )
+                self._firmware_placeholders = {
+                    "firmware": str(system_info.sw_version),
+                    "sources": "\n".join(
+                        advisory.learn_more_url for advisory in advisories
+                    ),
+                }
                 return self._show_firmware_warning()
 
         return self.async_create_entry(title=system_info.prop_name, data=data)

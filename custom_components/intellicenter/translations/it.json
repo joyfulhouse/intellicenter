@@ -52,6 +52,10 @@
         "data_description": {
           "transport": "TCP è il metodo di connessione standard (porta 6681). WebSocket (porta 6680) potrebbe essere più affidabile in alcune configurazioni di rete."
         }
+      },
+      "firmware_warning": {
+        "title": "Rilevati problemi noti del firmware",
+        "description": "Il firmware IntelliCenter {firmware} presenta problemi noti documentati. Ulteriori informazioni:\n{sources}\n\nQuesto avviso non blocca la configurazione. Seleziona Invia per continuare."
       }
     },
     "error": {
@@ -94,6 +98,16 @@
         "tcp": "TCP (porta 6681)",
         "websocket": "WebSocket (porta 6680)"
       }
+    }
+  },
+  "issues": {
+    "firmware_2x": {
+      "title": "Il firmware IntelliCenter 2.x presenta gravi problemi noti",
+      "description": "Il pannello IntelliCenter esegue il firmware {firmware}. La linea 2.x (2.006 / 2.017 / 2.026) presenta gravi problemi documentati — programmazioni non funzionanti, pompe impostate casualmente a 0 giri/min, errori di comunicazione con i riscaldatori — e Pentair ha ritirato 2.006 e 2.026. Il percorso di aggiornamento ufficiale salta completamente la 2.x: aggiornare a 3.004 e poi a 3.008 (aggiornare il telecomando insieme al pannello), oppure tornare alla 1.064."
+    },
+    "firmware_outdated_1x": {
+      "title": "Il firmware IntelliCenter è obsoleto",
+      "description": "Il pannello IntelliCenter esegue il firmware {firmware}. Le versioni precedenti alla 1.064 sono da tempo superate e presentano limitazioni di protocollo documentate. Il percorso di aggiornamento ufficiale di Pentair è 1.047 → 1.064 → 3.004 → 3.008; aggiornare il telecomando insieme al pannello."
     }
   }
 }

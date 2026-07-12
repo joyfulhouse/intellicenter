@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Covers disabled in Settings > Covers still appeared in Home Assistant.** `STATUS` on an `EXTINSTR`/`COVER` object was assumed to be the cover's open/closed position, but capturing the panel web app's own traffic shows `STATUS` is actually the "Cover Enabled" toggle - enabling a cover sends a `SETPARAMLIST` writing `STATUS` and never touching position. The real position attribute, `POSIT`, wasn't tracked at all. As a result, `is_closed`/open/close previously read and wrote the wrong attribute, and covers disabled on the panel still got a permanent, non-functional entity. The cover platform now skips creating an entity for a panel-disabled cover, and disables (via `disabled_by=INTEGRATION`, preserving entity_id/history) any cover entity already registered before this fix or before it was disabled on the panel - re-enabling it automatically if the panel re-enables the cover. Entities the user disabled manually are left untouched either way. `is_closed`/open/close now correctly use `POSIT`.
+
+### Changed
+- **Requires pyintellicenter >= 0.1.21** - Picks up `POSIT_ATTR` and the corrected `set_cover_state()`/`is_cover_on()` semantics (was previously writing/reading the wrong attribute for the same reason as above).
+
 ## [3.8.1] - 2026-07-05
 
 ### Fixed

@@ -439,6 +439,8 @@ def mock_coordinator(
     mock_controller.is_body_heating = MagicMock(return_value=False)
     # Body cooling detection
     mock_controller.is_body_cooling = MagicMock(return_value=False)
+    # Covers - default to none; tests that exercise cover registry sync override this
+    mock_controller.get_covers = MagicMock(return_value=[])
     mock_coord.controller = mock_controller
 
     # Configure system info

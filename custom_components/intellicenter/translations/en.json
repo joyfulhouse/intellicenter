@@ -42,6 +42,10 @@
         "title": "Connect to Pentair IntelliCenter",
         "description": "Do you want to set up {name} ({host})?"
       },
+      "firmware_warning": {
+        "title": "Known firmware issues detected",
+        "description": "{warning}\n\nThis warning does not block setup. Select Submit to continue."
+      },
       "reconfigure": {
         "title": "Reconfigure IntelliCenter",
         "description": "Update the connection settings for {name}.",

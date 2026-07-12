@@ -55,6 +55,57 @@ async def test_user_flow_success(
     }
 
 
+async def test_user_flow_warns_about_known_issue_firmware(
+    hass: HomeAssistant, mock_controller: MagicMock
+) -> None:
+    """Known-issue firmware shows a non-blocking warning before setup."""
+    type(mock_controller.system_info).sw_version = property(lambda self: "IC: 2.006")
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"setup_method": "manual"}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_HOST: "192.168.1.100"}
+    )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "firmware_warning"
+    assert "IC: 2.006" in result["description_placeholders"]["warning"]
+
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["title"] == "Test Pool System"
+    assert result["data"] == {
+        CONF_HOST: "192.168.1.100",
+        CONF_TRANSPORT: DEFAULT_TRANSPORT,
+    }
+
+
+@pytest.mark.parametrize("firmware", ["IC: 1.064", "not a firmware version"])
+async def test_user_flow_without_matching_firmware_is_unchanged(
+    hass: HomeAssistant, mock_controller: MagicMock, firmware: str
+) -> None:
+    """Safe and unparseable firmware versions do not add a setup step."""
+    type(mock_controller.system_info).sw_version = property(lambda self: firmware)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"setup_method": "manual"}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_HOST: "192.168.1.100"}
+    )
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["title"] == "Test Pool System"
+
+
 async def test_user_flow_cannot_connect(
     hass: HomeAssistant, mock_controller: MagicMock
 ) -> None:
@@ -193,6 +244,36 @@ async def test_zeroconf_flow_success(
         result["flow_id"],
         {},
     )
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["title"] == "Test Pool System"
+    assert result["data"] == {CONF_HOST: "192.168.1.100"}
+
+
+async def test_zeroconf_flow_warns_about_known_issue_firmware(
+    hass: HomeAssistant, mock_controller: MagicMock
+) -> None:
+    """Zeroconf setup warns about known-issue firmware before creating."""
+    type(mock_controller.system_info).sw_version = property(lambda self: "IC: 2.006")
+    discovery_info = MagicMock()
+    discovery_info.host = "192.168.1.100"
+    discovery_info.hostname = "pentair-intellicenter.local."
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_ZEROCONF},
+        data=discovery_info,
+    )
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "zeroconf_confirm"
+
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "firmware_warning"
+    assert "IC: 2.006" in result["description_placeholders"]["warning"]
+
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["title"] == "Test Pool System"

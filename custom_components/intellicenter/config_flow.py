@@ -64,6 +64,11 @@ from .const import (
     TRANSPORT_WEBSOCKET,
     TransportType,
 )
+from .firmware import (
+    KNOWN_FIRMWARE_ISSUES,
+    matching_advisories,
+    parse_ic_version,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -109,6 +114,8 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):
         self._discovered_host: str | None = None
         self._discovered_name: str | None = None
         self._discovered_units: list[ICUnit] = []
+        self._firmware_warning: str | None = None
+        self._pending_entry: tuple[str, dict[str, Any]] | None = None
         self._reconfigure_entry: ConfigEntry | None = None
 
     @staticmethod
@@ -157,9 +164,7 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):
                     await self.async_set_unique_id(system_info.unique_id)
                     self._abort_if_unique_id_configured()
 
-                    return self.async_create_entry(
-                        title=system_info.prop_name, data={CONF_HOST: host}
-                    )
+                    return self._create_entry_or_warn(system_info, {CONF_HOST: host})
                 except AbortFlow:
                     raise
                 except InvalidHost:
@@ -217,9 +222,9 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id(system_info.unique_id)
             self._abort_if_unique_id_configured()
 
-            return self.async_create_entry(
-                title=system_info.prop_name,
-                data={CONF_HOST: host, CONF_TRANSPORT: transport},
+            return self._create_entry_or_warn(
+                system_info,
+                {CONF_HOST: host, CONF_TRANSPORT: transport},
             )
         except AbortFlow:
             raise
@@ -290,9 +295,22 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):
             _LOGGER.exception("Unexpected exception")
             return self.async_abort(reason="unknown")
 
-        return self.async_create_entry(
-            title=system_info.prop_name, data={CONF_HOST: host}
-        )
+        return self._create_entry_or_warn(system_info, {CONF_HOST: host})
+
+    async def async_step_firmware_warning(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Allow setup to proceed after acknowledging a firmware warning."""
+        if self._pending_entry is None or self._firmware_warning is None:
+            return self.async_abort(reason="unknown")
+
+        if user_input is None:
+            return self._show_firmware_warning()
+
+        title, data = self._pending_entry
+        self._pending_entry = None
+        self._firmware_warning = None
+        return self.async_create_entry(title=title, data=data)
 
     def _show_pick_method_form(
         self, errors: dict[str, str] | None = None
@@ -394,6 +412,31 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):
             },
         )
 
+    def _show_firmware_warning(self) -> ConfigFlowResult:
+        """Show a non-blocking warning for firmware with documented issues."""
+        return self.async_show_form(
+            step_id="firmware_warning",
+            description_placeholders={"warning": self._firmware_warning or ""},
+        )
+
+    def _create_entry_or_warn(
+        self, system_info: ICSystemInfo, data: dict[str, Any]
+    ) -> ConfigFlowResult:
+        """Create an entry, first warning when the panel firmware is affected."""
+        version = parse_ic_version(system_info.sw_version)
+        if version is not None:
+            advisories = matching_advisories(version, KNOWN_FIRMWARE_ISSUES)
+            if advisories:
+                self._pending_entry = (system_info.prop_name, data)
+                self._firmware_warning = "\n\n".join(
+                    f"IntelliCenter firmware {system_info.sw_version} has documented "
+                    f"known issues. Learn more: {advisory.learn_more_url}"
+                    for advisory in advisories
+                )
+                return self._show_firmware_warning()
+
+        return self.async_create_entry(title=system_info.prop_name, data=data)
+
     async def _async_create_entry_from_unit(self, unit: ICUnit) -> ConfigFlowResult:
         """Create a config entry from a discovered unit.
 
@@ -407,9 +450,7 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):
         await self.async_set_unique_id(system_info.unique_id)
         self._abort_if_unique_id_configured()
 
-        return self.async_create_entry(
-            title=system_info.prop_name, data={CONF_HOST: unit.host}
-        )
+        return self._create_entry_or_warn(system_info, {CONF_HOST: unit.host})
 
     async def _get_system_info(
         self, host: str, transport: TransportType = DEFAULT_TRANSPORT

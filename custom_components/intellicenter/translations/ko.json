@@ -109,5 +109,10 @@
       "title": "IntelliCenter 펌웨어가 오래되었습니다",
       "description": "IntelliCenter 패널이 펌웨어 {firmware}를 실행 중입니다. 1.064 이전 릴리스는 오래전에 대체되었으며 문서화된 프로토콜 제한이 있습니다. Pentair의 공식 업그레이드 경로는 1.047 → 1.064 → 3.004 → 3.008입니다. 무선 리모컨을 패널과 함께 업데이트하세요."
     }
+  },
+  "exceptions": {
+    "cover_position_unsupported": {
+      "message": "이 IntelliCenter 펌웨어는 커버 위치를 보고하지 않습니다(POSIT 속성 없음). 열기/닫기가 지원되지 않습니다. 커버를 제어하려면 패널 펌웨어를 업데이트하세요."
+    }
   }
 }

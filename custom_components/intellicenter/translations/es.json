@@ -109,5 +109,10 @@
       "title": "El firmware de IntelliCenter está desactualizado",
       "description": "Su panel IntelliCenter ejecuta el firmware {firmware}. Las versiones anteriores a 1.064 están superadas desde hace tiempo y tienen limitaciones de protocolo documentadas. La ruta de actualización oficial de Pentair es 1.047 → 1.064 → 3.004 → 3.008; actualice el control remoto junto con el panel."
     }
+  },
+  "exceptions": {
+    "cover_position_unsupported": {
+      "message": "Este firmware de IntelliCenter no informa la posición de la cubierta (sin atributo POSIT); abrir/cerrar no es compatible. Actualice el firmware del panel para controlar la cubierta."
+    }
   }
 }

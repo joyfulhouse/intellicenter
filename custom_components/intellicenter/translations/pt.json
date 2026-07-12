@@ -109,5 +109,10 @@
       "title": "O firmware IntelliCenter está desatualizado",
       "description": "O seu painel IntelliCenter está a executar o firmware {firmware}. As versões anteriores à 1.064 foram há muito substituídas e têm limitações de protocolo documentadas. O caminho de atualização oficial da Pentair é 1.047 → 1.064 → 3.004 → 3.008; atualize o comando sem fios juntamente com o painel."
     }
+  },
+  "exceptions": {
+    "cover_position_unsupported": {
+      "message": "Este firmware IntelliCenter não reporta a posição da cobertura (sem atributo POSIT); abrir/fechar não é suportado. Atualize o firmware do painel para controlar a cobertura."
+    }
   }
 }

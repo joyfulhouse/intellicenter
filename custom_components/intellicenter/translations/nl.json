@@ -109,5 +109,10 @@
       "title": "IntelliCenter-firmware is verouderd",
       "description": "Uw IntelliCenter-paneel draait firmware {firmware}. Versies vóór 1.064 zijn allang vervangen en hebben gedocumenteerde protocolbeperkingen. Het officiële upgradepad van Pentair is 1.047 → 1.064 → 3.004 → 3.008; werk de draadloze afstandsbediening samen met het paneel bij."
     }
+  },
+  "exceptions": {
+    "cover_position_unsupported": {
+      "message": "Deze IntelliCenter-firmware rapporteert geen afdekkingspositie (geen POSIT-attribuut); openen/sluiten wordt niet ondersteund. Werk de paneelfirmware bij om de afdekking te bedienen."
+    }
   }
 }

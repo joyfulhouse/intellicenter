@@ -109,5 +109,10 @@
       "title": "Il firmware IntelliCenter è obsoleto",
       "description": "Il pannello IntelliCenter esegue il firmware {firmware}. Le versioni precedenti alla 1.064 sono da tempo superate e presentano limitazioni di protocollo documentate. Il percorso di aggiornamento ufficiale di Pentair è 1.047 → 1.064 → 3.004 → 3.008; aggiornare il telecomando insieme al pannello."
     }
+  },
+  "exceptions": {
+    "cover_position_unsupported": {
+      "message": "Questo firmware IntelliCenter non riporta la posizione della copertura (nessun attributo POSIT); apertura/chiusura non supportate. Aggiornare il firmware del pannello per controllare la copertura."
+    }
   }
 }

@@ -109,5 +109,10 @@
       "title": "Le micrologiciel IntelliCenter est obsolète",
       "description": "Votre panneau IntelliCenter utilise le micrologiciel {firmware}. Les versions antérieures à 1.064 sont depuis longtemps dépassées et présentent des limitations de protocole documentées. Le chemin de mise à niveau officiel de Pentair est 1.047 → 1.064 → 3.004 → 3.008 ; mettez à jour la télécommande sans fil avec le panneau."
     }
+  },
+  "exceptions": {
+    "cover_position_unsupported": {
+      "message": "Ce micrologiciel IntelliCenter ne signale pas la position de la couverture (pas d'attribut POSIT) ; l'ouverture/fermeture n'est pas prise en charge. Mettez à jour le micrologiciel du panneau pour contrôler la couverture."
+    }
   }
 }

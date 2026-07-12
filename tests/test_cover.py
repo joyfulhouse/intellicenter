@@ -383,10 +383,55 @@ async def test_cover_commands_refused_without_posit(
     cover = PoolCover(mock_coordinator, cover_obj)
     cover.hass = hass
 
-    with pytest.raises(HomeAssistantError):
+    with pytest.raises(HomeAssistantError) as err:
         await getattr(cover, method_name)()
 
-    mock_coordinator.controller.request_changes.assert_not_awaited()
+    assert err.value.translation_domain == "intellicenter"
+    assert err.value.translation_key == "cover_position_unsupported"
+    # assert_not_called (not assert_not_awaited): if the guard were removed,
+    # the call might be scheduled without being awaited yet, and
+    # assert_not_awaited would falsely pass.
+    mock_coordinator.controller.request_changes.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("posit", "normal"),
+    [
+        ("ON", None),  # NORMAL missing: direction would be guessed
+        ("ON", "NORMAL"),  # malformed echo-back value
+        ("POSIT", "ON"),  # malformed POSIT echo-back value
+    ],
+)
+async def test_cover_commands_refused_with_invalid_state(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+    posit: str | None,
+    normal: str | None,
+) -> None:
+    """Commands are refused unless BOTH POSIT and NORMAL are valid ON/OFF.
+
+    A missing NORMAL must not silently read as OFF — that would reverse the
+    open/close direction on a partially synced cover.
+    """
+    params = {
+        "OBJTYP": EXTINSTR_TYPE,
+        "SUBTYP": "COVER",
+        "SNAME": "Partial Cover",
+        "STATUS": "ON",
+    }
+    if posit is not None:
+        params["POSIT"] = posit
+    if normal is not None:
+        params["NORMAL"] = normal
+    cover_obj = PoolObject("COVER4", params)
+    mock_coordinator.controller.request_changes = AsyncMock()
+    cover = PoolCover(mock_coordinator, cover_obj)
+    cover.hass = hass
+
+    assert cover.is_closed is None
+    with pytest.raises(HomeAssistantError):
+        await cover.async_open_cover()
+    mock_coordinator.controller.request_changes.assert_not_called()
 
 
 async def test_cover_is_updated_status(

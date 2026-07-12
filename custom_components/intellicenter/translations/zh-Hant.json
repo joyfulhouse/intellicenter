@@ -109,5 +109,10 @@
       "title": "IntelliCenter 韌體已過時",
       "description": "您的 IntelliCenter 面板正在執行韌體 {firmware}。1.064 之前的版本早已被取代,並存在已記錄的協定限制。Pentair 官方升級路徑為 1.047 → 1.064 → 3.004 → 3.008;無線遙控器需與面板一起更新。"
     }
+  },
+  "exceptions": {
+    "cover_position_unsupported": {
+      "message": "此 IntelliCenter 韌體不回報泳池蓋位置(無 POSIT 屬性);不支援開啟/關閉。請更新面板韌體以控制泳池蓋。"
+    }
   }
 }

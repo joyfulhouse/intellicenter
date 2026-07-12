@@ -110,5 +110,10 @@
       "title": "IntelliCenter firmware is outdated",
       "description": "Your IntelliCenter panel is running firmware {firmware}. Releases before 1.064 are long superseded and have documented protocol limitations. Pentair's official upgrade path is 1.047 → 1.064 → 3.004 → 3.008; update the wireless remote together with the panel."
     }
+  },
+  "exceptions": {
+    "cover_position_unsupported": {
+      "message": "This IntelliCenter firmware does not report cover position (no POSIT attribute); open/close is not supported. Update the panel firmware to control the cover."
+    }
   }
 }

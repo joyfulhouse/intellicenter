@@ -109,5 +109,10 @@
       "title": "IntelliCenter-Firmware ist veraltet",
       "description": "Ihr IntelliCenter-Panel läuft mit Firmware {firmware}. Versionen vor 1.064 sind längst überholt und haben dokumentierte Protokolleinschränkungen. Der offizielle Upgrade-Pfad von Pentair ist 1.047 → 1.064 → 3.004 → 3.008; aktualisieren Sie die Funkfernbedienung zusammen mit dem Panel."
     }
+  },
+  "exceptions": {
+    "cover_position_unsupported": {
+      "message": "Diese IntelliCenter-Firmware meldet keine Abdeckungsposition (kein POSIT-Attribut); Öffnen/Schließen wird nicht unterstützt. Aktualisieren Sie die Panel-Firmware, um die Abdeckung zu steuern."
+    }
   }
 }

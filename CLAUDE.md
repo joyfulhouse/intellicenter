@@ -355,7 +355,7 @@ The integration has achieved **Platinum** quality scale (v3.0.0). The roadmap be
     - Number: 39 tests (setpoint controls)
     - Sensor: 37 tests (incl. body Last Temp)
     - Climate: 24 tests (UltraTemp heat pump)
-    - Cover: 28 tests (STATUS enabled-flag gating, POSIT position)
+    - Cover: 27 tests (availability follows panel connection, POSIT position/actuation)
     - Binary Sensor: 31 tests (incl. Not in Auto problem sensor, cross-body heat source)
     - Switch: 13 tests (device class)
   - **Diagnostics tests**: 10 tests

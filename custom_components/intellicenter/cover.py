@@ -2,16 +2,20 @@
 
 This module provides cover entities for pool covers and other motorized covers.
 
-Attribute semantics (confirmed by capturing the panel web UI's own
-SETPARAMLIST traffic — see joyfulhouse/pyintellicenter#44):
+Attribute semantics (from capturing the panel web UI's own SETPARAMLIST
+traffic — see joyfulhouse/pyintellicenter#44):
 
-- ``STATUS`` is the "Cover Enabled" flag from Settings > Covers. It is
-  configuration, never position.
-- ``POSIT`` is the physical cover position. Older firmware (e.g. IC 1.064,
-  verified live) omits POSIT entirely; on such panels there is NO live
-  position signal, so position is unknown and position commands are refused
-  rather than fabricated from STATUS (writing STATUS would toggle the
-  cover's enabled flag in the panel's settings, not move the cover).
+- ``STATUS`` maps to the "Cover Enabled" flag in Settings > Covers on the
+  panels captured for #44, but it is firmware-variable: on some panels it
+  reads OFF for a closed cover (issue #107). This integration therefore does
+  NOT use STATUS for position OR for entity availability. Writing STATUS can
+  toggle the enabled flag in the panel's settings rather than move the cover,
+  so it is never written.
+- ``POSIT`` is the physical cover position and the sole supported
+  position/actuation source. Older firmware (e.g. IC 1.064, verified live)
+  omits POSIT entirely; on such panels there is NO live position signal, so
+  position is unknown and position commands are refused rather than
+  fabricated from STATUS.
 """
 
 from __future__ import annotations
@@ -55,11 +59,11 @@ def _build_entities(
 ) -> list[PoolCover]:
     """Build cover entities for the given candidate pool objects.
 
-    Entities are created for every EXTINSTR/COVER object — including covers
-    disabled in Settings > Covers — and gated through ``available`` instead.
-    Creating them all keeps existing users' entity registry stable and means
-    a cover enabled after setup comes alive on the next push (STATUS updates
-    an existing object, which would never re-trigger entity creation).
+    Entities are created for every EXTINSTR/COVER object. Availability follows
+    the panel connection only (like every other platform); STATUS is not used
+    to gate availability because it is firmware-variable and a closed cover can
+    legitimately report STATUS=OFF — gating on it made covers go permanently
+    unavailable (issue #107). Position/actuation come from POSIT/NORMAL.
     """
     return [
         PoolCover(coordinator, pool_obj)
@@ -105,18 +109,6 @@ class PoolCover(PoolEntity, CoverEntity):
         self._attr_supported_features = (
             CoverEntityFeature.OPEN | CoverEntityFeature.CLOSE
         )
-
-    @property
-    def available(self) -> bool:
-        """Return whether the panel is connected and the cover is enabled.
-
-        STATUS is the Settings > Covers enabled flag; a disabled cover is a
-        configuration placeholder, not controllable equipment. Only an
-        explicit OFF hides the entity — a cover missing STATUS entirely
-        (unobserved, but protocol-plausible) fails open rather than becoming
-        permanently unavailable.
-        """
-        return super().available and self._pool_object.status != STATUS_OFF
 
     def _valid_position_state(self) -> tuple[bool, bool] | None:
         """Return (posit_is_on, normal_is_on), or None if either is invalid.

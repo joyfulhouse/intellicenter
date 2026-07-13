@@ -36,7 +36,7 @@ This integration connects your Pentair IntelliCenter pool control system to Home
 
 This release fixes cover semantics, heater detection, and adds firmware awareness — with major contributions from @bhamiltoncx:
 
-- **Correct Pool Cover Behavior** (thanks @bhamiltoncx): the integration previously conflated a cover's *enabled* setting with its *position*. Covers disabled in Settings > Covers now show as unavailable instead of appearing active, and position comes from the panel's real position attribute (`POSIT`). On older firmware that doesn't report position (e.g. IC 1.064), the cover state shows unknown and open/close report a clear error — previously these commands silently toggled the cover's enabled setting instead of moving it.
+- **Correct Pool Cover Behavior** (thanks @bhamiltoncx): the integration previously conflated a cover's *enabled* setting with its *position*. Position now comes from the panel's real position attribute (`POSIT`). On older firmware that doesn't report position (e.g. IC 1.064), the cover state shows unknown and open/close report a clear error — previously these commands silently toggled the cover's enabled setting instead of moving it. (Note: v3.9.0 also hid covers whose `STATUS` read `OFF`, which made some covers go permanently unavailable — corrected in a later release; see issue #107.)
 - **Cross-Body Heater Detection** (thanks @bhamiltoncx): a heater actively heating a body that isn't in its configured body list (possible on real panels) is now correctly reported as heating.
 - **Firmware Advisories**: the integration now recognizes firmware releases with documented problems (e.g. the withdrawn 2.x line) and raises a dismissible Repairs warning — and warns during initial setup before you finish adding the integration.
 - **"Not in Auto" Problem Sensor**: turns on when the panel is left in Service or Time Out mode (e.g. after maintenance or a power outage), which silently suspends schedules and automatic valve/pump control.
@@ -137,7 +137,7 @@ After setup, configure connection settings:
 | **Heaters** | Binary Sensor, Water Heater | Running status; HCOMBO (UltraTemp ETi Hybrid) Gas/Heat Pump/Hybrid/Dual modes |
 | **Schedules** | Binary Sensor | Active status (disabled by default) |
 | **System** | Switch, Binary Sensor, Sensors | Vacation mode, freeze protection, temperatures, System Mode (`auto`/`service`/`timeout`), "Not in Auto" problem indicator, firmware advisories (a Repairs warning is raised for firmware with documented issues, e.g. the pulled 2.x line) |
-| **Covers** | Cover | Pool cover position (`POSIT`) and open/close; covers disabled in Settings > Covers show unavailable; older firmware without position reporting shows unknown |
+| **Covers** | Cover | Pool cover position (`POSIT`) and open/close; availability follows the panel connection (STATUS never hides the entity); older firmware without position reporting shows unknown |
 
 ### Body (Pool/Spa) Last Temp Sensor
 

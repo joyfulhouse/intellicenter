@@ -103,15 +103,15 @@ async def test_cover_setup_creates_entities(
     assert entities_added[0]._pool_object.sname == "Pool Cover"
 
 
-async def test_cover_setup_skips_disabled_cover(
+async def test_cover_setup_creates_status_off_cover_available(
     hass: HomeAssistant,
     mock_coordinator: MagicMock,
 ) -> None:
-    """A STATUS=OFF (disabled) cover still gets an entity, gated unavailable.
+    """A STATUS=OFF cover still gets an entity and stays available (issue #107).
 
-    Creating the entity keeps the registry stable and lets a cover enabled
-    after setup come alive on the next push (STATUS updates an existing
-    object, which never re-triggers entity creation).
+    STATUS does not gate availability: it is firmware-variable and a closed
+    cover can report STATUS=OFF, so gating on it made covers permanently
+    unavailable. Availability follows the panel connection only.
     """
     model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
     model.add_object(
@@ -119,7 +119,7 @@ async def test_cover_setup_skips_disabled_cover(
         {
             "OBJTYP": EXTINSTR_TYPE,
             "SUBTYP": "COVER",
-            "SNAME": "Disabled Cover",
+            "SNAME": "Cover",
             "STATUS": "OFF",
             "POSIT": "ON",
             "NORMAL": "ON",
@@ -137,7 +137,7 @@ async def test_cover_setup_skips_disabled_cover(
 
     assert len(entities_added) == 1
     mock_coordinator.connected = True
-    assert entities_added[0].available is False
+    assert entities_added[0].available is True
 
 
 async def test_cover_entity_properties(
@@ -221,12 +221,12 @@ async def test_cover_normally_open_is_open_when_position_on(
     assert cover.is_closed is False
 
 
-async def test_cover_position_and_enabled_availability_are_independent(
+async def test_cover_position_is_posit_driven_and_status_independent(
     hass: HomeAssistant,
     pool_object_cover_normally_closed: PoolObject,
     mock_coordinator: MagicMock,
 ) -> None:
-    """Test POSIT drives position while STATUS gates entity availability."""
+    """POSIT drives position; STATUS never changes availability (issue #107)."""
     mock_coordinator.connected = True
     cover = PoolCover(mock_coordinator, pool_object_cover_normally_closed)
 
@@ -236,8 +236,9 @@ async def test_cover_position_and_enabled_availability_are_independent(
     pool_object_cover_normally_closed.update({POSIT_ATTR: "ON"})
     assert cover.is_closed is True
 
+    # Toggling STATUS must not affect availability in either direction.
     pool_object_cover_normally_closed.update({STATUS_ATTR: "OFF"})
-    assert cover.available is False
+    assert cover.available is True
     assert cover.is_closed is True
 
     pool_object_cover_normally_closed.update({STATUS_ATTR: "ON"})
@@ -572,15 +573,15 @@ async def test_cover_unknown_position_when_attributes_missing(
     assert cover.is_closed is None
 
 
-async def test_cover_missing_status_fails_open(
+async def test_cover_status_never_gates_availability(
     hass: HomeAssistant,
     mock_coordinator: MagicMock,
 ) -> None:
-    """A cover with no STATUS attribute at all stays available (fail-open).
+    """A cover stays available when connected, whatever STATUS reads.
 
-    Only an explicit STATUS=OFF (disabled in Settings > Covers) hides the
-    entity; an absent STATUS must not make a working cover permanently
-    unavailable.
+    STATUS must not veto Home Assistant availability: it is firmware-variable
+    (older releases wrote it as position) and gating on it makes a cover go
+    permanently unavailable whenever it reads OFF.
     """
     cover_obj = PoolObject(
         "COVER5",
@@ -597,3 +598,79 @@ async def test_cover_missing_status_fails_open(
 
     assert cover.available is True
     assert cover.is_closed is True
+
+    # An explicit STATUS=OFF must not hide the entity (issue #107).
+    cover_obj.update({STATUS_ATTR: "OFF"})
+    assert cover.available is True
+
+
+async def test_cover_regression_issue_107_status_off_stays_available(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Regression for issue #107: EXTINSTR/COVER with STATUS=OFF stays available.
+
+    The reporter's CVR01/CVR02 (device_class shade) went permanently
+    ``unavailable`` after upgrading to v3.9.0 while every other entity on the
+    same panel kept working, and a config-entry reload did not clear it. Root
+    cause: v3.9.0 added an availability gate ``status != STATUS_OFF``. A
+    closed cover reports STATUS=OFF in some configurations, so closing it made
+    the entity unavailable, and reload re-fetched the same STATUS=OFF and
+    re-hid it.
+
+    A closed normally-open cover (NORMAL=OFF, POSIT=OFF) with STATUS=OFF must
+    be created, available, and reported closed — and must stay so after the
+    model is rebuilt from scratch (as a config-entry reload does).
+    """
+    mock_coordinator.connected = True
+
+    def _build_covers() -> list[PoolCover]:
+        model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
+        for objnam in ("CVR01", "CVR02"):
+            model.add_object(
+                objnam,
+                {
+                    "OBJTYP": EXTINSTR_TYPE,
+                    "SUBTYP": "COVER",
+                    "SNAME": f"Cover {objnam}",
+                    "STATUS": "OFF",  # closed cover reports STATUS=OFF here
+                    "POSIT": "OFF",
+                    "NORMAL": "OFF",  # normally open
+                },
+            )
+        mock_coordinator.model = model
+        return [PoolCover(mock_coordinator, obj) for obj in model]
+
+    covers = _build_covers()
+    assert len(covers) == 2
+    for cover in covers:
+        assert cover.available is True
+        # NORMAL=OFF, POSIT=OFF -> closed
+        assert cover.is_closed is True
+
+    # Simulate a config-entry reload: a fresh model re-fetches the same
+    # STATUS=OFF from the panel. The covers must remain available.
+    reloaded = _build_covers()
+    for cover in reloaded:
+        assert cover.available is True
+
+
+async def test_cover_unavailable_when_disconnected_regardless_of_status(
+    hass: HomeAssistant,
+    pool_object_cover_normally_closed: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Availability tracks the panel connection only."""
+    cover = PoolCover(mock_coordinator, pool_object_cover_normally_closed)
+
+    mock_coordinator.connected = False
+    assert cover.available is False
+
+    mock_coordinator.connected = True
+    assert cover.available is True
+
+    # STATUS toggling does not change availability either way.
+    pool_object_cover_normally_closed.update({STATUS_ATTR: "OFF"})
+    assert cover.available is True
+    mock_coordinator.connected = False
+    assert cover.available is False

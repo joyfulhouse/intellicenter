@@ -92,7 +92,7 @@ from pyintellicenter import (
     PoolObject,
 )
 
-from .const import DEFAULT_TRANSPORT, DOMAIN, TransportType
+from .const import DEFAULT_TRANSPORT, DOMAIN, LIMIT_ATTR, TransportType
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -120,6 +120,7 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
         USE_ATTR,
         SUBTYP_ATTR,
         FEATR_ATTR,
+        LIMIT_ATTR,
         TIME_ATTR,  # Egg timer duration
         FREEZE_ATTR,  # Freeze protection status
     },

@@ -1,11 +1,14 @@
 """Test the Pentair IntelliCenter light platform."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call, patch
 
-from homeassistant.components.light import ATTR_EFFECT
+from homeassistant.components.light import ATTR_BRIGHTNESS, ATTR_EFFECT
+from homeassistant.components.light.const import ColorMode
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from pyintellicenter import (
+    CIRCGRP_TYPE,
+    CIRCUIT_TYPE,
     LIGHT_EFFECTS,
     STATUS_ATTR,
     PoolModel,
@@ -13,9 +16,16 @@ from pyintellicenter import (
 )
 import pytest
 
+from custom_components.intellicenter.const import LIMIT_ATTR
+from custom_components.intellicenter.coordinator import DEFAULT_ATTRIBUTES_MAP
 from custom_components.intellicenter.light import PoolLight
 
 pytestmark = pytest.mark.asyncio
+
+
+async def test_coordinator_tracks_light_limit() -> None:
+    """The model must request LIMIT or brightness never reaches entities."""
+    assert LIMIT_ATTR in DEFAULT_ATTRIBUTES_MAP[CIRCUIT_TYPE]
 
 
 async def test_light_setup_creates_entities(
@@ -39,7 +49,19 @@ async def test_light_setup_creates_entities(
 
     from custom_components.intellicenter.light import async_setup_entry
 
-    await async_setup_entry(hass, mock_entry, capture_entities)
+    platform = MagicMock()
+    with patch(
+        "custom_components.intellicenter.light.entity_platform.async_get_current_platform",
+        return_value=platform,
+    ):
+        await async_setup_entry(hass, mock_entry, capture_entities)
+
+    assert [registered.args[0] for registered in platform.mock_calls] == [
+        "capture",
+        "thumper",
+        "hold",
+        "recall",
+    ]
 
     # Should create entities for:
     # - LIGHT1 (IntelliBrite light)
@@ -52,6 +74,77 @@ async def test_light_setup_creates_entities(
     assert "Pool Light" in light_names
     assert "Spa Light" in light_names
     assert "Party Show" in light_names
+
+
+async def test_true_color_circuit_group_creates_enabled_light_entity(
+    hass: HomeAssistant,
+    pool_model: PoolModel,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A true CIRCGRP containing a color light creates a group light."""
+    group = pool_model.add_object(
+        "LIGHT_GROUP",
+        {
+            "OBJTYP": CIRCGRP_TYPE,
+            "SNAME": "All Pool Lights",
+            "STATUS": "OFF",
+            "USE": "WHITER",
+            "CIRCUIT": "LIGHT1 LIGHT2",
+        },
+    )
+    assert group is not None
+    mock_coordinator.model = pool_model
+    mock_entry = MagicMock()
+    mock_entry.runtime_data = mock_coordinator
+    entities_added: list[PoolLight] = []
+
+    from custom_components.intellicenter.light import async_setup_entry
+
+    with patch(
+        "custom_components.intellicenter.light.entity_platform.async_get_current_platform"
+    ):
+        await async_setup_entry(hass, mock_entry, entities_added.extend)
+
+    group_lights = [
+        entity
+        for entity in entities_added
+        if entity._pool_object.objnam == "LIGHT_GROUP"
+    ]
+    assert len(group_lights) == 1
+    assert group_lights[0].entity_registry_enabled_default is True
+    assert group_lights[0].effect_list is not None
+    assert {"Sync", "Swim", "Set color"}.issubset(group_lights[0].effect_list)
+
+
+async def test_plain_true_circuit_group_does_not_create_light(
+    hass: HomeAssistant,
+    pool_model: PoolModel,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A true CIRCGRP without color lights is left to the switch platform."""
+    group = pool_model.add_object(
+        "WATER_GROUP",
+        {
+            "OBJTYP": CIRCGRP_TYPE,
+            "SNAME": "Water Features",
+            "STATUS": "OFF",
+            "CIRCUIT": "CIRC01 CIRC02",
+        },
+    )
+    assert group is not None
+    mock_coordinator.model = pool_model
+    mock_entry = MagicMock()
+    mock_entry.runtime_data = mock_coordinator
+    entities_added: list[PoolLight] = []
+
+    from custom_components.intellicenter.light import async_setup_entry
+
+    with patch(
+        "custom_components.intellicenter.light.entity_platform.async_get_current_platform"
+    ):
+        await async_setup_entry(hass, mock_entry, entities_added.extend)
+
+    assert all(entity._pool_object.objnam != "WATER_GROUP" for entity in entities_added)
 
 
 async def test_light_entity_properties(
@@ -501,3 +594,279 @@ async def test_light_effect_command_failure_raises_and_stays_off(
     # The on-command never fired and no optimistic state survives.
     mock_coordinator.controller.request_changes.assert_not_called()
     assert light._optimistic_state is None
+
+
+# -------------------------------------------------------------------------------------
+# Brightness and group control
+# -------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("raw_limit", "expected_brightness"),
+    [("50", 128), (75, 191), ("100", 255), ("0", 0)],
+)
+async def test_dimmer_reports_limit_as_brightness(
+    mock_coordinator: MagicMock,
+    raw_limit: object,
+    expected_brightness: int,
+) -> None:
+    """DIMMER LIMIT percentages map back to Home Assistant brightness."""
+    dimmer = PoolObject(
+        "DIMMER1",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "DIMMER",
+            "SNAME": "Patio Dimmer",
+            "STATUS": "ON",
+            LIMIT_ATTR: raw_limit,
+        },
+    )
+
+    light = PoolLight(mock_coordinator, dimmer)
+
+    assert light.color_mode is ColorMode.BRIGHTNESS
+    assert light.supported_color_modes == {ColorMode.BRIGHTNESS}
+    assert light.brightness == expected_brightness
+
+
+@pytest.mark.parametrize("raw_limit", [None, "LIMIT", "", "101", "-1", True, object()])
+async def test_dimmer_missing_or_malformed_limit_is_unknown(
+    mock_coordinator: MagicMock,
+    raw_limit: object,
+) -> None:
+    """Missing, placeholder, and out-of-range LIMIT values report unknown."""
+    dimmer = PoolObject(
+        "DIMMER1",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "DIMMER",
+            "SNAME": "Patio Dimmer",
+            "STATUS": "ON",
+            LIMIT_ATTR: raw_limit,
+        },
+    )
+
+    assert PoolLight(mock_coordinator, dimmer).brightness is None
+
+
+@pytest.mark.parametrize(
+    ("brightness", "expected_limit"),
+    [(0, 50), (128, 50), (160, 75), (200, 75), (224, 100), (255, 100)],
+)
+async def test_dimmer_brightness_write_uses_nearest_panel_level(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+    mock_write_ha_state: MagicMock,
+    brightness: int,
+    expected_limit: int,
+) -> None:
+    """DIMMER writes select the nearest supported 50/75/100 percent level."""
+    dimmer = PoolObject(
+        "DIMMER1",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "DIMMER",
+            "SNAME": "Patio Dimmer",
+            "STATUS": "OFF",
+            LIMIT_ATTR: "100",
+        },
+    )
+    light = PoolLight(mock_coordinator, dimmer)
+    light.hass = hass
+
+    await light.async_turn_on(**{ATTR_BRIGHTNESS: brightness})
+    await hass.async_block_till_done()
+
+    mock_coordinator.controller.request_changes.assert_called_once_with(
+        "DIMMER1", {LIMIT_ATTR: str(expected_limit), STATUS_ATTR: "ON"}
+    )
+
+
+@pytest.mark.parametrize("subtype", ["LIGHT", "INTELLI", "GLOW", "GLOWT", "MAGIC2"])
+async def test_non_dimmable_subtypes_remain_onoff(
+    mock_coordinator: MagicMock,
+    subtype: str,
+) -> None:
+    """Only verified dimmable subtypes advertise brightness control."""
+    pool_object = PoolObject(
+        "LIGHTX",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": subtype,
+            "SNAME": "Pool Light",
+            "STATUS": "ON",
+            LIMIT_ATTR: "50",
+        },
+    )
+
+    light = PoolLight(
+        mock_coordinator,
+        pool_object,
+        LIGHT_EFFECTS if subtype in {"INTELLI", "GLOW", "MAGIC2"} else None,
+    )
+
+    assert light.color_mode is ColorMode.ONOFF
+    assert light.supported_color_modes == {ColorMode.ONOFF}
+    assert light.brightness is None
+
+
+async def test_limit_update_refreshes_dimmer(
+    mock_coordinator: MagicMock,
+) -> None:
+    """LIMIT push updates refresh dimmer brightness state."""
+    dimmer = PoolObject(
+        "DIMMER1",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "DIMMER",
+            "SNAME": "Patio Dimmer",
+            "STATUS": "ON",
+            LIMIT_ATTR: "50",
+        },
+    )
+
+    light = PoolLight(mock_coordinator, dimmer)
+
+    assert light.isUpdated({"DIMMER1": {LIMIT_ATTR: "75"}}) is True
+
+
+def make_group_light(mock_coordinator: MagicMock, status: object = "OFF") -> PoolLight:
+    """Create a color circuit-group light for focused unit tests."""
+    group = PoolObject(
+        "LIGHT_GROUP",
+        {
+            "OBJTYP": CIRCGRP_TYPE,
+            "SNAME": "All Pool Lights",
+            "STATUS": status,
+            "USE": "WHITER",
+            "CIRCUIT": "LIGHT1 LIGHT2",
+        },
+    )
+    mock_coordinator.controller.get_circuits_in_group.side_effect = None
+    mock_coordinator.controller.get_circuits_in_group.return_value = [
+        mock_coordinator.model["LIGHT1"],
+        mock_coordinator.model["LIGHT2"],
+    ]
+    from custom_components.intellicenter.light import PoolLightGroup
+
+    return PoolLightGroup(mock_coordinator, group)
+
+
+@pytest.mark.parametrize(
+    ("effect_name", "effect_code"),
+    [("Sync", "SYNC"), ("Swim", "SWIM"), ("Set color", "SET")],
+)
+async def test_group_light_sequence_effect_writes_act_and_turns_on_members(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+    mock_write_ha_state: MagicMock,
+    effect_name: str,
+    effect_code: str,
+) -> None:
+    """Momentary light-group operations write ACT then atomically turn on members."""
+    light = make_group_light(mock_coordinator)
+    light.hass = hass
+
+    await light.async_turn_on(**{ATTR_EFFECT: effect_name})
+
+    assert mock_coordinator.controller.request_changes.await_args == call(
+        "LIGHT_GROUP", {"ACT": effect_code}
+    )
+    mock_coordinator.controller.set_multiple_circuit_states.assert_awaited_once_with(
+        ["LIGHT1", "LIGHT2"], True
+    )
+
+
+async def test_group_light_standard_effect_uses_typed_helper(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+    mock_write_ha_state: MagicMock,
+) -> None:
+    """Standard colors and shows retain the pyintellicenter helper path."""
+    light = make_group_light(mock_coordinator)
+    light.hass = hass
+
+    await light.async_turn_on(**{ATTR_EFFECT: "Party Mode"})
+
+    mock_coordinator.controller.set_light_effect.assert_awaited_once_with(
+        "LIGHT_GROUP", "PARTY"
+    )
+    mock_coordinator.controller.set_multiple_circuit_states.assert_awaited_once_with(
+        ["LIGHT1", "LIGHT2"], True
+    )
+
+
+@pytest.mark.parametrize("status", [None, "", "READY", 1])
+async def test_group_light_malformed_status_is_unknown(
+    mock_coordinator: MagicMock,
+    status: object,
+) -> None:
+    """A group without a valid ON/OFF status does not fabricate an off state."""
+    assert make_group_light(mock_coordinator, status).is_on is None
+
+
+async def test_group_light_without_members_refuses_control(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+    mock_write_ha_state: MagicMock,
+) -> None:
+    """A partially synchronized group cannot silently issue an empty batch."""
+    light = make_group_light(mock_coordinator)
+    light.hass = hass
+    mock_coordinator.controller.get_circuits_in_group.return_value = []
+    mock_coordinator.controller.get_circuits_in_group.side_effect = None
+
+    with pytest.raises(HomeAssistantError) as err:
+        await light.async_turn_on(**{ATTR_EFFECT: "Sync"})
+
+    assert err.value.translation_key == "circuit_group_members_missing"
+    mock_coordinator.controller.request_changes.assert_not_awaited()
+    mock_coordinator.controller.set_multiple_circuit_states.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("method_name", "act_value"),
+    [
+        ("async_capture", "CAPTURE"),
+        ("async_thumper", "THUMPER"),
+        ("async_hold", "HOLD"),
+        ("async_recall", "RECALL"),
+    ],
+)
+async def test_magicstream_entity_services_write_act(
+    mock_coordinator: MagicMock,
+    method_name: str,
+    act_value: str,
+) -> None:
+    """MagicStream entity services send their momentary command through ACT."""
+    magicstream = PoolObject(
+        "MAGIC1",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "MAGIC2",
+            "SNAME": "MagicStream",
+            "STATUS": "ON",
+            "USE": "WHITER",
+        },
+    )
+    light = PoolLight(mock_coordinator, magicstream, LIGHT_EFFECTS)
+
+    await getattr(light, method_name)()
+
+    mock_coordinator.controller.request_changes.assert_awaited_once_with(
+        "MAGIC1", {"ACT": act_value}
+    )
+
+
+async def test_magicstream_service_refuses_other_light_subtypes(
+    pool_object_light: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """MagicStream-only services fail cleanly for an IntelliBrite entity."""
+    light = PoolLight(mock_coordinator, pool_object_light, LIGHT_EFFECTS)
+
+    with pytest.raises(HomeAssistantError) as err:
+        await light.async_thumper()
+
+    assert err.value.translation_key == "magicstream_command_unsupported"
+    mock_coordinator.controller.request_changes.assert_not_awaited()

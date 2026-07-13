@@ -1,0 +1,23 @@
+capture:
+  target:
+    entity:
+      integration: intellicenter
+      domain: light
+
+thumper:
+  target:
+    entity:
+      integration: intellicenter
+      domain: light
+
+hold:
+  target:
+    entity:
+      integration: intellicenter
+      domain: light
+
+recall:
+  target:
+    entity:
+      integration: intellicenter
+      domain: light

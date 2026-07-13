@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from pyintellicenter import (
+    CIRCGRP_TYPE,
     STATUS_ATTR,
     VACFLO_ATTR,
     PoolModel,
@@ -313,3 +314,158 @@ async def test_vacation_failed_command_raises_and_reverts(
         await vacation.async_turn_on()
 
     assert vacation._optimistic_state is None
+
+
+async def test_true_plain_circuit_group_creates_enabled_switch(
+    hass: HomeAssistant,
+    pool_model: PoolModel,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A true CIRCGRP without color members creates an enabled group switch."""
+    group = pool_model.add_object(
+        "WATER_GROUP",
+        {
+            "OBJTYP": CIRCGRP_TYPE,
+            "SNAME": "Water Features",
+            "STATUS": "OFF",
+            "CIRCUIT": "CIRC01 CIRC02",
+        },
+    )
+    assert group is not None
+    mock_coordinator.model = pool_model
+    mock_entry = MagicMock()
+    mock_entry.runtime_data = mock_coordinator
+    entities_added: list[PoolCircuit] = []
+
+    from custom_components.intellicenter.switch import async_setup_entry
+
+    await async_setup_entry(hass, mock_entry, entities_added.extend)
+
+    group_switches = [
+        entity
+        for entity in entities_added
+        if entity._pool_object.objnam == "WATER_GROUP"
+    ]
+    assert len(group_switches) == 1
+    assert group_switches[0].entity_registry_enabled_default is True
+
+
+async def test_true_color_circuit_group_does_not_create_switch(
+    hass: HomeAssistant,
+    pool_model: PoolModel,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A true CIRCGRP containing a color light is left to the light platform."""
+    group = pool_model.add_object(
+        "LIGHT_GROUP",
+        {
+            "OBJTYP": CIRCGRP_TYPE,
+            "SNAME": "All Pool Lights",
+            "STATUS": "OFF",
+            "CIRCUIT": "LIGHT1 LIGHT2",
+        },
+    )
+    assert group is not None
+    mock_coordinator.model = pool_model
+    mock_entry = MagicMock()
+    mock_entry.runtime_data = mock_coordinator
+    entities_added: list[PoolCircuit] = []
+
+    from custom_components.intellicenter.switch import async_setup_entry
+
+    await async_setup_entry(hass, mock_entry, entities_added.extend)
+
+    assert all(entity._pool_object.objnam != "LIGHT_GROUP" for entity in entities_added)
+
+
+def make_group_switch(
+    mock_coordinator: MagicMock, status: object = "OFF"
+) -> PoolCircuit:
+    """Create a plain circuit-group switch for focused unit tests."""
+    group = PoolObject(
+        "WATER_GROUP",
+        {
+            "OBJTYP": CIRCGRP_TYPE,
+            "SNAME": "Water Features",
+            "STATUS": status,
+            "CIRCUIT": "CIRC01 CIRC02",
+        },
+    )
+    mock_coordinator.controller.get_circuits_in_group.side_effect = None
+    mock_coordinator.controller.get_circuits_in_group.return_value = [
+        mock_coordinator.model["CIRC01"],
+        mock_coordinator.model["CIRC02"],
+    ]
+    from custom_components.intellicenter.switch import PoolCircuitGroup
+
+    return PoolCircuitGroup(mock_coordinator, group)
+
+
+@pytest.mark.parametrize(
+    ("method_name", "state"), [("async_turn_on", True), ("async_turn_off", False)]
+)
+async def test_true_circuit_group_atomically_controls_members(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+    mock_write_ha_state: MagicMock,
+    method_name: str,
+    state: bool,
+) -> None:
+    """Group on/off uses one set_multiple_circuit_states helper call."""
+    switch = make_group_switch(mock_coordinator)
+    switch.hass = hass
+
+    await getattr(switch, method_name)()
+
+    mock_coordinator.controller.set_multiple_circuit_states.assert_awaited_once_with(
+        ["CIRC01", "CIRC02"], state
+    )
+    mock_coordinator.controller.request_changes.assert_not_awaited()
+
+
+@pytest.mark.parametrize("status", [None, "", "READY", 1])
+async def test_true_circuit_group_malformed_status_is_unknown(
+    mock_coordinator: MagicMock,
+    status: object,
+) -> None:
+    """A group without a valid ON/OFF status does not fabricate an off state."""
+    assert make_group_switch(mock_coordinator, status).is_on is None
+
+
+async def test_true_circuit_group_without_members_refuses_control(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+    mock_write_ha_state: MagicMock,
+) -> None:
+    """A partially synchronized group cannot silently issue an empty batch."""
+    switch = make_group_switch(mock_coordinator)
+    switch.hass = hass
+    mock_coordinator.controller.get_circuits_in_group.return_value = []
+    mock_coordinator.controller.get_circuits_in_group.side_effect = None
+
+    with pytest.raises(HomeAssistantError) as err:
+        await switch.async_turn_on()
+
+    assert err.value.translation_key == "circuit_group_members_missing"
+    mock_coordinator.controller.set_multiple_circuit_states.assert_not_awaited()
+
+
+async def test_true_circuit_group_command_failure_reverts_optimistic_state(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+    mock_write_ha_state: MagicMock,
+) -> None:
+    """A failed atomic group write raises cleanly and drops optimistic state."""
+    from pyintellicenter import ICConnectionError
+
+    mock_coordinator.controller.set_multiple_circuit_states.side_effect = (
+        ICConnectionError("Not connected")
+    )
+    switch = make_group_switch(mock_coordinator)
+    switch.hass = hass
+
+    with pytest.raises(HomeAssistantError):
+        await switch.async_turn_on()
+
+    assert switch._optimistic_state is None
+    assert mock_write_ha_state.call_count == 2

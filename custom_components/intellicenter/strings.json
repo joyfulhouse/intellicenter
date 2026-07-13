@@ -111,9 +111,36 @@
       "description": "Your IntelliCenter panel is running firmware {firmware}. Releases before 1.064 are long superseded and have documented protocol limitations. Pentair's official upgrade path is 1.047 → 1.064 → 3.004 → 3.008; update the wireless remote together with the panel."
     }
   },
+  "services": {
+    "capture": {
+      "name": "Capture MagicStream color",
+      "description": "Captures the current color on a MagicStream light."
+    },
+    "thumper": {
+      "name": "Toggle MagicStream thumper",
+      "description": "Toggles the thumper effect on a MagicStream light."
+    },
+    "hold": {
+      "name": "Hold MagicStream color",
+      "description": "Holds and saves the current color on a MagicStream light."
+    },
+    "recall": {
+      "name": "Recall MagicStream color",
+      "description": "Recalls the saved color on a MagicStream light."
+    }
+  },
   "exceptions": {
     "cover_position_unsupported": {
       "message": "This IntelliCenter firmware does not report cover position (no POSIT attribute); open/close is not supported. Update the panel firmware to control the cover."
+    },
+    "unknown_light_effect": {
+      "message": "The requested light effect is not supported by this IntelliCenter light."
+    },
+    "circuit_group_members_missing": {
+      "message": "The IntelliCenter has not reported any member circuits for this group, so it cannot be controlled safely."
+    },
+    "magicstream_command_unsupported": {
+      "message": "This command is available only for MagicStream lights."
     }
   }
 }

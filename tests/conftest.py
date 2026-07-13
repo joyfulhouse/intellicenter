@@ -450,6 +450,8 @@ def mock_coordinator(
     mock_controller.has_chem_alert = MagicMock(return_value=False)
     # Pump circuit speed helper - default to None, tests can override return_value
     mock_controller.get_pump_circuit_speed = MagicMock(return_value=None)
+    mock_controller.get_sensor_probe_reading = MagicMock(return_value=None)
+    mock_controller.get_sensor_calibration = MagicMock(return_value=None)
     # Cooling support detection - default to False (no cooling support)
     mock_controller.body_supports_cooling = MagicMock(return_value=False)
     # Heating/cooling setpoint methods

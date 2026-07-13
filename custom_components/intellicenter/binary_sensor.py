@@ -29,6 +29,7 @@ from pyintellicenter import (
     CIRCUIT_ATTR,
     CIRCUIT_TYPE,
     DAY_ATTR,
+    DLY_ATTR,
     HEATER_ATTR,
     HEATER_TYPE,
     HTMODE_ATTR,
@@ -47,6 +48,7 @@ from pyintellicenter import (
     SYSTEM_TYPE,
     TIME_ATTR,
     TIMOUT_ATTR,
+    UPDATE_ATTR,
     VACFLO_ATTR,
     PoolObject,
 )
@@ -70,6 +72,8 @@ def _build_entities(
     PoolBinarySensor
     | ChemAlertBinarySensor
     | ChlorinatorBinarySensor
+    | DelayBinarySensor
+    | FirmwareUpdateBinarySensor
     | HeaterBinarySensor
     | ScheduleBinarySensor
     | SystemModeBinarySensor
@@ -79,22 +83,26 @@ def _build_entities(
         PoolBinarySensor
         | ChemAlertBinarySensor
         | ChlorinatorBinarySensor
+        | DelayBinarySensor
+        | FirmwareUpdateBinarySensor
         | HeaterBinarySensor
         | ScheduleBinarySensor
         | SystemModeBinarySensor
     ] = []
 
     for obj in candidates:
-        if obj.objtype == CIRCUIT_TYPE and obj.subtype == "FRZ":
-            sensors.append(
-                PoolBinarySensor(
-                    coordinator,
-                    obj,
-                    icon="mdi:snowflake",
-                    device_class=BinarySensorDeviceClass.COLD,
-                    entity_category=EntityCategory.DIAGNOSTIC,
+        if obj.objtype == CIRCUIT_TYPE:
+            sensors.append(DelayBinarySensor(coordinator, obj))
+            if obj.subtype == "FRZ":
+                sensors.append(
+                    PoolBinarySensor(
+                        coordinator,
+                        obj,
+                        icon="mdi:snowflake",
+                        device_class=BinarySensorDeviceClass.COLD,
+                        entity_category=EntityCategory.DIAGNOSTIC,
+                    )
                 )
-            )
         elif obj.objtype == HEATER_TYPE:
             sensors.append(
                 HeaterBinarySensor(
@@ -171,11 +179,13 @@ def _build_entities(
                 )
         elif obj.objtype == CHEM_TYPE and obj.subtype == "ICHLOR":
             sensors.append(ChlorinatorBinarySensor(coordinator, obj))
-        elif obj.objtype == SYSTEM_TYPE and SERVICE_ATTR in obj.attribute_keys:
-            # Panel operating-mode problem indicator: on whenever the panel is
-            # not in normal automatic operation (Service or Time Out), e.g.
-            # left in service mode after maintenance or a power outage.
-            sensors.append(SystemModeBinarySensor(coordinator, obj))
+        elif obj.objtype == SYSTEM_TYPE:
+            sensors.append(FirmwareUpdateBinarySensor(coordinator, obj))
+            if SERVICE_ATTR in obj.attribute_keys:
+                # Panel operating-mode problem indicator: on whenever the panel is
+                # not in normal automatic operation (Service or Time Out), e.g.
+                # left in service mode after maintenance or a power outage.
+                sensors.append(SystemModeBinarySensor(coordinator, obj))
     return sensors
 
 
@@ -307,6 +317,62 @@ class ChlorinatorBinarySensor(PoolEntity, BinarySensorEntity):
         if value not in (STATUS_ON, STATUS_OFF):
             return None
         return bool(value == STATUS_ON)
+
+
+class ProtocolOnOffBinarySensor(PoolEntity, BinarySensorEntity):
+    """Binary sensor that treats values outside ON/OFF as unknown."""
+
+    @property
+    def is_on(self) -> bool | None:
+        """Map only the protocol's canonical ON and OFF values."""
+        value = self._pool_object[self._attribute_key]
+        if value == STATUS_ON:
+            return True
+        if value == STATUS_OFF:
+            return False
+        return None
+
+
+class DelayBinarySensor(ProtocolOnOffBinarySensor):
+    """Diagnostic status for a circuit's active system delay."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
+    _attr_icon = "mdi:timer-alert-outline"
+
+    def __init__(
+        self,
+        coordinator: IntelliCenterCoordinator,
+        pool_object: PoolObject,
+    ) -> None:
+        """Initialize a circuit delay sensor."""
+        super().__init__(
+            coordinator,
+            pool_object,
+            attribute_key=DLY_ATTR,
+            name="+ Delay",
+            enabled_by_default=False,
+        )
+
+
+class FirmwareUpdateBinarySensor(ProtocolOnOffBinarySensor):
+    """Report whether the panel advertises an available firmware update."""
+
+    _attr_device_class = BinarySensorDeviceClass.UPDATE
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self,
+        coordinator: IntelliCenterCoordinator,
+        pool_object: PoolObject,
+    ) -> None:
+        """Initialize the firmware-update availability sensor."""
+        super().__init__(
+            coordinator,
+            pool_object,
+            attribute_key=UPDATE_ATTR,
+            name="Firmware Update Available",
+        )
 
 
 # -------------------------------------------------------------------------------------

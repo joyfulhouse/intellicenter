@@ -9,6 +9,7 @@ from pyintellicenter import (
     BODY_TYPE,
     CHEM_TYPE,
     CIRCUIT_TYPE,
+    DLY_ATTR,
     HEATER_ATTR,
     HEATER_TYPE,
     HTMODE_ATTR,
@@ -19,7 +20,10 @@ from pyintellicenter import (
     PUMP_TYPE,
     SCHED_TYPE,
     STATUS_ATTR,
+    STATUS_OFF,
+    STATUS_ON,
     SYSTEM_TYPE,
+    UPDATE_ATTR,
     PoolModel,
     PoolObject,
 )
@@ -28,6 +32,8 @@ import pytest
 from custom_components.intellicenter.binary_sensor import (
     ChemAlertBinarySensor,
     ChlorinatorBinarySensor,
+    DelayBinarySensor,
+    FirmwareUpdateBinarySensor,
     HeaterBinarySensor,
     PoolBinarySensor,
     ScheduleBinarySensor,
@@ -59,6 +65,83 @@ async def test_schedule_attributes_are_tracked() -> None:
         DNTSTP_ATTR,
         "VACFLO",
     } <= DEFAULT_ATTRIBUTES_MAP[SCHED_TYPE]
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "expected"),
+    [(STATUS_ON, True), (STATUS_OFF, False), (None, None), ("BROKEN", None)],
+)
+async def test_circuit_delay_sensor_state_mapping(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+    raw_value: str | None,
+    expected: bool | None,
+) -> None:
+    """Circuit delay status is diagnostic and unknown for invalid values."""
+    circuit = PoolObject(
+        "CIRC01",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SNAME": "Pool Cleaner",
+            "DLY": raw_value,
+        },
+    )
+
+    sensor = DelayBinarySensor(mock_coordinator, circuit)
+
+    assert sensor.name == "Pool Cleaner Delay"
+    assert sensor.is_on is expected
+    assert sensor.entity_category == EntityCategory.DIAGNOSTIC
+    assert sensor.entity_registry_enabled_default is False
+
+
+async def test_circuit_delay_sensor_created_when_value_missing(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Every circuit gets a stable delay entity even before DLY is delivered."""
+    circuit = PoolObject(
+        "CIRC01",
+        {"OBJTYP": CIRCUIT_TYPE, "SNAME": "Pool Cleaner"},
+    )
+
+    sensors = _build_entities(mock_coordinator, [circuit])
+
+    delay_sensors = [item for item in sensors if isinstance(item, DelayBinarySensor)]
+    assert len(delay_sensors) == 1
+    assert delay_sensors[0].is_on is None
+    assert delay_sensors[0].isUpdated({"CIRC01": {DLY_ATTR: STATUS_ON}}) is True
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "expected"),
+    [(STATUS_ON, True), (STATUS_OFF, False), (None, None), ("BROKEN", None)],
+)
+async def test_firmware_update_sensor_state_mapping(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+    raw_value: str | None,
+    expected: bool | None,
+) -> None:
+    """SYSTEM.UPDATE maps valid flags and rejects malformed values."""
+    system = PoolObject(
+        "SYS01",
+        {"OBJTYP": SYSTEM_TYPE, "SNAME": "System", "UPDATE": raw_value},
+    )
+
+    sensors = _build_entities(mock_coordinator, [system])
+    update_sensors = [
+        item for item in sensors if isinstance(item, FirmwareUpdateBinarySensor)
+    ]
+
+    assert len(update_sensors) == 1
+    sensor = update_sensors[0]
+    assert sensor.name == "Firmware Update Available"
+    assert sensor.device_class == BinarySensorDeviceClass.UPDATE
+    assert sensor.entity_category == EntityCategory.DIAGNOSTIC
+    assert sensor.entity_registry_enabled_default is True
+    assert sensor.is_on is expected
+    assert sensor.isUpdated({"SYS01": {UPDATE_ATTR: STATUS_ON}}) is True
 
 
 @pytest.fixture

@@ -7,9 +7,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from pyintellicenter import (
     BODY_TYPE,
+    BOOST_ATTR,
     CIRCUIT_TYPE,
     SCHED_TYPE,
     STATUS_ATTR,
+    STATUS_OFF,
+    STATUS_ON,
     VACFLO_ATTR,
     PoolModel,
     PoolObject,
@@ -18,6 +21,7 @@ import pytest
 
 from custom_components.intellicenter.const import MANHT_ATTR
 from custom_components.intellicenter.switch import (
+    HeatBoostSwitch,
     ManualHeatSwitch,
     PoolBody,
     PoolCircuit,
@@ -607,3 +611,72 @@ async def test_vacation_failed_command_raises_and_reverts(
         await vacation.async_turn_on()
 
     assert vacation._optimistic_state is None
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "expected"),
+    [(STATUS_ON, True), (STATUS_OFF, False), (None, None), ("BROKEN", None)],
+)
+async def test_heat_boost_state_mapping(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+    raw_value: str | None,
+    expected: bool | None,
+) -> None:
+    """Heat boost maps ON/OFF and reports unknown protocol states."""
+    body = PoolObject(
+        "POOL1",
+        {"OBJTYP": BODY_TYPE, "SNAME": "Pool", "BOOST": raw_value},
+    )
+
+    boost = next(
+        item
+        for item in _build_entities(mock_coordinator, [body])
+        if isinstance(item, HeatBoostSwitch)
+    )
+
+    assert boost.name == "Pool Heat Boost"
+    assert boost.is_on is expected
+    assert boost.entity_category == EntityCategory.CONFIG
+    assert boost.entity_registry_enabled_default is False
+
+
+async def test_heat_boost_created_when_value_missing(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Every body gets a stable Heat Boost entity before BOOST is delivered."""
+    body = PoolObject("POOL1", {"OBJTYP": BODY_TYPE, "SNAME": "Pool"})
+
+    boost = [
+        item
+        for item in _build_entities(mock_coordinator, [body])
+        if isinstance(item, HeatBoostSwitch)
+    ]
+
+    assert len(boost) == 1
+    assert boost[0].is_on is None
+
+
+@pytest.mark.parametrize(
+    ("method_name", "expected"),
+    [("async_turn_on", STATUS_ON), ("async_turn_off", STATUS_OFF)],
+)
+async def test_heat_boost_write_path(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+    mock_write_ha_state: MagicMock,
+    method_name: str,
+    expected: str,
+) -> None:
+    """Heat boost writes BODY.BOOST through requestChanges."""
+    body = PoolObject("POOL1", {"OBJTYP": BODY_TYPE, "SNAME": "Pool"})
+    boost = HeatBoostSwitch(mock_coordinator, body)
+    boost.hass = hass
+
+    await getattr(boost, method_name)()
+    await hass.async_block_till_done()
+
+    mock_coordinator.controller.request_changes.assert_awaited_once_with(
+        "POOL1", {BOOST_ATTR: expected}
+    )

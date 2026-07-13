@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 import logging
+import math
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -37,6 +38,7 @@ from pyintellicenter import (
     MAXF_ATTR,
     MIN_ATTR,
     MINF_ATTR,
+    MODULE_TYPE,
     ORPTNK_ATTR,
     ORPVAL_ATTR,
     ORPVOL_ATTR,
@@ -52,7 +54,9 @@ from pyintellicenter import (
     SERVICE_ATTR,
     SINDEX_ATTR,
     SOURCE_ATTR,
+    SUBTYP_ATTR,
     SYSTEM_TYPE,
+    TEMP_ATTR,
     VER_ATTR,
     PoolObject,
 )
@@ -63,7 +67,7 @@ from . import (
     async_setup_pool_entities,
     safe_int,
 )
-from .const import CONST_GPM, CONST_RPM
+from .const import CALIB_ATTR, CONST_GPM, CONST_RPM, PORT_ATTR, PROBE_ATTR
 from .coordinator import IntelliCenterCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -90,7 +94,9 @@ def _build_entities(
                     attribute_key=SOURCE_ATTR,
                 )
             )
+            sensors.append(SensorProbeReading(coordinator, obj))
         elif obj.objtype == BODY_TYPE:
+            sensors.append(BodyLiveTemperatureSensor(coordinator, obj))
             # "Last Temp" = the body's last recorded (latched) temperature.
             # Unlike the physical SENSE water probe (which cools in an
             # above-ground pipe when the pump stops), LSTTMP holds the last
@@ -321,6 +327,8 @@ def _build_entities(
             # dashboard mode banner.
             if SERVICE_ATTR in obj.attribute_keys:
                 sensors.append(SystemModeSensor(coordinator, obj))
+        elif obj.objtype == MODULE_TYPE:
+            sensors.append(ModuleFirmwareSensor(coordinator, obj))
     return sensors
 
 
@@ -470,6 +478,108 @@ def normalize_system_mode(raw_value: Any) -> str | None:
         return None
     normalized = str(raw_value).strip().lower().replace(" ", "")
     return SYSTEM_MODE_ALIASES.get(normalized)
+
+
+class ModuleFirmwareSensor(PoolSensor):
+    """Diagnostic firmware version reported by an IntelliCenter module."""
+
+    def __init__(
+        self,
+        coordinator: IntelliCenterCoordinator,
+        pool_object: PoolObject,
+    ) -> None:
+        """Initialize a module firmware sensor."""
+        super().__init__(
+            coordinator,
+            pool_object,
+            device_class=None,
+            attribute_key=VER_ATTR,
+            name="+ Firmware Version",
+            icon="mdi:chip",
+            enabled_by_default=False,
+            entity_category=EntityCategory.DIAGNOSTIC,
+            extra_state_attributes=[SUBTYP_ATTR, PORT_ATTR],
+            state_class=None,
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Include the module subtype even though PoolObject stores it separately."""
+        attributes = super().extra_state_attributes
+        if self._pool_object.subtype is not None:
+            attributes[SUBTYP_ATTR] = self._pool_object.subtype
+        return attributes
+
+
+class SensorProbeReading(PoolSensor):
+    """Raw, uncalibrated reading from a physical temperature probe."""
+
+    def __init__(
+        self,
+        coordinator: IntelliCenterCoordinator,
+        pool_object: PoolObject,
+    ) -> None:
+        """Initialize a raw probe diagnostic sensor."""
+        super().__init__(
+            coordinator,
+            pool_object,
+            device_class=SensorDeviceClass.TEMPERATURE,
+            attribute_key=PROBE_ATTR,
+            name="+ Raw Probe",
+            icon="mdi:thermometer-lines",
+            enabled_by_default=False,
+            entity_category=EntityCategory.DIAGNOSTIC,
+        )
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the parsed raw probe reading from pyintellicenter."""
+        return self._controller.get_sensor_probe_reading(self._pool_object.objnam)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Include the parsed calibration offset used by the panel."""
+        attributes = super().extra_state_attributes
+        calibration = self._controller.get_sensor_calibration(self._pool_object.objnam)
+        if calibration is not None:
+            attributes[CALIB_ATTR] = calibration
+        return attributes
+
+    def isUpdated(self, updates: dict[str, dict[str, Any]]) -> bool:
+        """Update for raw-probe or calibration changes."""
+        return self._check_attributes_updated(updates, PROBE_ATTR, CALIB_ATTR)
+
+
+class BodyLiveTemperatureSensor(PoolSensor):
+    """Live body-water temperature, unknown while the panel omits TEMP."""
+
+    def __init__(
+        self,
+        coordinator: IntelliCenterCoordinator,
+        pool_object: PoolObject,
+    ) -> None:
+        """Initialize a live body-water temperature sensor."""
+        super().__init__(
+            coordinator,
+            pool_object,
+            device_class=SensorDeviceClass.TEMPERATURE,
+            attribute_key=TEMP_ATTR,
+            name="+ Water Temp (live)",
+        )
+
+    @property
+    def native_value(self) -> float | int | None:
+        """Return a finite numeric temperature or unknown for malformed data."""
+        raw_value = self._pool_object[self._attribute_key]
+        if raw_value is None:
+            return None
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(value):
+            return None
+        return int(value) if value.is_integer() else value
 
 
 class SystemModeSensor(PoolSensor):

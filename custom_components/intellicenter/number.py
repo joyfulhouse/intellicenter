@@ -50,6 +50,7 @@ from pyintellicenter import (
     PHSET_ATTR,
     PMPCIRC_TYPE,
     PRIM_ATTR,
+    PUMP_TYPE,
     SEC_ATTR,
     SELECT_ATTR,
     SPEED_ATTR,
@@ -66,7 +67,7 @@ from . import (
     is_user_circuit,
     safe_int,
 )
-from .const import CONST_GPM, CONST_RPM, DOMAIN
+from .const import CONST_GPM, CONST_RPM, DOMAIN, PRIMFLO_ATTR, PRIMTIM_ATTR
 from .coordinator import IntelliCenterCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -108,6 +109,8 @@ PUMP_RPM_STEP = 50
 PUMP_GPM_MIN_DEFAULT = 15
 PUMP_GPM_MAX_DEFAULT = 140
 PUMP_GPM_STEP = 5
+PUMP_PRIMING_DURATION_MIN = 0
+PUMP_PRIMING_DURATION_MAX = 10
 
 EGG_TIMER_MIN = 1
 EGG_TIMER_MAX = 720
@@ -123,12 +126,12 @@ SECONDS_PER_HOUR = 3600
 
 def _build_entities(
     coordinator: IntelliCenterCoordinator, candidates: Iterable[PoolObject]
-) -> list[PoolNumber | PumpSpeedNumber]:
+) -> list[PoolNumber | PumpPrimingNumber | PumpSpeedNumber]:
     """Build number entities for the given candidate pool objects."""
     # Materialize so the candidate objects can be iterated more than once below.
     candidate_objects = list(candidates)
 
-    numbers: list[PoolNumber | PumpSpeedNumber] = []
+    numbers: list[PoolNumber | PumpPrimingNumber | PumpSpeedNumber] = []
 
     for pool_obj in candidate_objects:
         if is_user_circuit(pool_obj):
@@ -293,6 +296,51 @@ def _build_entities(
                     integer_only=True,
                 )
             )
+
+    for pool_obj in candidate_objects:
+        if pool_obj.objtype != PUMP_TYPE:
+            continue
+
+        rpm_min = safe_int(pool_obj[MIN_ATTR])
+        rpm_max = safe_int(pool_obj[MAX_ATTR])
+        if rpm_min is None or rpm_max is None or rpm_min <= 0 or rpm_max <= rpm_min:
+            rpm_min = PUMP_RPM_MIN_DEFAULT
+            rpm_max = PUMP_RPM_MAX_DEFAULT
+
+        numbers.extend(
+            (
+                PumpPrimingNumber(
+                    coordinator,
+                    pool_obj,
+                    min_value=rpm_min,
+                    max_value=rpm_max,
+                    step=PUMP_RPM_STEP,
+                    attribute_key=PRIMFLO_ATTR,
+                    name="+ Priming Speed",
+                    icon="mdi:speedometer",
+                    unit_of_measurement=CONST_RPM,
+                    mode=NumberMode.BOX,
+                    entity_category=EntityCategory.CONFIG,
+                    enabled_by_default=False,
+                    integer_only=True,
+                ),
+                PumpPrimingNumber(
+                    coordinator,
+                    pool_obj,
+                    min_value=PUMP_PRIMING_DURATION_MIN,
+                    max_value=PUMP_PRIMING_DURATION_MAX,
+                    step=1,
+                    attribute_key=PRIMTIM_ATTR,
+                    name="+ Priming Duration",
+                    icon="mdi:timer-cog-outline",
+                    unit_of_measurement=UnitOfTime.MINUTES,
+                    mode=NumberMode.BOX,
+                    entity_category=EntityCategory.CONFIG,
+                    enabled_by_default=False,
+                    integer_only=True,
+                ),
+            )
+        )
 
     # Add pump circuit speed/flow setpoints (PMPCIRC) - CONFIG category
     # These allow control of variable speed pump settings per circuit
@@ -609,6 +657,10 @@ class SuperChlorinateDurationNumber(PoolNumber):
 
 
 # -------------------------------------------------------------------------------------
+
+
+class PumpPrimingNumber(PoolNumber):
+    """Disabled-by-default pump priming configuration control."""
 
 
 class PumpSpeedNumber(PoolEntity, NumberEntity):

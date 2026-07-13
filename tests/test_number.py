@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock
 
-from homeassistant.const import PERCENTAGE
+from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTime
 from homeassistant.core import HomeAssistant
 from pyintellicenter import (
     BODY_TYPE,
@@ -15,6 +15,7 @@ from pyintellicenter import (
     SEC_ATTR,
     SELECT_ATTR,
     SPEED_ATTR,
+    TIME_ATTR,
     PoolModel,
     PoolObject,
 )
@@ -24,6 +25,11 @@ from custom_components.intellicenter.coordinator import DEFAULT_ATTRIBUTES_MAP
 from custom_components.intellicenter.number import PoolNumber, PumpSpeedNumber
 
 pytestmark = pytest.mark.asyncio
+
+
+async def test_circuit_dont_stop_attribute_is_tracked() -> None:
+    """PoolModel retains the Don't Stop setting for user circuits."""
+    assert "DNTSTP" in DEFAULT_ATTRIBUTES_MAP[CIRCUIT_TYPE]
 
 
 @pytest.fixture
@@ -105,6 +111,94 @@ async def test_number_setup_creates_entities(
 
     # Should create 2 number entities (one for each body)
     assert len(entities_added) == 2
+
+
+async def test_egg_timer_number_created_for_every_user_circuit(
+    hass: HomeAssistant,
+    pool_model: PoolModel,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Featured, non-featured, and light circuits all get egg timers."""
+    from custom_components.intellicenter.number import _build_entities
+
+    mock_coordinator.model = pool_model
+    entities = _build_entities(mock_coordinator, list(pool_model))
+    egg_timers = [entity for entity in entities if entity._attribute_key == TIME_ATTR]
+
+    objnams = {entity._pool_object.objnam for entity in egg_timers}
+    assert {"CIRC01", "CIRC02", "LIGHT1", "LIGHT2", "SHOW1"} <= objnams
+    assert all(not entity.entity_registry_enabled_default for entity in egg_timers)
+    assert all(entity.entity_category == EntityCategory.CONFIG for entity in egg_timers)
+
+
+async def test_egg_timer_number_properties_and_write(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Egg timer is a 1-720 minute integer CONFIG control writing TIME."""
+    circuit = PoolObject(
+        "AUX4",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "GENERIC",
+            "SNAME": "AUX 4",
+            "TIME": "60",
+        },
+    )
+    number = PoolNumber(
+        mock_coordinator,
+        circuit,
+        min_value=1,
+        max_value=720,
+        step=1,
+        attribute_key=TIME_ATTR,
+        name="+ Egg Timer",
+        unit_of_measurement=UnitOfTime.MINUTES,
+        entity_category=EntityCategory.CONFIG,
+        integer_only=True,
+        enabled_by_default=False,
+    )
+    number.hass = hass
+
+    assert number.name == "AUX 4 Egg Timer"
+    assert number.native_value == 60
+    assert number.native_min_value == 1
+    assert number.native_max_value == 720
+    assert number.native_step == 1
+    assert number.native_unit_of_measurement == UnitOfTime.MINUTES
+    assert number.entity_registry_enabled_default is False
+
+    await number.async_set_native_value(90)
+    await hass.async_block_till_done()
+    mock_coordinator.controller.request_changes.assert_called_once_with(
+        "AUX4", {TIME_ATTR: "90"}
+    )
+
+
+@pytest.mark.parametrize("raw_value", [None, "not-a-number"])
+async def test_egg_timer_missing_or_malformed_value_is_unknown(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+    raw_value: str | None,
+) -> None:
+    """Missing and malformed egg timer values map to unknown."""
+    circuit = PoolObject(
+        "AUX4",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "GENERIC",
+            "SNAME": "AUX 4",
+            "TIME": raw_value,
+        },
+    )
+    number = PoolNumber(
+        mock_coordinator,
+        circuit,
+        attribute_key=TIME_ATTR,
+        integer_only=True,
+    )
+
+    assert number.native_value is None
 
 
 async def test_number_entity_properties_primary(

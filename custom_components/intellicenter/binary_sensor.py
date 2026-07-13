@@ -22,13 +22,17 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyintellicenter import (
+    ACT_ATTR,
     BODY_ATTR,
     BODY_TYPE,
     CHEM_TYPE,
+    CIRCUIT_ATTR,
     CIRCUIT_TYPE,
+    DAY_ATTR,
     HEATER_ATTR,
     HEATER_TYPE,
     HTMODE_ATTR,
+    LOTMP_ATTR,
     ORPHI_ATTR,
     ORPLO_ATTR,
     PHHI_ATTR,
@@ -38,12 +42,17 @@ from pyintellicenter import (
     SCHED_TYPE,
     SERVICE_ATTR,
     STATUS_ATTR,
+    STATUS_OFF,
     STATUS_ON,
     SYSTEM_TYPE,
+    TIME_ATTR,
+    TIMOUT_ATTR,
+    VACFLO_ATTR,
     PoolObject,
 )
 
 from . import IntelliCenterConfigEntry, PoolEntity, async_setup_pool_entities
+from .const import DNTSTP_ATTR, SINGLE_ATTR
 from .coordinator import IntelliCenterCoordinator
 from .sensor import normalize_system_mode
 
@@ -317,8 +326,8 @@ class ScheduleBinarySensor(PoolEntity, BinarySensorEntity):
         super().__init__(
             coordinator,
             pool_object,
-            attribute_key="ACT",
-            extra_state_attributes=["VACFLO"],
+            attribute_key=ACT_ATTR,
+            enabled_by_default=False,
         )
 
     @property
@@ -328,9 +337,64 @@ class ScheduleBinarySensor(PoolEntity, BinarySensorEntity):
         return f"Schedule ({sname})"
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
         """Return true if the schedule is currently active."""
-        return bool(self._pool_object[self._attribute_key] == STATUS_ON)
+        value = self._pool_object[self._attribute_key]
+        if value not in (STATUS_ON, STATUS_OFF):
+            return None
+        return bool(value == STATUS_ON)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return schedule configuration details when available."""
+        attributes = super().extra_state_attributes
+        objnam = self._pool_object.objnam
+
+        circuit = self._controller.get_schedule_circuit(objnam)
+        if circuit is not None:
+            attributes[CIRCUIT_ATTR] = circuit
+            circuit_object = self.coordinator.model[circuit]
+            if circuit_object is not None and circuit_object.sname is not None:
+                attributes["CIRCUIT_NAME"] = circuit_object.sname
+
+        helper_values = {
+            DAY_ATTR: self._controller.get_schedule_days(objnam),
+            TIME_ATTR: self._controller.get_schedule_start_time(objnam),
+            TIMOUT_ATTR: self._controller.get_schedule_stop_time(objnam),
+        }
+        for key, value in helper_values.items():
+            if value is not None:
+                attributes[key] = value
+
+        for key in (
+            HEATER_ATTR,
+            LOTMP_ATTR,
+            SINGLE_ATTR,
+            DNTSTP_ATTR,
+            VACFLO_ATTR,
+        ):
+            value = self._pool_object[key]
+            if value is not None:
+                attributes[key] = value
+
+        return attributes
+
+    def isUpdated(self, updates: dict[str, dict[str, Any]]) -> bool:
+        """Return true when running state or schedule details change."""
+        return self._check_attributes_updated(
+            updates,
+            ACT_ATTR,
+            CIRCUIT_ATTR,
+            DAY_ATTR,
+            TIME_ATTR,
+            TIMOUT_ATTR,
+            HEATER_ATTR,
+            LOTMP_ATTR,
+            SINGLE_ATTR,
+            DNTSTP_ATTR,
+            STATUS_ATTR,
+            VACFLO_ATTR,
+        )
 
 
 # -------------------------------------------------------------------------------------

@@ -12,6 +12,7 @@ from pyintellicenter import (
     HEATER_TYPE,
     HTMODE_ATTR,
     PUMP_TYPE,
+    SCHED_TYPE,
     STATUS_ATTR,
     SYSTEM_TYPE,
     PoolModel,
@@ -22,11 +23,31 @@ import pytest
 from custom_components.intellicenter.binary_sensor import (
     HeaterBinarySensor,
     PoolBinarySensor,
+    ScheduleBinarySensor,
     SystemModeBinarySensor,
     _build_entities,
 )
+from custom_components.intellicenter.const import DNTSTP_ATTR, SINGLE_ATTR
+from custom_components.intellicenter.coordinator import DEFAULT_ATTRIBUTES_MAP
 
 pytestmark = pytest.mark.asyncio
+
+
+async def test_schedule_attributes_are_tracked() -> None:
+    """PoolModel retains every schedule attribute exposed by its entities."""
+    assert {
+        "STATUS",
+        "ACT",
+        "CIRCUIT",
+        "DAY",
+        "TIME",
+        "TIMOUT",
+        "HEATER",
+        "LOTMP",
+        SINGLE_ATTR,
+        DNTSTP_ATTR,
+        "VACFLO",
+    } <= DEFAULT_ATTRIBUTES_MAP[SCHED_TYPE]
 
 
 @pytest.fixture
@@ -81,6 +102,14 @@ def pool_object_schedule() -> PoolObject:
             "SNAME": "Morning Filter",
             "ACT": "ON",
             "VACFLO": "OFF",
+            "CIRCUIT": "CIRC01",
+            "DAY": "MTWRF",
+            "TIME": "08:00",
+            "TIMOUT": "10:00",
+            "HEATER": "HTR01",
+            "LOTMP": "82",
+            "SINGLE": "OFF",
+            "DNTSTP": "ON",
         },
     )
 
@@ -227,6 +256,85 @@ async def test_schedule_sensor_inactive(
     )
 
     assert sensor.is_on is False
+
+
+async def test_schedule_sensor_details_and_disabled_default(
+    hass: HomeAssistant,
+    pool_object_schedule: PoolObject,
+    pool_object_switch: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Schedule running sensor exposes complete details and circuit name."""
+    mock_coordinator.model.__getitem__ = MagicMock(
+        side_effect=lambda objnam: (
+            pool_object_switch if objnam == "CIRC01" else pool_object_schedule
+        )
+    )
+    mock_coordinator.controller.get_schedule_circuit.return_value = "CIRC01"
+    mock_coordinator.controller.get_schedule_days.return_value = "MTWRF"
+    mock_coordinator.controller.get_schedule_start_time.return_value = "08:00"
+    mock_coordinator.controller.get_schedule_stop_time.return_value = "10:00"
+
+    sensor = ScheduleBinarySensor(mock_coordinator, pool_object_schedule)
+    attrs = sensor.extra_state_attributes
+
+    assert sensor.entity_registry_enabled_default is False
+    assert attrs["CIRCUIT"] == "CIRC01"
+    assert attrs["CIRCUIT_NAME"] == "Pool Cleaner"
+    assert attrs["DAY"] == "MTWRF"
+    assert attrs["TIME"] == "08:00"
+    assert attrs["TIMOUT"] == "10:00"
+    assert attrs["HEATER"] == "HTR01"
+    assert attrs["LOTMP"] == "82"
+    assert attrs["SINGLE"] == "OFF"
+    assert attrs["DNTSTP"] == "ON"
+    assert attrs["VACFLO"] == "OFF"
+
+    for attribute in (
+        "ACT",
+        "CIRCUIT",
+        "DAY",
+        "TIME",
+        "TIMOUT",
+        "HEATER",
+        "LOTMP",
+        "SINGLE",
+        "DNTSTP",
+        "STATUS",
+        "VACFLO",
+    ):
+        assert sensor.isUpdated({"SCHED1": {attribute: "changed"}}) is True
+
+
+async def test_schedule_sensor_omits_missing_details(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Missing schedule detail fields are absent from state attributes."""
+    schedule = PoolObject(
+        "SCHED2",
+        {"OBJTYP": SCHED_TYPE, "SNAME": "Incomplete", "ACT": "OFF"},
+    )
+    mock_coordinator.controller.get_schedule_circuit.return_value = None
+    mock_coordinator.controller.get_schedule_days.return_value = None
+    mock_coordinator.controller.get_schedule_start_time.return_value = None
+    mock_coordinator.controller.get_schedule_stop_time.return_value = None
+
+    attrs = ScheduleBinarySensor(mock_coordinator, schedule).extra_state_attributes
+
+    for key in (
+        "CIRCUIT",
+        "CIRCUIT_NAME",
+        "DAY",
+        "TIME",
+        "TIMOUT",
+        "HEATER",
+        "LOTMP",
+        "SINGLE",
+        "DNTSTP",
+        "VACFLO",
+    ):
+        assert key not in attrs
 
 
 async def test_heater_sensor_heating(

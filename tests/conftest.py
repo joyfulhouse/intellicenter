@@ -166,9 +166,11 @@ def pool_model_data() -> list[dict[str, Any]]:
                 "SNAME": "Pool Cleaner",
                 "STATUS": "OFF",
                 "FEATR": "ON",
+                "TIME": "120",
+                "DNTSTP": "OFF",
             },
         },
-        # Non-featured circuit (should not create switch)
+        # Non-featured circuit (switch is opt-in)
         {
             "objnam": "CIRC02",
             "params": {
@@ -177,6 +179,8 @@ def pool_model_data() -> list[dict[str, Any]]:
                 "SNAME": "Aux Circuit",
                 "STATUS": "OFF",
                 "FEATR": "OFF",
+                "TIME": "60",
+                "DNTSTP": "ON",
             },
         },
         # Pump (variable speed/flow with limits)
@@ -251,7 +255,15 @@ def pool_model_data() -> list[dict[str, Any]]:
                 "OBJTYP": SCHED_TYPE,
                 "SNAME": "Morning Filter",
                 "STATUS": "OFF",
-                "ENABLE": "ON",
+                "ACT": "OFF",
+                "CIRCUIT": "CIRC01",
+                "DAY": "MTWRF",
+                "TIME": "08:00",
+                "TIMOUT": "10:00",
+                "HEATER": "HTR01",
+                "LOTMP": "82",
+                "SINGLE": "OFF",
+                "DNTSTP": "ON",
             },
         },
     ]
@@ -421,6 +433,11 @@ def mock_coordinator(
         return_value={"primary": 50, "secondary": 50}
     )
     mock_controller.is_vacation_mode = MagicMock(return_value=False)
+    mock_controller.is_schedule_enabled = MagicMock(return_value=False)
+    mock_controller.get_schedule_circuit = MagicMock(return_value=None)
+    mock_controller.get_schedule_days = MagicMock(return_value=None)
+    mock_controller.get_schedule_start_time = MagicMock(return_value=None)
+    mock_controller.get_schedule_stop_time = MagicMock(return_value=None)
     # Convenience methods from pyintellicenter v0.1.3
     mock_controller.set_alkalinity = AsyncMock()
     mock_controller.set_calcium_hardness = AsyncMock()

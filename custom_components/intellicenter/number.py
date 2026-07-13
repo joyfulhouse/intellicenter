@@ -25,6 +25,7 @@ from homeassistant.const import (
     CONCENTRATION_PARTS_PER_MILLION,
     PERCENTAGE,
     EntityCategory,
+    UnitOfTime,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -51,6 +52,7 @@ from pyintellicenter import (
     SEC_ATTR,
     SELECT_ATTR,
     SPEED_ATTR,
+    TIME_ATTR,
     PoolObject,
 )
 
@@ -59,6 +61,7 @@ from . import (
     PoolEntity,
     async_setup_pool_entities,
     body_temperature_limits,
+    is_user_circuit,
     safe_int,
 )
 from .const import CONST_GPM, CONST_RPM
@@ -104,6 +107,10 @@ PUMP_GPM_MIN_DEFAULT = 15
 PUMP_GPM_MAX_DEFAULT = 140
 PUMP_GPM_STEP = 5
 
+EGG_TIMER_MIN = 1
+EGG_TIMER_MAX = 720
+EGG_TIMER_STEP = 1
+
 # -------------------------------------------------------------------------------------
 
 
@@ -117,7 +124,25 @@ def _build_entities(
     numbers: list[PoolNumber | PumpSpeedNumber] = []
 
     for pool_obj in candidate_objects:
-        if pool_obj.objtype == CHEM_TYPE:
+        if is_user_circuit(pool_obj):
+            numbers.append(
+                PoolNumber(
+                    coordinator,
+                    pool_obj,
+                    min_value=EGG_TIMER_MIN,
+                    max_value=EGG_TIMER_MAX,
+                    step=EGG_TIMER_STEP,
+                    attribute_key=TIME_ATTR,
+                    name="+ Egg Timer",
+                    icon="mdi:timer-outline",
+                    unit_of_measurement=UnitOfTime.MINUTES,
+                    mode=NumberMode.BOX,
+                    entity_category=EntityCategory.CONFIG,
+                    integer_only=True,
+                    enabled_by_default=False,
+                )
+            )
+        elif pool_obj.objtype == CHEM_TYPE:
             if pool_obj.subtype == "ICHLOR" and PRIM_ATTR in pool_obj.attribute_keys:
                 # IntelliChlor output percentage controls (CONFIG category)
                 body_attr = pool_obj[BODY_ATTR]

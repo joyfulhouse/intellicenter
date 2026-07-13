@@ -29,6 +29,7 @@ from pyintellicenter import (
     CIRCUIT_TYPE,
     COOL_ATTR,
     CYACID_ATTR,
+    DAY_ATTR,
     EXTINSTR_TYPE,
     FEATR_ATTR,
     FREEZE_ATTR,
@@ -80,6 +81,7 @@ from pyintellicenter import (
     SUPER_ATTR,
     SYSTEM_TYPE,
     TIME_ATTR,
+    TIMOUT_ATTR,
     USE_ATTR,
     VACFLO_ATTR,
     VER_ATTR,
@@ -92,7 +94,7 @@ from pyintellicenter import (
     PoolObject,
 )
 
-from .const import DEFAULT_TRANSPORT, DOMAIN, TransportType
+from .const import DEFAULT_TRANSPORT, DNTSTP_ATTR, DOMAIN, SINGLE_ATTR, TransportType
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -121,6 +123,7 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
         SUBTYP_ATTR,
         FEATR_ATTR,
         TIME_ATTR,  # Egg timer duration
+        DNTSTP_ATTR,
         FREEZE_ATTR,  # Freeze protection status
     },
     CIRCGRP_TYPE: {SNAME_ATTR, STATUS_ATTR, USE_ATTR, CIRCUIT_ATTR},  # Circuit groups
@@ -191,7 +194,20 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
         GPM_ATTR,  # GPM setpoint when SELECT=GPM
     },
     SENSE_TYPE: {SNAME_ATTR, SOURCE_ATTR},
-    SCHED_TYPE: {SNAME_ATTR, ACT_ATTR, VACFLO_ATTR},
+    SCHED_TYPE: {
+        SNAME_ATTR,
+        STATUS_ATTR,
+        ACT_ATTR,
+        CIRCUIT_ATTR,
+        DAY_ATTR,
+        TIME_ATTR,
+        TIMOUT_ATTR,
+        HEATER_ATTR,
+        LOTMP_ATTR,
+        SINGLE_ATTR,
+        DNTSTP_ATTR,
+        VACFLO_ATTR,
+    },
     # MODE/VACFLO/VER plus SERVICE for the system operating mode sensor
     SYSTEM_TYPE: {MODE_ATTR, SERVICE_ATTR, VACFLO_ATTR, VER_ATTR},
 }

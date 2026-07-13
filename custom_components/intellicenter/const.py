@@ -11,6 +11,9 @@ DOMAIN = "intellicenter"
 CONST_RPM = "rpm"  # revolutions per minute
 CONST_GPM = "gpm"  # gallons per minute
 
+DNTSTP_ATTR = "DNTSTP"  # not yet in pyintellicenter
+SINGLE_ATTR = "SINGLE"  # not yet in pyintellicenter
+
 # Configuration option keys
 CONF_KEEPALIVE_INTERVAL = "keepalive_interval"
 CONF_RECONNECT_DELAY = "reconnect_delay"

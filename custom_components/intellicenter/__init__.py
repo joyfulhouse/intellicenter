@@ -27,6 +27,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from pyintellicenter import (
     BODY_ATTR,
     BODY_TYPE,
+    CIRCUIT_TYPE,
     HEATER_TYPE,
     LISTORD_ATTR,
     STATUS_ATTR,
@@ -323,6 +324,16 @@ def safe_int(value: Any) -> int | None:
         return int(value)
     except (ValueError, TypeError):
         return None
+
+
+def is_user_circuit(pool_object: PoolObject) -> bool:
+    """Return whether an object is a user-controllable circuit.
+
+    Freeze-protection pseudo-circuits are diagnostic state objects rather than
+    user circuits. All other CIRCUIT objects are represented by either the
+    switch or light platform and share circuit configuration controls.
+    """
+    return pool_object.objtype == CIRCUIT_TYPE and pool_object.subtype != "FRZ"
 
 
 def _heater_sort_key(heater: PoolObject) -> int:
@@ -711,7 +722,7 @@ class OnOffControlMixin(_MixinBase):
             ...
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
         """Return true if the entity is on."""
         # Use optimistic state if set, otherwise use real state
         if self._optimistic_state is not None:

@@ -19,6 +19,15 @@ from __future__ import annotations
 
 import pyintellicenter
 
+from custom_components.intellicenter.const import (
+    CALIB_ATTR,
+    PORT_ATTR,
+    PRIMFLO_ATTR,
+    PRIMTIM_ATTR,
+    PROBE_ATTR,
+)
+from custom_components.intellicenter.coordinator import DEFAULT_ATTRIBUTES_MAP
+
 # Methods the integration invokes on the controller (ICModelController, which
 # inherits ICBaseController). Existence + callability is asserted, not the exact
 # signature: that catches the real drift risk (rename/removal) without coupling
@@ -36,6 +45,8 @@ CONTROLLER_METHODS = (
     "body_supports_cooling",
     "get_chlorinator_output",
     "get_pump_circuit_speed",
+    "get_sensor_calibration",
+    "get_sensor_probe_reading",
     "is_body_cooling",
     "is_body_heating",
     "is_vacation_mode",
@@ -108,3 +119,39 @@ def test_light_effects_includes_sam_show() -> None:
         "Installed pyintellicenter is missing the SAMMOD->'SAm' light show. "
         "Bump the manifest pin to a version that includes it."
     )
+
+
+def test_roadmap_attributes_are_tracked() -> None:
+    """PoolModel must retain every object and attribute used by track 4."""
+    assert (
+        pyintellicenter.DLY_ATTR in DEFAULT_ATTRIBUTES_MAP[pyintellicenter.CIRCUIT_TYPE]
+    )
+    assert {pyintellicenter.TEMP_ATTR, pyintellicenter.BOOST_ATTR} <= (
+        DEFAULT_ATTRIBUTES_MAP[pyintellicenter.BODY_TYPE]
+    )
+    assert {PRIMFLO_ATTR, PRIMTIM_ATTR} <= DEFAULT_ATTRIBUTES_MAP[
+        pyintellicenter.PUMP_TYPE
+    ]
+    assert {PROBE_ATTR, CALIB_ATTR} <= DEFAULT_ATTRIBUTES_MAP[
+        pyintellicenter.SENSE_TYPE
+    ]
+    assert (
+        pyintellicenter.UPDATE_ATTR
+        in DEFAULT_ATTRIBUTES_MAP[pyintellicenter.SYSTEM_TYPE]
+    )
+    assert {
+        pyintellicenter.SNAME_ATTR,
+        pyintellicenter.SUBTYP_ATTR,
+        pyintellicenter.VER_ATTR,
+        PORT_ATTR,
+    } <= DEFAULT_ATTRIBUTES_MAP[pyintellicenter.MODULE_TYPE]
+    assert {
+        pyintellicenter.SNAME_ATTR,
+        pyintellicenter.SUBTYP_ATTR,
+    } <= DEFAULT_ATTRIBUTES_MAP[pyintellicenter.PANEL_TYPE]
+
+
+def test_sensor_diagnostic_helpers_are_available() -> None:
+    """The installed library supplies the typed sensor diagnostic helpers."""
+    assert callable(pyintellicenter.ICModelController.get_sensor_probe_reading)
+    assert callable(pyintellicenter.ICModelController.get_sensor_calibration)

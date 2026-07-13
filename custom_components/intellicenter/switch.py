@@ -17,11 +17,14 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyintellicenter import (
     BODY_TYPE,
+    BOOST_ATTR,
     CHEM_TYPE,
     CIRCUIT_TYPE,
     HEATER_ATTR,
     HTMODE_ATTR,
     STATUS_ATTR,
+    STATUS_OFF,
+    STATUS_ON,
     SUPER_ATTR,
     SYSTEM_TYPE,
     VACFLO_ATTR,
@@ -51,6 +54,7 @@ def _build_entities(
     for pool_obj in candidates:
         if pool_obj.objtype == BODY_TYPE:
             switches.append(PoolBody(coordinator, pool_obj))
+            switches.append(HeatBoostSwitch(coordinator, pool_obj))
         elif (
             pool_obj.objtype == CHEM_TYPE
             and pool_obj.subtype == "ICHLOR"
@@ -134,6 +138,39 @@ class PoolBody(PoolCircuit):
         """Initialize a Pool body from the underlying circuit."""
         super().__init__(coordinator, pool_object)
         self._extra_state_attrs = {VOL_ATTR, HEATER_ATTR, HTMODE_ATTR}
+
+
+class HeatBoostSwitch(PoolCircuit):
+    """Disabled-by-default heat boost control for a body of water."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_icon = "mdi:heat-wave"
+
+    def __init__(
+        self,
+        coordinator: IntelliCenterCoordinator,
+        pool_object: PoolObject,
+    ) -> None:
+        """Initialize a body heat boost switch."""
+        super().__init__(
+            coordinator,
+            pool_object,
+            attribute_key=BOOST_ATTR,
+            name="+ Heat Boost",
+            enabled_by_default=False,
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        """Map only canonical ON/OFF values and reject malformed states."""
+        if self._optimistic_state is not None:
+            return self._optimistic_state
+        value = self._pool_object[self._attribute_key]
+        if value == STATUS_ON:
+            return True
+        if value == STATUS_OFF:
+            return False
+        return None
 
 
 class PoolVacation(PoolEntity, SwitchEntity):

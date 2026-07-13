@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock
 
-from homeassistant.const import PERCENTAGE
+from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTime
 from homeassistant.core import HomeAssistant
 from pyintellicenter import (
     BODY_TYPE,
@@ -20,8 +20,14 @@ from pyintellicenter import (
 )
 import pytest
 
+from custom_components.intellicenter.const import PRIMFLO_ATTR, PRIMTIM_ATTR
 from custom_components.intellicenter.coordinator import DEFAULT_ATTRIBUTES_MAP
-from custom_components.intellicenter.number import PoolNumber, PumpSpeedNumber
+from custom_components.intellicenter.number import (
+    PoolNumber,
+    PumpPrimingNumber,
+    PumpSpeedNumber,
+    _build_entities,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -1316,3 +1322,112 @@ async def test_number_without_device_class_always_has_the_attr(
     assert number.native_min_value is not None
     assert number.native_max_value is not None
     assert number.native_unit_of_measurement is None
+
+
+async def test_pump_priming_numbers_created_unconditionally(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Each pump gets disabled-by-default priming speed and duration controls."""
+    pump = PoolObject(
+        "PUMP1",
+        {
+            "OBJTYP": PUMP_TYPE,
+            "SNAME": "Pool Pump",
+            "MIN": "600",
+            "MAX": "3200",
+        },
+    )
+
+    priming = [
+        item
+        for item in _build_entities(mock_coordinator, [pump])
+        if isinstance(item, PumpPrimingNumber)
+    ]
+
+    assert {item._attribute_key for item in priming} == {
+        PRIMFLO_ATTR,
+        PRIMTIM_ATTR,
+    }
+    assert all(item.entity_category == EntityCategory.CONFIG for item in priming)
+    assert all(not item.entity_registry_enabled_default for item in priming)
+
+    speed = next(item for item in priming if item._attribute_key == PRIMFLO_ATTR)
+    assert speed.name == "Pool Pump Priming Speed"
+    assert speed.native_min_value == 600
+    assert speed.native_max_value == 3200
+    assert speed.native_step == 50
+    assert speed.native_unit_of_measurement == "rpm"
+    assert speed.native_value is None
+
+    duration = next(item for item in priming if item._attribute_key == PRIMTIM_ATTR)
+    assert duration.name == "Pool Pump Priming Duration"
+    assert duration.native_min_value == 0
+    assert duration.native_max_value == 10
+    assert duration.native_step == 1
+    assert duration.native_unit_of_measurement == UnitOfTime.MINUTES
+    assert duration.native_value is None
+
+
+async def test_pump_priming_numbers_malformed_values_are_unknown(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Malformed priming values and limits do not break platform setup."""
+    pump = PoolObject(
+        "PUMP1",
+        {
+            "OBJTYP": PUMP_TYPE,
+            "SNAME": "Pool Pump",
+            "MIN": "bad",
+            "MAX": "bad",
+            "PRIMFLO": "bad",
+            "PRIMTIM": "bad",
+        },
+    )
+
+    priming = [
+        item
+        for item in _build_entities(mock_coordinator, [pump])
+        if isinstance(item, PumpPrimingNumber)
+    ]
+    speed = next(item for item in priming if item._attribute_key == PRIMFLO_ATTR)
+
+    assert speed.native_min_value == 450
+    assert speed.native_max_value == 3450
+    assert all(item.native_value is None for item in priming)
+
+
+@pytest.mark.parametrize(
+    ("attribute", "value"),
+    [(PRIMFLO_ATTR, 2500), (PRIMTIM_ATTR, 7)],
+)
+async def test_pump_priming_number_write_path(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+    attribute: str,
+    value: int,
+) -> None:
+    """Priming controls write integer strings through requestChanges."""
+    pump = PoolObject(
+        "PUMP1",
+        {
+            "OBJTYP": PUMP_TYPE,
+            "SNAME": "Pool Pump",
+            "MIN": "450",
+            "MAX": "3450",
+        },
+    )
+    number = next(
+        item
+        for item in _build_entities(mock_coordinator, [pump])
+        if isinstance(item, PumpPrimingNumber) and item._attribute_key == attribute
+    )
+    number.hass = hass
+
+    await number.async_set_native_value(value)
+    await hass.async_block_till_done()
+
+    mock_coordinator.controller.request_changes.assert_awaited_once_with(
+        "PUMP1", {attribute: str(value)}
+    )

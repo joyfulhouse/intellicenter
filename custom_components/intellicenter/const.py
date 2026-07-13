@@ -11,6 +11,12 @@ DOMAIN = "intellicenter"
 CONST_RPM = "rpm"  # revolutions per minute
 CONST_GPM = "gpm"  # gallons per minute
 
+CALIB_ATTR = "CALIB"  # not yet in pyintellicenter
+PORT_ATTR = "PORT"  # not yet in pyintellicenter
+PRIMFLO_ATTR = "PRIMFLO"  # not yet in pyintellicenter
+PRIMTIM_ATTR = "PRIMTIM"  # not yet in pyintellicenter
+PROBE_ATTR = "PROBE"  # not yet in pyintellicenter
+
 # Configuration option keys
 CONF_KEEPALIVE_INTERVAL = "keepalive_interval"
 CONF_RECONNECT_DELAY = "reconnect_delay"

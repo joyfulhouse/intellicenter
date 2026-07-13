@@ -112,8 +112,14 @@
     }
   },
   "exceptions": {
+    "cancel_delays_failed": {
+      "message": "The IntelliCenter could not cancel the active system delays. Check the connection and try again."
+    },
     "cover_position_unsupported": {
       "message": "This IntelliCenter firmware does not report cover position (no POSIT attribute); open/close is not supported. Update the panel firmware to control the cover."
+    },
+    "no_active_delays": {
+      "message": "The IntelliCenter is not reporting any active system delays to cancel."
     }
   }
 }

@@ -56,6 +56,7 @@ CONFIG_SCHEMA = cv.empty_config_schema(DOMAIN)
 # Platforms supported by this integration
 PLATFORMS = [
     Platform.BINARY_SENSOR,
+    Platform.BUTTON,
     Platform.CLIMATE,
     Platform.COVER,
     Platform.LIGHT,
@@ -711,7 +712,7 @@ class OnOffControlMixin(_MixinBase):
             ...
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
         """Return true if the entity is on."""
         # Use optimistic state if set, otherwise use real state
         if self._optimistic_state is not None:

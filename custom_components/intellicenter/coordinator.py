@@ -22,6 +22,7 @@ from pyintellicenter import (
     ALK_ATTR,
     BODY_ATTR,
     BODY_TYPE,
+    BOOST_ATTR,
     CALC_ATTR,
     CHEM_TYPE,
     CIRCGRP_TYPE,
@@ -29,6 +30,7 @@ from pyintellicenter import (
     CIRCUIT_TYPE,
     COOL_ATTR,
     CYACID_ATTR,
+    DLY_ATTR,
     EXTINSTR_TYPE,
     FEATR_ATTR,
     FREEZE_ATTR,
@@ -45,6 +47,7 @@ from pyintellicenter import (
     MIN_ATTR,
     MINF_ATTR,
     MODE_ATTR,
+    MODULE_TYPE,
     NORMAL_ATTR,
     ORPHI_ATTR,
     ORPLO_ATTR,
@@ -52,6 +55,7 @@ from pyintellicenter import (
     ORPTNK_ATTR,
     ORPVAL_ATTR,
     ORPVOL_ATTR,
+    PANEL_TYPE,
     PARENT_ATTR,
     PHHI_ATTR,
     PHLO_ATTR,
@@ -79,7 +83,9 @@ from pyintellicenter import (
     SUBTYP_ATTR,
     SUPER_ATTR,
     SYSTEM_TYPE,
+    TEMP_ATTR,
     TIME_ATTR,
+    UPDATE_ATTR,
     USE_ATTR,
     VACFLO_ATTR,
     VER_ATTR,
@@ -92,7 +98,16 @@ from pyintellicenter import (
     PoolObject,
 )
 
-from .const import DEFAULT_TRANSPORT, DOMAIN, TransportType
+from .const import (
+    CALIB_ATTR,
+    DEFAULT_TRANSPORT,
+    DOMAIN,
+    PORT_ATTR,
+    PRIMFLO_ATTR,
+    PRIMTIM_ATTR,
+    PROBE_ATTR,
+    TransportType,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -104,6 +119,7 @@ NewObjectsListener = Callable[[list[PoolObject]], None]
 # Default attribute tracking map - defines which attributes to monitor per object type
 DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
     BODY_TYPE: {
+        BOOST_ATTR,
         SNAME_ATTR,
         HEATER_ATTR,
         HITMP_ATTR,  # Max temperature setpoint
@@ -112,9 +128,11 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
         LSTTMP_ATTR,
         MODE_ATTR,  # Heat mode (used by multi-mode heaters like HCOMBO)
         STATUS_ATTR,
+        TEMP_ATTR,
         VOL_ATTR,
     },
     CIRCUIT_TYPE: {
+        DLY_ATTR,
         SNAME_ATTR,
         STATUS_ATTR,
         USE_ATTR,
@@ -175,6 +193,8 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
         PWR_ATTR,
         RPM_ATTR,
         GPM_ATTR,
+        PRIMFLO_ATTR,
+        PRIMTIM_ATTR,
         # Pump operational limits (diagnostic)
         MAX_ATTR,
         MIN_ATTR,
@@ -190,10 +210,12 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
         SPEED_ATTR,  # RPM setpoint when SELECT=RPM
         GPM_ATTR,  # GPM setpoint when SELECT=GPM
     },
-    SENSE_TYPE: {SNAME_ATTR, SOURCE_ATTR},
+    SENSE_TYPE: {SNAME_ATTR, SOURCE_ATTR, PROBE_ATTR, CALIB_ATTR},
     SCHED_TYPE: {SNAME_ATTR, ACT_ATTR, VACFLO_ATTR},
     # MODE/VACFLO/VER plus SERVICE for the system operating mode sensor
-    SYSTEM_TYPE: {MODE_ATTR, SERVICE_ATTR, VACFLO_ATTR, VER_ATTR},
+    SYSTEM_TYPE: {MODE_ATTR, SERVICE_ATTR, UPDATE_ATTR, VACFLO_ATTR, VER_ATTR},
+    MODULE_TYPE: {SNAME_ATTR, SUBTYP_ATTR, VER_ATTR, PORT_ATTR},
+    PANEL_TYPE: {SNAME_ATTR, SUBTYP_ATTR},
 }
 
 

@@ -67,7 +67,15 @@ from . import (
     async_setup_pool_entities,
     safe_int,
 )
-from .const import CALIB_ATTR, CONST_GPM, CONST_RPM, PORT_ATTR, PROBE_ATTR
+from .const import (
+    CALIB_ATTR,
+    CHEM_CONTROLLER_SUBTYPE,
+    CHLORINATOR_SUBTYPE,
+    CONST_GPM,
+    CONST_RPM,
+    PORT_ATTR,
+    PROBE_ATTR,
+)
 from .coordinator import IntelliCenterCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -202,7 +210,7 @@ def _build_entities(
                     )
                 )
         elif obj.objtype == CHEM_TYPE:
-            if obj.subtype == "ICHEM":
+            if obj.subtype == CHEM_CONTROLLER_SUBTYPE:
                 if PHVAL_ATTR in obj.attribute_keys:
                     sensors.append(
                         PoolSensor(
@@ -294,7 +302,7 @@ def _build_entities(
                     )
                 # Note: ALK, CALC, CYACID are configuration values (user-entered)
                 # and are handled as number entities in number.py
-            elif obj.subtype == "ICHLOR":
+            elif obj.subtype == CHLORINATOR_SUBTYPE:
                 if SALT_ATTR in obj.attribute_keys:
                     sensors.append(
                         PoolSensor(
@@ -501,6 +509,12 @@ class ModuleFirmwareSensor(PoolSensor):
             extra_state_attributes=[SUBTYP_ATTR, PORT_ATTR],
             state_class=None,
         )
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the module version verbatim, preserving numeric-looking strings."""
+        value = self._pool_object[self._attribute_key]
+        return None if value is None else str(value)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

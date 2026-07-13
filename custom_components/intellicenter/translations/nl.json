@@ -129,12 +129,6 @@
     }
   },
   "exceptions": {
-    "cancel_delays_failed": {
-      "message": "De IntelliCenter kon de actieve systeemvertragingen niet annuleren. Controleer de verbinding en probeer het opnieuw."
-    },
-    "circuit_group_members_missing": {
-      "message": "De IntelliCenter heeft geen ledencircuits voor deze groep gerapporteerd, waardoor deze niet veilig kan worden bediend."
-    },
     "command_failed": {
       "message": "De IntelliCenter-opdracht is mislukt. Controleer de verbinding met het paneel en probeer het opnieuw."
     },
@@ -149,9 +143,6 @@
     },
     "magicstream_command_unsupported": {
       "message": "Deze opdracht is alleen beschikbaar voor MagicStream-lampen."
-    },
-    "no_active_delays": {
-      "message": "De IntelliCenter rapporteert geen actieve systeemvertragingen om te annuleren."
     },
     "unknown_light_effect": {
       "message": "Het gevraagde lichteffect wordt niet ondersteund door deze IntelliCenter-lamp."

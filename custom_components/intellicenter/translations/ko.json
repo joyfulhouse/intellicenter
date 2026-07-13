@@ -129,12 +129,6 @@
     }
   },
   "exceptions": {
-    "cancel_delays_failed": {
-      "message": "IntelliCenter가 활성 시스템 지연을 취소하지 못했습니다. 연결을 확인한 후 다시 시도하세요."
-    },
-    "circuit_group_members_missing": {
-      "message": "IntelliCenter가 이 그룹의 구성원 회로를 보고하지 않아 안전하게 제어할 수 없습니다."
-    },
     "command_failed": {
       "message": "IntelliCenter 명령이 실패했습니다. 패널 연결을 확인한 후 다시 시도하세요."
     },
@@ -149,9 +143,6 @@
     },
     "magicstream_command_unsupported": {
       "message": "이 명령은 MagicStream 조명에서만 사용할 수 있습니다."
-    },
-    "no_active_delays": {
-      "message": "IntelliCenter가 취소할 활성 시스템 지연을 보고하지 않습니다."
     },
     "unknown_light_effect": {
       "message": "요청한 조명 효과는 이 IntelliCenter 조명에서 지원되지 않습니다."

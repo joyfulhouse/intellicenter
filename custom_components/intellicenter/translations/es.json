@@ -129,12 +129,6 @@
     }
   },
   "exceptions": {
-    "cancel_delays_failed": {
-      "message": "El IntelliCenter no pudo cancelar los retrasos activos del sistema. Verifique la conexión e inténtelo de nuevo."
-    },
-    "circuit_group_members_missing": {
-      "message": "El IntelliCenter no ha informado ningún circuito miembro para este grupo, por lo que no se puede controlar de forma segura."
-    },
     "command_failed": {
       "message": "El comando del IntelliCenter falló. Verifique la conexión con el panel e inténtelo de nuevo."
     },
@@ -149,9 +143,6 @@
     },
     "magicstream_command_unsupported": {
       "message": "Este comando solo está disponible para luces MagicStream."
-    },
-    "no_active_delays": {
-      "message": "El IntelliCenter no informa ningún retraso activo del sistema que cancelar."
     },
     "unknown_light_effect": {
       "message": "El efecto de luz solicitado no es compatible con esta luz IntelliCenter."

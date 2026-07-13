@@ -9,7 +9,6 @@ from pyintellicenter import (
     BODY_TYPE,
     CHEM_TYPE,
     CIRCUIT_TYPE,
-    DLY_ATTR,
     HEATER_ATTR,
     HEATER_TYPE,
     HTMODE_ATTR,
@@ -20,7 +19,6 @@ from pyintellicenter import (
     PUMP_TYPE,
     SCHED_TYPE,
     STATUS_ATTR,
-    STATUS_OFF,
     STATUS_ON,
     SYSTEM_TYPE,
     UPDATE_ATTR,
@@ -31,8 +29,6 @@ import pytest
 
 from custom_components.intellicenter.binary_sensor import (
     ChemAlertBinarySensor,
-    ChlorinatorBinarySensor,
-    DelayBinarySensor,
     FirmwareUpdateBinarySensor,
     HeaterBinarySensor,
     PoolBinarySensor,
@@ -40,12 +36,10 @@ from custom_components.intellicenter.binary_sensor import (
     SystemModeBinarySensor,
     _build_entities,
 )
-from custom_components.intellicenter.const import (
-    CHLOR_ATTR,
-    DNTSTP_ATTR,
-    SINGLE_ATTR,
-)
+from custom_components.intellicenter.const import DNTSTP_ATTR, SINGLE_ATTR
 from custom_components.intellicenter.coordinator import DEFAULT_ATTRIBUTES_MAP
+
+from tests.conftest import ON_OFF_UNKNOWN_CASES
 
 pytestmark = pytest.mark.asyncio
 
@@ -69,53 +63,14 @@ async def test_schedule_attributes_are_tracked() -> None:
 
 @pytest.mark.parametrize(
     ("raw_value", "expected"),
-    [(STATUS_ON, True), (STATUS_OFF, False), (None, None), ("BROKEN", None)],
-)
-async def test_circuit_delay_sensor_state_mapping(
-    hass: HomeAssistant,
-    mock_coordinator: MagicMock,
-    raw_value: str | None,
-    expected: bool | None,
-) -> None:
-    """Circuit delay status is diagnostic and unknown for invalid values."""
-    circuit = PoolObject(
-        "CIRC01",
-        {
-            "OBJTYP": CIRCUIT_TYPE,
-            "SNAME": "Pool Cleaner",
-            "DLY": raw_value,
-        },
-    )
-
-    sensor = DelayBinarySensor(mock_coordinator, circuit)
-
-    assert sensor.name == "Pool Cleaner Delay"
-    assert sensor.is_on is expected
-    assert sensor.entity_category == EntityCategory.DIAGNOSTIC
-    assert sensor.entity_registry_enabled_default is False
-
-
-async def test_circuit_delay_sensor_created_when_value_missing(
-    hass: HomeAssistant,
-    mock_coordinator: MagicMock,
-) -> None:
-    """Every circuit gets a stable delay entity even before DLY is delivered."""
-    circuit = PoolObject(
-        "CIRC01",
-        {"OBJTYP": CIRCUIT_TYPE, "SNAME": "Pool Cleaner"},
-    )
-
-    sensors = _build_entities(mock_coordinator, [circuit])
-
-    delay_sensors = [item for item in sensors if isinstance(item, DelayBinarySensor)]
-    assert len(delay_sensors) == 1
-    assert delay_sensors[0].is_on is None
-    assert delay_sensors[0].isUpdated({"CIRC01": {DLY_ATTR: STATUS_ON}}) is True
-
-
-@pytest.mark.parametrize(
-    ("raw_value", "expected"),
-    [(STATUS_ON, True), (STATUS_OFF, False), (None, None), ("BROKEN", None)],
+    [
+        ("1", True),
+        ("0", False),
+        ("ON", True),
+        ("OFF", False),
+        (None, None),
+        ("BROKEN", None),
+    ],
 )
 async def test_firmware_update_sensor_state_mapping(
     hass: HomeAssistant,
@@ -238,11 +193,11 @@ async def test_binary_sensor_setup_creates_entities(
     assert len(entities_added) >= 3
 
 
-async def test_chemistry_binary_sensors_created_by_subtype_unconditionally(
+async def test_chemistry_binary_sensors_created_only_for_intellichem(
     hass: HomeAssistant,
     mock_coordinator: MagicMock,
 ) -> None:
-    """Aggregate alert and chlorinator status exist before runtime values arrive."""
+    """Only IntelliChem creates the aggregate chemistry alert sensor."""
     intellichem = PoolObject(
         "CHEM1",
         {"OBJTYP": CHEM_TYPE, "SUBTYP": "ICHEM", "SNAME": "IntelliChem"},
@@ -258,25 +213,12 @@ async def test_chemistry_binary_sensors_created_by_subtype_unconditionally(
         len([sensor for sensor in sensors if isinstance(sensor, ChemAlertBinarySensor)])
         == 1
     )
-    assert (
-        len(
-            [
-                sensor
-                for sensor in sensors
-                if isinstance(sensor, ChlorinatorBinarySensor)
-            ]
-        )
-        == 1
-    )
     chemistry_alert = next(
         sensor for sensor in sensors if isinstance(sensor, ChemAlertBinarySensor)
     )
-    chlorinator_status = next(
-        sensor for sensor in sensors if isinstance(sensor, ChlorinatorBinarySensor)
-    )
     assert chemistry_alert.unique_id == "test_entry_CHEM1CHEM_ALERT"
     assert chemistry_alert.entity_registry_enabled_default is True
-    assert chlorinator_status.entity_registry_enabled_default is True
+    assert all(sensor._pool_object.objnam != "CHEM2" for sensor in sensors)
 
 
 async def test_legacy_alarm_sensors_remain_on_intellichem_subtype(
@@ -345,8 +287,18 @@ async def test_legacy_alarm_sensors_remain_on_intellichem_subtype(
             True,
         ),
         (
+            {PHHI_ATTR: None, PHLO_ATTR: "ON", ORPHI_ATTR: "OFF", ORPLO_ATTR: "OFF"},
+            True,
+            True,
+        ),
+        (
             {PHHI_ATTR: None, PHLO_ATTR: "OFF", ORPHI_ATTR: "OFF", ORPLO_ATTR: "OFF"},
             False,
+            None,
+        ),
+        (
+            {PHHI_ATTR: None, PHLO_ATTR: "OFF", ORPHI_ATTR: "OFF", ORPLO_ATTR: "OFF"},
+            True,
             None,
         ),
         (
@@ -363,7 +315,7 @@ async def test_chem_alert_state_mapping(
     helper_result: bool,
     expected: bool | None,
 ) -> None:
-    """Aggregate alerts use the helper only when every alarm input is valid."""
+    """A known active alert wins even when another input is unknown."""
     chem = PoolObject(
         "CHEM1",
         {"OBJTYP": CHEM_TYPE, "SUBTYP": "ICHEM", "SNAME": "IntelliChem", **values},
@@ -379,32 +331,8 @@ async def test_chem_alert_state_mapping(
         assert sensor.extra_state_attributes["active_alerts"] == (
             ["pH High"] if helper_result else []
         )
-
-
-@pytest.mark.parametrize(
-    ("raw", "expected"),
-    [("ON", True), ("OFF", False), (None, None), ("BAD", None)],
-)
-async def test_chlorinator_running_state_mapping(
-    hass: HomeAssistant,
-    mock_coordinator: MagicMock,
-    raw: str | None,
-    expected: bool | None,
-) -> None:
-    """CHLOR reports running, stopped, or unknown without fabricating state."""
-    chlor = PoolObject(
-        "CHEM2",
-        {
-            "OBJTYP": CHEM_TYPE,
-            "SUBTYP": "ICHLOR",
-            "SNAME": "IntelliChlor",
-            CHLOR_ATTR: raw,
-        },
-    )
-    sensor = ChlorinatorBinarySensor(mock_coordinator, chlor)
-
-    assert sensor.is_on is expected
-    assert sensor.device_class == BinarySensorDeviceClass.RUNNING
+    else:
+        assert "active_alerts" not in sensor.extra_state_attributes
 
 
 async def test_freeze_protection_sensor_off(
@@ -519,6 +447,21 @@ async def test_schedule_sensor_inactive(
     )
 
     assert sensor.is_on is False
+
+
+@pytest.mark.parametrize(("raw_value", "expected"), ON_OFF_UNKNOWN_CASES)
+async def test_schedule_binary_sensor_state_mapping(
+    mock_coordinator: MagicMock,
+    raw_value: str | None,
+    expected: bool | None,
+) -> None:
+    """Schedule runtime state maps only canonical protocol ON/OFF values."""
+    schedule = PoolObject(
+        "SCHED1",
+        {"OBJTYP": SCHED_TYPE, "SNAME": "Schedule", "ACT": raw_value},
+    )
+
+    assert ScheduleBinarySensor(mock_coordinator, schedule).is_on is expected
 
 
 async def test_schedule_sensor_details_and_disabled_default(

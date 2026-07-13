@@ -67,7 +67,15 @@ from . import (
     is_user_circuit,
     safe_int,
 )
-from .const import CONST_GPM, CONST_RPM, DOMAIN, PRIMFLO_ATTR, PRIMTIM_ATTR
+from .const import (
+    CHEM_CONTROLLER_SUBTYPE,
+    CHLORINATOR_SUBTYPE,
+    CONST_GPM,
+    CONST_RPM,
+    DOMAIN,
+    PRIMFLO_ATTR,
+    PRIMTIM_ATTR,
+)
 from .coordinator import IntelliCenterCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -153,9 +161,12 @@ def _build_entities(
                 )
             )
         elif pool_obj.objtype == CHEM_TYPE:
-            if pool_obj.subtype == "ICHLOR":
+            if pool_obj.subtype == CHLORINATOR_SUBTYPE:
                 numbers.append(SuperChlorinateDurationNumber(coordinator, pool_obj))
-            if pool_obj.subtype == "ICHLOR" and PRIM_ATTR in pool_obj.attribute_keys:
+            if (
+                pool_obj.subtype == CHLORINATOR_SUBTYPE
+                and PRIM_ATTR in pool_obj.attribute_keys
+            ):
                 # IntelliChlor output percentage controls (CONFIG category)
                 body_attr = pool_obj[BODY_ATTR]
                 if body_attr is None:
@@ -180,7 +191,7 @@ def _build_entities(
                             )
                         )
 
-            elif pool_obj.subtype == "ICHEM":
+            elif pool_obj.subtype == CHEM_CONTROLLER_SUBTYPE:
                 # IntelliChem pH setpoint control (CONFIG category)
                 if PHSET_ATTR in pool_obj.attribute_keys:
                     numbers.append(
@@ -642,18 +653,13 @@ class SuperChlorinateDurationNumber(PoolNumber):
                 translation_domain=DOMAIN,
                 translation_key="invalid_superchlorinate_duration",
             )
-        try:
-            await self._async_execute_command(
-                self._controller.request_changes(
-                    self._pool_object.objnam,
-                    {TIMOUT_ATTR: str(int(value * SECONDS_PER_HOUR))},
-                )
-            )
-        except HomeAssistantError as err:
-            raise HomeAssistantError(
-                translation_domain=DOMAIN,
-                translation_key="command_failed",
-            ) from err
+        await self._async_execute_command(
+            self._controller.request_changes(
+                self._pool_object.objnam,
+                {TIMOUT_ATTR: str(int(value * SECONDS_PER_HOUR))},
+            ),
+            translation_key="command_failed",
+        )
 
 
 # -------------------------------------------------------------------------------------

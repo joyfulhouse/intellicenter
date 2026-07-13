@@ -22,7 +22,6 @@ from pyintellicenter import (
     ALK_ATTR,
     BODY_ATTR,
     BODY_TYPE,
-    BOOST_ATTR,
     CALC_ATTR,
     CHEM_TYPE,
     CIRCGRP_TYPE,
@@ -31,7 +30,6 @@ from pyintellicenter import (
     COOL_ATTR,
     CYACID_ATTR,
     DAY_ATTR,
-    DLY_ATTR,
     EXTINSTR_TYPE,
     FEATR_ATTR,
     FREEZE_ATTR,
@@ -103,7 +101,6 @@ from pyintellicenter import (
 
 from .const import (
     CALIB_ATTR,
-    CHLOR_ATTR,
     DEFAULT_TRANSPORT,
     DNTSTP_ATTR,
     DOMAIN,
@@ -127,7 +124,6 @@ NewObjectsListener = Callable[[list[PoolObject]], None]
 # Default attribute tracking map - defines which attributes to monitor per object type
 DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
     BODY_TYPE: {
-        BOOST_ATTR,
         SNAME_ATTR,
         HEATER_ATTR,
         HITMP_ATTR,  # Max temperature setpoint
@@ -135,13 +131,11 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
         LOTMP_ATTR,
         LSTTMP_ATTR,
         MODE_ATTR,  # Heat mode (used by multi-mode heaters like HCOMBO)
-        MANHT_ATTR,
         STATUS_ATTR,
         TEMP_ATTR,
         VOL_ATTR,
     },
     CIRCUIT_TYPE: {
-        DLY_ATTR,
         SNAME_ATTR,
         STATUS_ATTR,
         USE_ATTR,
@@ -183,7 +177,6 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
         ORPHI_ATTR,
         ORPLO_ATTR,
         # IntelliChlor sensors
-        CHLOR_ATTR,
         SALT_ATTR,
         TIMOUT_ATTR,
     },

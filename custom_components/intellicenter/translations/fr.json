@@ -129,12 +129,6 @@
     }
   },
   "exceptions": {
-    "cancel_delays_failed": {
-      "message": "L'IntelliCenter n'a pas pu annuler les délais système actifs. Vérifiez la connexion et réessayez."
-    },
-    "circuit_group_members_missing": {
-      "message": "L'IntelliCenter n'a signalé aucun circuit membre pour ce groupe ; il ne peut donc pas être contrôlé en toute sécurité."
-    },
     "command_failed": {
       "message": "La commande IntelliCenter a échoué. Vérifiez la connexion au panneau et réessayez."
     },
@@ -149,9 +143,6 @@
     },
     "magicstream_command_unsupported": {
       "message": "Cette commande n'est disponible que pour les lampes MagicStream."
-    },
-    "no_active_delays": {
-      "message": "L'IntelliCenter ne signale aucun délai système actif à annuler."
     },
     "unknown_light_effect": {
       "message": "L'effet lumineux demandé n'est pas pris en charge par cette lampe IntelliCenter."

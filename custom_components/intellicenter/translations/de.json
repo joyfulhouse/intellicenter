@@ -129,12 +129,6 @@
     }
   },
   "exceptions": {
-    "cancel_delays_failed": {
-      "message": "Das IntelliCenter konnte die aktiven Systemverzögerungen nicht abbrechen. Überprüfen Sie die Verbindung und versuchen Sie es erneut."
-    },
-    "circuit_group_members_missing": {
-      "message": "Das IntelliCenter hat keine Mitgliedskreise für diese Gruppe gemeldet, daher kann sie nicht sicher gesteuert werden."
-    },
     "command_failed": {
       "message": "Der IntelliCenter-Befehl ist fehlgeschlagen. Überprüfen Sie die Verbindung zum Panel und versuchen Sie es erneut."
     },
@@ -149,9 +143,6 @@
     },
     "magicstream_command_unsupported": {
       "message": "Dieser Befehl ist nur für MagicStream-Leuchten verfügbar."
-    },
-    "no_active_delays": {
-      "message": "Das IntelliCenter meldet keine aktiven Systemverzögerungen, die abgebrochen werden könnten."
     },
     "unknown_light_effect": {
       "message": "Der angeforderte Lichteffekt wird von dieser IntelliCenter-Leuchte nicht unterstützt."

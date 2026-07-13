@@ -18,12 +18,9 @@ from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyintellicenter import (
     ACT_ATTR,
-    CIRCGRP_TYPE,
     CIRCUIT_ATTR,
     LIGHT_EFFECTS,
     STATUS_ATTR,
-    STATUS_OFF,
-    STATUS_ON,
     USE_ATTR,
     PoolObject,
 )
@@ -44,11 +41,6 @@ PARALLEL_UPDATES = 0
 
 _DIMMABLE_SUBTYPES = frozenset({"DIMMER"})
 _SUPPORTED_DIMMER_LEVELS = (50, 75, 100)
-_GROUP_LIGHT_EFFECTS = {
-    "SYNC": "Sync",
-    "SWIM": "Swim",
-    "SET": "Set color",
-}
 _MAGICSTREAM_SERVICES = {
     "capture": "async_capture",
     "thumper": "async_thumper",
@@ -62,12 +54,6 @@ def _build_entities(
 ) -> list[PoolLight]:
     """Build light entities for the given candidate pool objects."""
     lights: list[PoolLight] = []
-    group_objnams = {
-        group.objnam for group in coordinator.controller.get_circuit_groups()
-    }
-    color_group_objnams = {
-        group.objnam for group in coordinator.controller.get_color_light_groups()
-    }
     for obj in candidates:
         if obj.is_a_light:
             lights.append(
@@ -77,12 +63,6 @@ def _build_entities(
                     LIGHT_EFFECTS if obj.supports_color_effects else None,
                 )
             )
-        elif (
-            obj.objtype == CIRCGRP_TYPE
-            and obj.objnam in group_objnams
-            and obj.objnam in color_group_objnams
-        ):
-            lights.append(PoolLightGroup(coordinator, obj))
         elif obj.is_a_light_show:
             # Check if all child lights support color effects
             children = coordinator.model.get_children(obj)
@@ -233,7 +213,8 @@ class PoolLight(PoolEntity, OnOffControlMixin, LightEntity):
     async def _async_set_effect(self, effect: str) -> None:
         """Set a standard color or show through pyintellicenter."""
         await self._async_execute_command(
-            self._controller.set_light_effect(self._pool_object.objnam, effect)
+            self._controller.set_light_effect(self._pool_object.objnam, effect),
+            translation_key="command_failed",
         )
 
     async def _async_magicstream_command(self, command: str) -> None:
@@ -246,7 +227,8 @@ class PoolLight(PoolEntity, OnOffControlMixin, LightEntity):
         await self._async_execute_command(
             self._controller.request_changes(
                 self._pool_object.objnam, {ACT_ATTR: command}
-            )
+            ),
+            translation_key="command_failed",
         )
 
     async def async_capture(self) -> None:
@@ -270,78 +252,3 @@ class PoolLight(PoolEntity, OnOffControlMixin, LightEntity):
         return self._check_attributes_updated(
             updates, STATUS_ATTR, USE_ATTR, LIMIT_ATTR
         )
-
-
-class PoolLightGroup(PoolLight):
-    """Representation of a true CIRCGRP containing color lights."""
-
-    def __init__(
-        self,
-        coordinator: IntelliCenterCoordinator,
-        pool_object: PoolObject,
-    ) -> None:
-        """Initialize a color circuit-group light."""
-        super().__init__(
-            coordinator,
-            pool_object,
-            LIGHT_EFFECTS | _GROUP_LIGHT_EFFECTS,
-        )
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return group power state, or unknown for an invalid panel value."""
-        if self._optimistic_state is not None:
-            return self._optimistic_state
-        status = self._pool_object[STATUS_ATTR]
-        if not isinstance(status, str) or status not in (STATUS_ON, STATUS_OFF):
-            return None
-        return status == STATUS_ON
-
-    def _member_objnams(self) -> list[str]:
-        """Return current member circuit identifiers or raise if unavailable."""
-        members = self._controller.get_circuits_in_group(self._pool_object.objnam)
-        objnams = [member.objnam for member in members]
-        if not objnams:
-            raise HomeAssistantError(
-                translation_domain=DOMAIN,
-                translation_key="circuit_group_members_missing",
-            )
-        return objnams
-
-    async def _async_set_effect(self, effect: str) -> None:
-        """Apply standard effects or group-only sequence commands."""
-        if effect in _GROUP_LIGHT_EFFECTS:
-            await self._async_execute_command(
-                self._controller.request_changes(
-                    self._pool_object.objnam, {ACT_ATTR: effect}
-                )
-            )
-            return
-        await super()._async_set_effect(effect)
-
-    async def _async_set_group_state(
-        self, state: bool, member_objnams: list[str] | None = None
-    ) -> None:
-        """Atomically set every circuit referenced by the group."""
-        if member_objnams is None:
-            member_objnams = self._member_objnams()
-        self._optimistic_state = state
-        self.async_write_ha_state()
-        try:
-            await self._async_execute_command(
-                self._controller.set_multiple_circuit_states(member_objnams, state)
-            )
-        except HomeAssistantError:
-            self._clear_optimistic_state()
-            self.async_write_ha_state()
-            raise
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Apply an optional effect, then turn on all group members."""
-        member_objnams = self._member_objnams()
-        await self._async_apply_effect(kwargs)
-        await self._async_set_group_state(True, member_objnams)
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn off all group members."""
-        await self._async_set_group_state(False)

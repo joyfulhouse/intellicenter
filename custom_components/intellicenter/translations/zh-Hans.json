@@ -129,12 +129,6 @@
     }
   },
   "exceptions": {
-    "cancel_delays_failed": {
-      "message": "IntelliCenter 无法取消当前激活的系统延时。请检查连接后重试。"
-    },
-    "circuit_group_members_missing": {
-      "message": "IntelliCenter 未报告此组的任何成员回路,因此无法安全地对其进行控制。"
-    },
     "command_failed": {
       "message": "IntelliCenter 命令执行失败。请检查面板连接后重试。"
     },
@@ -149,9 +143,6 @@
     },
     "magicstream_command_unsupported": {
       "message": "此命令仅适用于 MagicStream 灯。"
-    },
-    "no_active_delays": {
-      "message": "IntelliCenter 未报告任何可取消的激活系统延时。"
     },
     "unknown_light_effect": {
       "message": "此 IntelliCenter 灯不支持所请求的灯光效果。"

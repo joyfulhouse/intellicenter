@@ -129,12 +129,6 @@
     }
   },
   "exceptions": {
-    "cancel_delays_failed": {
-      "message": "IntelliCenter はアクティブなシステム遅延をキャンセルできませんでした。接続を確認してから、もう一度お試しください。"
-    },
-    "circuit_group_members_missing": {
-      "message": "IntelliCenter がこのグループのメンバー回路を報告していないため、安全に制御できません。"
-    },
     "command_failed": {
       "message": "IntelliCenter コマンドが失敗しました。パネルとの接続を確認してから、もう一度お試しください。"
     },
@@ -149,9 +143,6 @@
     },
     "magicstream_command_unsupported": {
       "message": "このコマンドは MagicStream ライトでのみ利用できます。"
-    },
-    "no_active_delays": {
-      "message": "IntelliCenter はキャンセルできるアクティブなシステム遅延を報告していません。"
     },
     "unknown_light_effect": {
       "message": "指定されたライト効果は、この IntelliCenter ライトではサポートされていません。"

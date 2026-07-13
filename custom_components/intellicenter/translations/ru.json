@@ -129,12 +129,6 @@
     }
   },
   "exceptions": {
-    "cancel_delays_failed": {
-      "message": "IntelliCenter не удалось отменить активные системные задержки. Проверьте подключение и повторите попытку."
-    },
-    "circuit_group_members_missing": {
-      "message": "IntelliCenter не сообщил ни об одном контуре, входящем в эту группу, поэтому безопасное управление ею невозможно."
-    },
     "command_failed": {
       "message": "Команда IntelliCenter не выполнена. Проверьте подключение к панели и повторите попытку."
     },
@@ -149,9 +143,6 @@
     },
     "magicstream_command_unsupported": {
       "message": "Эта команда доступна только для светильников MagicStream."
-    },
-    "no_active_delays": {
-      "message": "IntelliCenter не сообщает об активных системных задержках, которые можно отменить."
     },
     "unknown_light_effect": {
       "message": "Запрошенный световой эффект не поддерживается этим светильником IntelliCenter."

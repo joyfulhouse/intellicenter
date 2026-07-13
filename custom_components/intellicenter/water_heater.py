@@ -413,23 +413,19 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
 
     async def _async_apply_operation(self, operation: str) -> None:
         """Apply a validated operation through its matching control plane."""
-        try:
-            solar_mode = _SOLAR_LABEL_TO_MODE.get(operation)
-            if self._has_solar and solar_mode is not None:
-                await self._async_execute_command(
-                    self._controller.set_heat_mode(self._pool_object.objnam, solar_mode)
-                )
-                return
-            changes = self._operation_to_changes(operation)
-            if changes is not None:
-                await self._async_execute_command(
-                    self._controller.request_changes(self._pool_object.objnam, changes)
-                )
-        except HomeAssistantError as err:
-            raise HomeAssistantError(
-                translation_domain=DOMAIN,
+        solar_mode = _SOLAR_LABEL_TO_MODE.get(operation)
+        if self._has_solar and solar_mode is not None:
+            await self._async_execute_command(
+                self._controller.set_heat_mode(self._pool_object.objnam, solar_mode),
                 translation_key="command_failed",
-            ) from err
+            )
+            return
+        changes = self._operation_to_changes(operation)
+        if changes is not None:
+            await self._async_execute_command(
+                self._controller.request_changes(self._pool_object.objnam, changes),
+                translation_key="command_failed",
+            )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on, restoring the last operation or a safe default."""

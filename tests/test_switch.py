@@ -7,13 +7,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from pyintellicenter import (
     BODY_TYPE,
-    BOOST_ATTR,
-    CIRCGRP_TYPE,
     CIRCUIT_TYPE,
     SCHED_TYPE,
     STATUS_ATTR,
-    STATUS_OFF,
-    STATUS_ON,
+    SYSTEM_TYPE,
     VACFLO_ATTR,
     PoolModel,
     PoolObject,
@@ -22,7 +19,6 @@ import pytest
 
 from custom_components.intellicenter.const import MANHT_ATTR
 from custom_components.intellicenter.switch import (
-    HeatBoostSwitch,
     ManualHeatSwitch,
     PoolBody,
     PoolCircuit,
@@ -30,6 +26,8 @@ from custom_components.intellicenter.switch import (
     PoolVacation,
     _build_entities,
 )
+
+from tests.conftest import ON_OFF_UNKNOWN_CASES
 
 pytestmark = pytest.mark.asyncio
 
@@ -73,27 +71,27 @@ async def test_switch_setup_creates_entities(
     assert len(circuit_switches) >= 2
 
 
-async def test_manual_heat_created_only_for_spa_unconditionally(
+async def test_manual_heat_created_for_system_unconditionally(
     hass: HomeAssistant,
     mock_coordinator: MagicMock,
 ) -> None:
-    """SPA bodies always get Manual Heat; pools do not, regardless of MANHT state."""
-    spa = PoolObject(
-        "SPA01",
-        {"OBJTYP": BODY_TYPE, "SUBTYP": "SPA", "SNAME": "Spa"},
+    """The SYSTEM object always gets the single Spa Manual Heat control."""
+    system = PoolObject(
+        "SYS01",
+        {"OBJTYP": SYSTEM_TYPE, "SNAME": "SNAME"},
     )
     pool = PoolObject(
         "POOL1",
         {"OBJTYP": BODY_TYPE, "SUBTYP": "POOL", "SNAME": "Pool"},
     )
 
-    switches = _build_entities(mock_coordinator, [spa, pool])
+    switches = _build_entities(mock_coordinator, [system, pool])
 
     manual_heat = [
         switch for switch in switches if isinstance(switch, ManualHeatSwitch)
     ]
     assert len(manual_heat) == 1
-    assert manual_heat[0]._pool_object.objnam == "SPA01"
+    assert manual_heat[0]._pool_object.objnam == "SYS01"
     assert manual_heat[0].name == "Spa Manual Heat"
     assert manual_heat[0].entity_category == EntityCategory.CONFIG
     assert manual_heat[0].entity_registry_enabled_default is True
@@ -101,7 +99,7 @@ async def test_manual_heat_created_only_for_spa_unconditionally(
 
 @pytest.mark.parametrize(
     ("raw", "expected"),
-    [("ON", True), ("OFF", False), (None, None), ("BAD", None)],
+    ON_OFF_UNKNOWN_CASES,
 )
 async def test_manual_heat_state_mapping(
     hass: HomeAssistant,
@@ -110,16 +108,15 @@ async def test_manual_heat_state_mapping(
     expected: bool | None,
 ) -> None:
     """Manual Heat reports unknown for missing or malformed runtime state."""
-    spa = PoolObject(
-        "SPA01",
+    system = PoolObject(
+        "SYS01",
         {
-            "OBJTYP": BODY_TYPE,
-            "SUBTYP": "SPA",
-            "SNAME": "Spa",
+            "OBJTYP": SYSTEM_TYPE,
+            "SNAME": "SNAME",
             MANHT_ATTR: raw,
         },
     )
-    switch = ManualHeatSwitch(mock_coordinator, spa)
+    switch = ManualHeatSwitch(mock_coordinator, system)
 
     assert switch.is_on is expected
 
@@ -131,12 +128,9 @@ async def test_manual_heat_write(
     turn_on: bool,
     expected: str,
 ) -> None:
-    """Manual Heat writes MANHT directly on its SPA body."""
-    spa = PoolObject(
-        "SPA01",
-        {"OBJTYP": BODY_TYPE, "SUBTYP": "SPA", "SNAME": "Spa"},
-    )
-    switch = ManualHeatSwitch(mock_coordinator, spa)
+    """Manual Heat writes MANHT directly on the SYSTEM object."""
+    system = PoolObject("SYS01", {"OBJTYP": SYSTEM_TYPE, "SNAME": "SNAME"})
+    switch = ManualHeatSwitch(mock_coordinator, system)
 
     if turn_on:
         await switch.async_turn_on()
@@ -144,7 +138,7 @@ async def test_manual_heat_write(
         await switch.async_turn_off()
 
     mock_coordinator.controller.request_changes.assert_awaited_once_with(
-        "SPA01", {MANHT_ATTR: expected}
+        "SYS01", {MANHT_ATTR: expected}
     )
 
 
@@ -155,14 +149,11 @@ async def test_manual_heat_write_error_is_translated(
     """A failed MANHT write surfaces a translated service error."""
     from pyintellicenter import ICConnectionError
 
-    spa = PoolObject(
-        "SPA01",
-        {"OBJTYP": BODY_TYPE, "SUBTYP": "SPA", "SNAME": "Spa"},
-    )
+    system = PoolObject("SYS01", {"OBJTYP": SYSTEM_TYPE, "SNAME": "SNAME"})
     mock_coordinator.controller.request_changes.side_effect = ICConnectionError(
         "offline"
     )
-    switch = ManualHeatSwitch(mock_coordinator, spa)
+    switch = ManualHeatSwitch(mock_coordinator, system)
 
     with pytest.raises(HomeAssistantError) as err:
         await switch.async_turn_on()
@@ -196,6 +187,8 @@ async def test_circuit_switch_turn_on(
 
     await hass.async_block_till_done()
     await switch.async_turn_on()
+
+    assert switch.is_on is True
 
     mock_coordinator.controller.request_changes.assert_called_once()
     args = mock_coordinator.controller.request_changes.call_args[0]
@@ -612,227 +605,3 @@ async def test_vacation_failed_command_raises_and_reverts(
         await vacation.async_turn_on()
 
     assert vacation._optimistic_state is None
-
-
-@pytest.mark.parametrize(
-    ("raw_value", "expected"),
-    [(STATUS_ON, True), (STATUS_OFF, False), (None, None), ("BROKEN", None)],
-)
-async def test_heat_boost_state_mapping(
-    hass: HomeAssistant,
-    mock_coordinator: MagicMock,
-    raw_value: str | None,
-    expected: bool | None,
-) -> None:
-    """Heat boost maps ON/OFF and reports unknown protocol states."""
-    body = PoolObject(
-        "POOL1",
-        {"OBJTYP": BODY_TYPE, "SNAME": "Pool", "BOOST": raw_value},
-    )
-
-    boost = next(
-        item
-        for item in _build_entities(mock_coordinator, [body])
-        if isinstance(item, HeatBoostSwitch)
-    )
-
-    assert boost.name == "Pool Heat Boost"
-    assert boost.is_on is expected
-    assert boost.entity_category == EntityCategory.CONFIG
-    assert boost.entity_registry_enabled_default is False
-
-
-async def test_heat_boost_created_when_value_missing(
-    hass: HomeAssistant,
-    mock_coordinator: MagicMock,
-) -> None:
-    """Every body gets a stable Heat Boost entity before BOOST is delivered."""
-    body = PoolObject("POOL1", {"OBJTYP": BODY_TYPE, "SNAME": "Pool"})
-
-    boost = [
-        item
-        for item in _build_entities(mock_coordinator, [body])
-        if isinstance(item, HeatBoostSwitch)
-    ]
-
-    assert len(boost) == 1
-    assert boost[0].is_on is None
-
-
-@pytest.mark.parametrize(
-    ("method_name", "expected"),
-    [("async_turn_on", STATUS_ON), ("async_turn_off", STATUS_OFF)],
-)
-async def test_heat_boost_write_path(
-    hass: HomeAssistant,
-    mock_coordinator: MagicMock,
-    mock_write_ha_state: MagicMock,
-    method_name: str,
-    expected: str,
-) -> None:
-    """Heat boost writes BODY.BOOST through requestChanges."""
-    body = PoolObject("POOL1", {"OBJTYP": BODY_TYPE, "SNAME": "Pool"})
-    boost = HeatBoostSwitch(mock_coordinator, body)
-    boost.hass = hass
-
-    await getattr(boost, method_name)()
-    await hass.async_block_till_done()
-
-    mock_coordinator.controller.request_changes.assert_awaited_once_with(
-        "POOL1", {BOOST_ATTR: expected}
-    )
-
-
-async def test_true_plain_circuit_group_creates_enabled_switch(
-    hass: HomeAssistant,
-    pool_model: PoolModel,
-    mock_coordinator: MagicMock,
-) -> None:
-    """A true CIRCGRP without color members creates an enabled group switch."""
-    group = pool_model.add_object(
-        "WATER_GROUP",
-        {
-            "OBJTYP": CIRCGRP_TYPE,
-            "SNAME": "Water Features",
-            "STATUS": "OFF",
-            "CIRCUIT": "CIRC01 CIRC02",
-        },
-    )
-    assert group is not None
-    mock_coordinator.model = pool_model
-    mock_entry = MagicMock()
-    mock_entry.runtime_data = mock_coordinator
-    entities_added: list[PoolCircuit] = []
-
-    from custom_components.intellicenter.switch import async_setup_entry
-
-    await async_setup_entry(hass, mock_entry, entities_added.extend)
-
-    group_switches = [
-        entity
-        for entity in entities_added
-        if entity._pool_object.objnam == "WATER_GROUP"
-    ]
-    assert len(group_switches) == 1
-    assert group_switches[0].entity_registry_enabled_default is True
-
-
-async def test_true_color_circuit_group_does_not_create_switch(
-    hass: HomeAssistant,
-    pool_model: PoolModel,
-    mock_coordinator: MagicMock,
-) -> None:
-    """A true CIRCGRP containing a color light is left to the light platform."""
-    group = pool_model.add_object(
-        "LIGHT_GROUP",
-        {
-            "OBJTYP": CIRCGRP_TYPE,
-            "SNAME": "All Pool Lights",
-            "STATUS": "OFF",
-            "CIRCUIT": "LIGHT1 LIGHT2",
-        },
-    )
-    assert group is not None
-    mock_coordinator.model = pool_model
-    mock_entry = MagicMock()
-    mock_entry.runtime_data = mock_coordinator
-    entities_added: list[PoolCircuit] = []
-
-    from custom_components.intellicenter.switch import async_setup_entry
-
-    await async_setup_entry(hass, mock_entry, entities_added.extend)
-
-    assert all(entity._pool_object.objnam != "LIGHT_GROUP" for entity in entities_added)
-
-
-def make_group_switch(
-    mock_coordinator: MagicMock, status: object = "OFF"
-) -> PoolCircuit:
-    """Create a plain circuit-group switch for focused unit tests."""
-    group = PoolObject(
-        "WATER_GROUP",
-        {
-            "OBJTYP": CIRCGRP_TYPE,
-            "SNAME": "Water Features",
-            "STATUS": status,
-            "CIRCUIT": "CIRC01 CIRC02",
-        },
-    )
-    mock_coordinator.controller.get_circuits_in_group.side_effect = None
-    mock_coordinator.controller.get_circuits_in_group.return_value = [
-        mock_coordinator.model["CIRC01"],
-        mock_coordinator.model["CIRC02"],
-    ]
-    from custom_components.intellicenter.switch import PoolCircuitGroup
-
-    return PoolCircuitGroup(mock_coordinator, group)
-
-
-@pytest.mark.parametrize(
-    ("method_name", "state"), [("async_turn_on", True), ("async_turn_off", False)]
-)
-async def test_true_circuit_group_atomically_controls_members(
-    hass: HomeAssistant,
-    mock_coordinator: MagicMock,
-    mock_write_ha_state: MagicMock,
-    method_name: str,
-    state: bool,
-) -> None:
-    """Group on/off uses one set_multiple_circuit_states helper call."""
-    switch = make_group_switch(mock_coordinator)
-    switch.hass = hass
-
-    await getattr(switch, method_name)()
-
-    mock_coordinator.controller.set_multiple_circuit_states.assert_awaited_once_with(
-        ["CIRC01", "CIRC02"], state
-    )
-    mock_coordinator.controller.request_changes.assert_not_awaited()
-
-
-@pytest.mark.parametrize("status", [None, "", "READY", 1])
-async def test_true_circuit_group_malformed_status_is_unknown(
-    mock_coordinator: MagicMock,
-    status: object,
-) -> None:
-    """A group without a valid ON/OFF status does not fabricate an off state."""
-    assert make_group_switch(mock_coordinator, status).is_on is None
-
-
-async def test_true_circuit_group_without_members_refuses_control(
-    hass: HomeAssistant,
-    mock_coordinator: MagicMock,
-    mock_write_ha_state: MagicMock,
-) -> None:
-    """A partially synchronized group cannot silently issue an empty batch."""
-    switch = make_group_switch(mock_coordinator)
-    switch.hass = hass
-    mock_coordinator.controller.get_circuits_in_group.return_value = []
-    mock_coordinator.controller.get_circuits_in_group.side_effect = None
-
-    with pytest.raises(HomeAssistantError) as err:
-        await switch.async_turn_on()
-
-    assert err.value.translation_key == "circuit_group_members_missing"
-    mock_coordinator.controller.set_multiple_circuit_states.assert_not_awaited()
-
-
-async def test_true_circuit_group_command_failure_reverts_optimistic_state(
-    hass: HomeAssistant,
-    mock_coordinator: MagicMock,
-    mock_write_ha_state: MagicMock,
-) -> None:
-    """A failed atomic group write raises cleanly and drops optimistic state."""
-    from pyintellicenter import ICConnectionError
-
-    mock_coordinator.controller.set_multiple_circuit_states.side_effect = (
-        ICConnectionError("Not connected")
-    )
-    switch = make_group_switch(mock_coordinator)
-    switch.hass = hass
-
-    with pytest.raises(HomeAssistantError):
-        await switch.async_turn_on()
-
-    assert switch._optimistic_state is None
-    assert mock_write_ha_state.call_count == 2

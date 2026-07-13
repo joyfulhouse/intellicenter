@@ -130,17 +130,11 @@
     }
   },
   "exceptions": {
-    "cancel_delays_failed": {
-      "message": "The IntelliCenter could not cancel the active system delays. Check the connection and try again."
-    },
     "command_failed": {
       "message": "The IntelliCenter command failed. Check the panel connection and try again."
     },
     "cover_position_unsupported": {
       "message": "This IntelliCenter firmware does not report cover position (no POSIT attribute); open/close is not supported. Update the panel firmware to control the cover."
-    },
-    "circuit_group_members_missing": {
-      "message": "The IntelliCenter has not reported any member circuits for this group, so it cannot be controlled safely."
     },
     "invalid_heat_mode": {
       "message": "The selected heat mode is not available for this body."
@@ -150,9 +144,6 @@
     },
     "magicstream_command_unsupported": {
       "message": "This command is available only for MagicStream lights."
-    },
-    "no_active_delays": {
-      "message": "The IntelliCenter is not reporting any active system delays to cancel."
     },
     "unknown_light_effect": {
       "message": "The requested light effect is not supported by this IntelliCenter light."

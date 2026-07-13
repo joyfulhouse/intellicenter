@@ -17,9 +17,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyintellicenter import (
     BODY_TYPE,
-    BOOST_ATTR,
     CHEM_TYPE,
-    CIRCGRP_TYPE,
     HEATER_ATTR,
     HTMODE_ATTR,
     SCHED_TYPE,
@@ -39,8 +37,9 @@ from . import (
     PoolEntity,
     async_setup_pool_entities,
     is_user_circuit,
+    protocol_on_off,
 )
-from .const import DNTSTP_ATTR, DOMAIN, MANHT_ATTR
+from .const import CHLORINATOR_SUBTYPE, DNTSTP_ATTR, MANHT_ATTR
 from .coordinator import IntelliCenterCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -57,12 +56,9 @@ def _build_entities(
     for pool_obj in candidates:
         if pool_obj.objtype == BODY_TYPE:
             switches.append(PoolBody(coordinator, pool_obj))
-            switches.append(HeatBoostSwitch(coordinator, pool_obj))
-            if pool_obj.subtype == "SPA":
-                switches.append(ManualHeatSwitch(coordinator, pool_obj))
         elif (
             pool_obj.objtype == CHEM_TYPE
-            and pool_obj.subtype == "ICHLOR"
+            and pool_obj.subtype == CHLORINATOR_SUBTYPE
             and SUPER_ATTR in pool_obj.attribute_keys
         ):
             switches.append(
@@ -100,18 +96,12 @@ def _build_entities(
                     entity_category=EntityCategory.CONFIG,
                 )
             )
-        elif (
-            pool_obj.objtype == CIRCGRP_TYPE
-            and not coordinator.controller.circuit_group_has_color_lights(
-                pool_obj.objnam
-            )
-        ):
-            switches.append(PoolCircuitGroup(coordinator, pool_obj))
         elif pool_obj.objtype == SCHED_TYPE:
             switches.append(PoolSchedule(coordinator, pool_obj))
         elif pool_obj.objtype == SYSTEM_TYPE:
             # Vacation mode uses convenience method
             switches.append(PoolVacation(coordinator, pool_obj))
+            switches.append(ManualHeatSwitch(coordinator, pool_obj))
     return switches
 
 
@@ -158,10 +148,9 @@ class PoolCircuit(PoolEntity, OnOffControlMixin, SwitchEntity):
     @property
     def is_on(self) -> bool | None:
         """Return circuit state, or unknown for missing/malformed values."""
-        value = self._pool_object[self._attribute_key]
-        if value not in (STATUS_ON, STATUS_OFF):
-            return None
-        return bool(value == STATUS_ON)
+        if self._optimistic_state is not None:
+            return self._optimistic_state
+        return protocol_on_off(self._pool_object[self._attribute_key])
 
 
 class PoolSchedule(PoolCircuit):
@@ -185,58 +174,11 @@ class PoolSchedule(PoolCircuit):
     @property
     def is_on(self) -> bool | None:
         """Return whether the schedule is enabled."""
-        if self._pool_object[STATUS_ATTR] not in (STATUS_ON, STATUS_OFF):
-            return None
-        return bool(self._controller.is_schedule_enabled(self._pool_object.objnam))
-
-
-class PoolCircuitGroup(PoolCircuit):
-    """Representation of a true CIRCGRP without color lights."""
-
-    _attr_icon = "mdi:alpha-g-box-outline"
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return group power state, or unknown for an invalid panel value."""
         if self._optimistic_state is not None:
             return self._optimistic_state
-        status = self._pool_object[STATUS_ATTR]
-        if not isinstance(status, str) or status not in (STATUS_ON, STATUS_OFF):
+        if protocol_on_off(self._pool_object[STATUS_ATTR]) is None:
             return None
-        return status == STATUS_ON
-
-    def _member_objnams(self) -> list[str]:
-        """Return current member circuit identifiers or raise if unavailable."""
-        members = self._controller.get_circuits_in_group(self._pool_object.objnam)
-        objnams = [member.objnam for member in members]
-        if not objnams:
-            raise HomeAssistantError(
-                translation_domain=DOMAIN,
-                translation_key="circuit_group_members_missing",
-            )
-        return objnams
-
-    async def _async_set_group_state(self, state: bool) -> None:
-        """Atomically set every circuit referenced by the group."""
-        member_objnams = self._member_objnams()
-        self._optimistic_state = state
-        self.async_write_ha_state()
-        try:
-            await self._async_execute_command(
-                self._controller.set_multiple_circuit_states(member_objnams, state)
-            )
-        except HomeAssistantError:
-            self._clear_optimistic_state()
-            self.async_write_ha_state()
-            raise
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn on every member circuit."""
-        await self._async_set_group_state(True)
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn off every member circuit."""
-        await self._async_set_group_state(False)
+        return bool(self._controller.is_schedule_enabled(self._pool_object.objnam))
 
 
 class PoolBody(PoolCircuit):
@@ -271,16 +213,13 @@ class ManualHeatSwitch(PoolEntity, SwitchEntity):
             coordinator,
             pool_object,
             attribute_key=MANHT_ATTR,
-            name="+ Manual Heat",
+            name="Spa Manual Heat",
         )
 
     @property
     def is_on(self) -> bool | None:
         """Return the configured state, or unknown if it has not synchronized."""
-        value = self._pool_object[self._attribute_key]
-        if value not in (STATUS_ON, STATUS_OFF):
-            return None
-        return bool(value == STATUS_ON)
+        return protocol_on_off(self._pool_object[self._attribute_key])
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Enable Spa Manual Heat."""
@@ -292,50 +231,12 @@ class ManualHeatSwitch(PoolEntity, SwitchEntity):
 
     async def _async_set_manual_heat(self, value: str) -> None:
         """Write MANHT and translate protocol failures."""
-        try:
-            await self._async_execute_command(
-                self._controller.request_changes(
-                    self._pool_object.objnam, {MANHT_ATTR: value}
-                )
-            )
-        except HomeAssistantError as err:
-            raise HomeAssistantError(
-                translation_domain=DOMAIN,
-                translation_key="command_failed",
-            ) from err
-
-
-class HeatBoostSwitch(PoolCircuit):
-    """Disabled-by-default heat boost control for a body of water."""
-
-    _attr_entity_category = EntityCategory.CONFIG
-    _attr_icon = "mdi:heat-wave"
-
-    def __init__(
-        self,
-        coordinator: IntelliCenterCoordinator,
-        pool_object: PoolObject,
-    ) -> None:
-        """Initialize a body heat boost switch."""
-        super().__init__(
-            coordinator,
-            pool_object,
-            attribute_key=BOOST_ATTR,
-            name="+ Heat Boost",
-            enabled_by_default=False,
+        await self._async_execute_command(
+            self._controller.request_changes(
+                self._pool_object.objnam, {MANHT_ATTR: value}
+            ),
+            translation_key="command_failed",
         )
-
-    @property
-    def is_on(self) -> bool | None:
-        """Map only canonical ON/OFF values and reject malformed states."""
-        if self._optimistic_state is not None:
-            return self._optimistic_state
-        value = self._pool_object[self._attribute_key]
-        if value == STATUS_ON:
-            return True
-        if value == STATUS_OFF:
-            return False
-        return None
 
 
 class PoolVacation(PoolEntity, SwitchEntity):

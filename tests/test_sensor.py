@@ -69,8 +69,8 @@ async def test_module_firmware_sensor_properties(
             "OBJTYP": MODULE_TYPE,
             "SUBTYP": "I5P",
             "SNAME": "Main Module",
-            "VER": "1.2.3",
-            "PORT": "COM1",
+            "VER": "10.001",
+            "PORT": "1",
         },
     )
 
@@ -80,11 +80,13 @@ async def test_module_firmware_sensor_properties(
     assert len(firmware) == 1
     sensor = firmware[0]
     assert sensor.name == "Main Module Firmware Version"
-    assert sensor.native_value == "1.2.3"
+    assert sensor.native_value == "10.001"
+    assert isinstance(sensor.native_value, str)
+    assert sensor.state_class is None
     assert sensor.entity_category == EntityCategory.DIAGNOSTIC
     assert sensor.entity_registry_enabled_default is False
     assert sensor.extra_state_attributes["SUBTYP"] == "I5P"
-    assert sensor.extra_state_attributes[PORT_ATTR] == "COM1"
+    assert sensor.extra_state_attributes[PORT_ATTR] == "1"
 
 
 async def test_module_firmware_sensor_created_without_runtime_values(

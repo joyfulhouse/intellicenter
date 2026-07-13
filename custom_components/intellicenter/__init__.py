@@ -31,6 +31,8 @@ from pyintellicenter import (
     HEATER_TYPE,
     LISTORD_ATTR,
     STATUS_ATTR,
+    STATUS_OFF,
+    STATUS_ON,
     ICConnectionError,
     ICError,
     ICModelController,
@@ -57,7 +59,6 @@ CONFIG_SCHEMA = cv.empty_config_schema(DOMAIN)
 # Platforms supported by this integration
 PLATFORMS = [
     Platform.BINARY_SENSOR,
-    Platform.BUTTON,
     Platform.CLIMATE,
     Platform.COVER,
     Platform.LIGHT,
@@ -325,6 +326,15 @@ def safe_int(value: Any) -> int | None:
         return int(value)
     except (ValueError, TypeError):
         return None
+
+
+def protocol_on_off(value: Any) -> bool | None:
+    """Map the protocol's canonical ON/OFF values to a nullable boolean."""
+    if value == STATUS_ON:
+        return True
+    if value == STATUS_OFF:
+        return False
+    return None
 
 
 def is_user_circuit(pool_object: PoolObject) -> bool:
@@ -599,7 +609,11 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
             self._clear_optimistic_state()
             self.async_write_ha_state()
 
-    async def _async_execute_command(self, command: Awaitable[Any]) -> Any:
+    async def _async_execute_command(
+        self,
+        command: Awaitable[Any],
+        translation_key: str | None = None,
+    ) -> Any:
         """Await a controller command, surfacing failures as HomeAssistantError.
 
         pyintellicenter raises ICError subclasses (connection lost, command
@@ -610,6 +624,11 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
         try:
             return await command
         except (ICError, ValueError) as err:
+            if translation_key is not None:
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN,
+                    translation_key=translation_key,
+                ) from err
             raise HomeAssistantError(
                 f"IntelliCenter command for '{self.name}' failed: {err}"
             ) from err

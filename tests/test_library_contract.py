@@ -21,7 +21,6 @@ import pyintellicenter
 
 from custom_components.intellicenter.const import (
     CALIB_ATTR,
-    CHLOR_ATTR,
     MANHT_ATTR,
     PORT_ATTR,
     PRIMFLO_ATTR,
@@ -135,21 +134,26 @@ def test_light_effects_includes_sam_show() -> None:
 def test_chemistry_and_manual_heat_attributes_are_tracked() -> None:
     """Every attribute consumed by the new entities is requested into PoolModel."""
     assert {
-        CHLOR_ATTR,
         pyintellicenter.SINDEX_ATTR,
         pyintellicenter.TIMOUT_ATTR,
     } <= DEFAULT_ATTRIBUTES_MAP[pyintellicenter.CHEM_TYPE]
-    assert MANHT_ATTR in DEFAULT_ATTRIBUTES_MAP[pyintellicenter.BODY_TYPE]
+    assert "CHLOR" not in DEFAULT_ATTRIBUTES_MAP[pyintellicenter.CHEM_TYPE]
+    assert MANHT_ATTR not in DEFAULT_ATTRIBUTES_MAP[pyintellicenter.BODY_TYPE]
     assert MANHT_ATTR in DEFAULT_ATTRIBUTES_MAP[pyintellicenter.SYSTEM_TYPE]
 
 
 def test_roadmap_attributes_are_tracked() -> None:
     """PoolModel must retain every object and attribute used by track 4."""
     assert (
-        pyintellicenter.DLY_ATTR in DEFAULT_ATTRIBUTES_MAP[pyintellicenter.CIRCUIT_TYPE]
+        pyintellicenter.DLY_ATTR
+        not in DEFAULT_ATTRIBUTES_MAP[pyintellicenter.CIRCUIT_TYPE]
     )
-    assert {pyintellicenter.TEMP_ATTR, pyintellicenter.BOOST_ATTR} <= (
-        DEFAULT_ATTRIBUTES_MAP[pyintellicenter.BODY_TYPE]
+    assert (
+        pyintellicenter.TEMP_ATTR in DEFAULT_ATTRIBUTES_MAP[pyintellicenter.BODY_TYPE]
+    )
+    assert (
+        pyintellicenter.BOOST_ATTR
+        not in DEFAULT_ATTRIBUTES_MAP[pyintellicenter.BODY_TYPE]
     )
     assert {PRIMFLO_ATTR, PRIMTIM_ATTR} <= DEFAULT_ATTRIBUTES_MAP[
         pyintellicenter.PUMP_TYPE

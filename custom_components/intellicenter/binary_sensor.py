@@ -29,7 +29,6 @@ from pyintellicenter import (
     CIRCUIT_ATTR,
     CIRCUIT_TYPE,
     DAY_ATTR,
-    DLY_ATTR,
     HEATER_ATTR,
     HEATER_TYPE,
     HTMODE_ATTR,
@@ -43,7 +42,6 @@ from pyintellicenter import (
     SCHED_TYPE,
     SERVICE_ATTR,
     STATUS_ATTR,
-    STATUS_OFF,
     STATUS_ON,
     SYSTEM_TYPE,
     TIME_ATTR,
@@ -53,8 +51,13 @@ from pyintellicenter import (
     PoolObject,
 )
 
-from . import IntelliCenterConfigEntry, PoolEntity, async_setup_pool_entities
-from .const import CHLOR_ATTR, DNTSTP_ATTR, SINGLE_ATTR
+from . import (
+    IntelliCenterConfigEntry,
+    PoolEntity,
+    async_setup_pool_entities,
+    protocol_on_off,
+)
+from .const import CHEM_CONTROLLER_SUBTYPE, DNTSTP_ATTR, SINGLE_ATTR
 from .coordinator import IntelliCenterCoordinator
 from .sensor import normalize_system_mode
 
@@ -71,8 +74,6 @@ def _build_entities(
 ) -> list[
     PoolBinarySensor
     | ChemAlertBinarySensor
-    | ChlorinatorBinarySensor
-    | DelayBinarySensor
     | FirmwareUpdateBinarySensor
     | HeaterBinarySensor
     | ScheduleBinarySensor
@@ -82,8 +83,6 @@ def _build_entities(
     sensors: list[
         PoolBinarySensor
         | ChemAlertBinarySensor
-        | ChlorinatorBinarySensor
-        | DelayBinarySensor
         | FirmwareUpdateBinarySensor
         | HeaterBinarySensor
         | ScheduleBinarySensor
@@ -92,7 +91,6 @@ def _build_entities(
 
     for obj in candidates:
         if obj.objtype == CIRCUIT_TYPE:
-            sensors.append(DelayBinarySensor(coordinator, obj))
             if obj.subtype == "FRZ":
                 sensors.append(
                     PoolBinarySensor(
@@ -126,7 +124,7 @@ def _build_entities(
                     device_class=BinarySensorDeviceClass.RUNNING,
                 )
             )
-        elif obj.objtype == CHEM_TYPE and obj.subtype == "ICHEM":
+        elif obj.objtype == CHEM_TYPE and obj.subtype == CHEM_CONTROLLER_SUBTYPE:
             sensors.append(ChemAlertBinarySensor(coordinator, obj))
             # IntelliChem alarm indicators (diagnostic entities)
             if PHHI_ATTR in obj.attribute_keys:
@@ -177,8 +175,6 @@ def _build_entities(
                         entity_category=EntityCategory.DIAGNOSTIC,
                     )
                 )
-        elif obj.objtype == CHEM_TYPE and obj.subtype == "ICHLOR":
-            sensors.append(ChlorinatorBinarySensor(coordinator, obj))
         elif obj.objtype == SYSTEM_TYPE:
             sensors.append(FirmwareUpdateBinarySensor(coordinator, obj))
             if SERVICE_ATTR in obj.attribute_keys:
@@ -262,27 +258,32 @@ class ChemAlertBinarySensor(PoolEntity, BinarySensorEntity):
         )
 
     @property
-    def _inputs_valid(self) -> bool:
-        """Return whether every helper input has a known on/off value."""
-        return all(
-            self._pool_object[attribute] in (STATUS_ON, STATUS_OFF)
+    def _input_states(self) -> tuple[bool | None, ...]:
+        """Return the normalized states of every alarm input."""
+        return tuple(
+            protocol_on_off(self._pool_object[attribute])
             for attribute in self._alert_attributes
         )
 
     @property
     def is_on(self) -> bool | None:
         """Return whether any chemistry alarm is active."""
-        if not self._inputs_valid:
-            return None
-        return self._controller.has_chem_alert(self._pool_object.objnam)
+        states = self._input_states
+        if any(state is True for state in states):
+            return True
+        if all(state is False for state in states):
+            return False
+        return None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return active alert names alongside the standard metadata."""
         attributes = super().extra_state_attributes
-        if self._inputs_valid:
-            attributes["active_alerts"] = self._controller.get_chem_alerts(
-                self._pool_object.objnam
+        if self.is_on is not None:
+            attributes["active_alerts"] = (
+                self._controller.get_chem_alerts(self._pool_object.objnam)
+                if self._controller.has_chem_alert(self._pool_object.objnam)
+                else []
             )
         return attributes
 
@@ -291,68 +292,13 @@ class ChemAlertBinarySensor(PoolEntity, BinarySensorEntity):
         return self._check_attributes_updated(updates, *self._alert_attributes)
 
 
-class ChlorinatorBinarySensor(PoolEntity, BinarySensorEntity):
-    """IntelliChlor operating status."""
-
-    _attr_device_class = BinarySensorDeviceClass.RUNNING
-    _attr_icon = "mdi:water-sync"
-
-    def __init__(
-        self,
-        coordinator: IntelliCenterCoordinator,
-        pool_object: PoolObject,
-    ) -> None:
-        """Initialize the chlorinator status sensor."""
-        super().__init__(
-            coordinator,
-            pool_object,
-            attribute_key=CHLOR_ATTR,
-            name="+ Running",
-        )
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return running state, or unknown for missing/malformed values."""
-        value = self._pool_object[self._attribute_key]
-        if value not in (STATUS_ON, STATUS_OFF):
-            return None
-        return bool(value == STATUS_ON)
-
-
 class ProtocolOnOffBinarySensor(PoolEntity, BinarySensorEntity):
     """Binary sensor that treats values outside ON/OFF as unknown."""
 
     @property
     def is_on(self) -> bool | None:
         """Map only the protocol's canonical ON and OFF values."""
-        value = self._pool_object[self._attribute_key]
-        if value == STATUS_ON:
-            return True
-        if value == STATUS_OFF:
-            return False
-        return None
-
-
-class DelayBinarySensor(ProtocolOnOffBinarySensor):
-    """Diagnostic status for a circuit's active system delay."""
-
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_entity_registry_enabled_default = False
-    _attr_icon = "mdi:timer-alert-outline"
-
-    def __init__(
-        self,
-        coordinator: IntelliCenterCoordinator,
-        pool_object: PoolObject,
-    ) -> None:
-        """Initialize a circuit delay sensor."""
-        super().__init__(
-            coordinator,
-            pool_object,
-            attribute_key=DLY_ATTR,
-            name="+ Delay",
-            enabled_by_default=False,
-        )
+        return protocol_on_off(self._pool_object[self._attribute_key])
 
 
 class FirmwareUpdateBinarySensor(ProtocolOnOffBinarySensor):
@@ -373,6 +319,19 @@ class FirmwareUpdateBinarySensor(ProtocolOnOffBinarySensor):
             attribute_key=UPDATE_ATTR,
             name="Firmware Update Available",
         )
+
+    @property
+    def is_on(self) -> bool | None:
+        """Map numeric update flags plus canonical protocol ON/OFF values."""
+        value = self._pool_object[self._attribute_key]
+        mapped = protocol_on_off(value)
+        if mapped is not None:
+            return mapped
+        if value == "1":
+            return True
+        if value == "0":
+            return False
+        return None
 
 
 # -------------------------------------------------------------------------------------
@@ -493,10 +452,7 @@ class ScheduleBinarySensor(PoolEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool | None:
         """Return true if the schedule is currently active."""
-        value = self._pool_object[self._attribute_key]
-        if value not in (STATUS_ON, STATUS_OFF):
-            return None
-        return bool(value == STATUS_ON)
+        return protocol_on_off(self._pool_object[self._attribute_key])
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

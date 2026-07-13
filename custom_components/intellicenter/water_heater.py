@@ -355,25 +355,24 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
         # the state correct when a stale HCOMBO MODE remains after switching to a
         # standard heater on a mixed body.
         heater = self._pool_object[HEATER_ATTR]
-        if heater in self._heater_list:
-            heater_obj = self.coordinator.model[heater]
-            if (
-                heater_obj is not None
-                and heater_obj.sname is not None
-                and heater_obj.subtype not in (_HCOMBO_SUBTYPE, "SOLAR")
-            ):
-                return str(heater_obj.sname)
+        heater_obj = (
+            self.coordinator.model[heater] if heater in self._heater_list else None
+        )
+        standard_name: str | None = None
+        if (
+            heater_obj is not None
+            and heater_obj.sname is not None
+            and heater_obj.subtype != _HCOMBO_SUBTYPE
+        ):
+            standard_name = str(heater_obj.sname)
+            # A standard non-solar heater takes precedence over solar mode.
+            if heater_obj.subtype != "SOLAR":
+                return standard_name
         solar_mode = self._current_solar_mode()
         if solar_mode is not None:
             return _SOLAR_MODE_LABELS[solar_mode]
-        if heater in self._heater_list:
-            heater_obj = self.coordinator.model[heater]
-            if (
-                heater_obj is not None
-                and heater_obj.sname is not None
-                and heater_obj.subtype != _HCOMBO_SUBTYPE
-            ):
-                return str(heater_obj.sname)
+        if standard_name is not None:
+            return standard_name
         if self._is_multimode:
             mode = self._current_hcombo_mode()
             if mode is not None:

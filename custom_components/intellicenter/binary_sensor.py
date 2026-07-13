@@ -90,17 +90,16 @@ def _build_entities(
     ] = []
 
     for obj in candidates:
-        if obj.objtype == CIRCUIT_TYPE:
-            if obj.subtype == "FRZ":
-                sensors.append(
-                    PoolBinarySensor(
-                        coordinator,
-                        obj,
-                        icon="mdi:snowflake",
-                        device_class=BinarySensorDeviceClass.COLD,
-                        entity_category=EntityCategory.DIAGNOSTIC,
-                    )
+        if obj.objtype == CIRCUIT_TYPE and obj.subtype == "FRZ":
+            sensors.append(
+                PoolBinarySensor(
+                    coordinator,
+                    obj,
+                    icon="mdi:snowflake",
+                    device_class=BinarySensorDeviceClass.COLD,
+                    entity_category=EntityCategory.DIAGNOSTIC,
                 )
+            )
         elif obj.objtype == HEATER_TYPE:
             sensors.append(
                 HeaterBinarySensor(
@@ -292,16 +291,7 @@ class ChemAlertBinarySensor(PoolEntity, BinarySensorEntity):
         return self._check_attributes_updated(updates, *self._alert_attributes)
 
 
-class ProtocolOnOffBinarySensor(PoolEntity, BinarySensorEntity):
-    """Binary sensor that treats values outside ON/OFF as unknown."""
-
-    @property
-    def is_on(self) -> bool | None:
-        """Map only the protocol's canonical ON and OFF values."""
-        return protocol_on_off(self._pool_object[self._attribute_key])
-
-
-class FirmwareUpdateBinarySensor(ProtocolOnOffBinarySensor):
+class FirmwareUpdateBinarySensor(PoolEntity, BinarySensorEntity):
     """Report whether the panel advertises an available firmware update."""
 
     _attr_device_class = BinarySensorDeviceClass.UPDATE

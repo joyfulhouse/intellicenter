@@ -2,9 +2,11 @@
 
 from unittest.mock import MagicMock
 
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from pyintellicenter import (
+    BODY_TYPE,
     STATUS_ATTR,
     VACFLO_ATTR,
     PoolModel,
@@ -12,7 +14,14 @@ from pyintellicenter import (
 )
 import pytest
 
-from custom_components.intellicenter.switch import PoolBody, PoolCircuit, PoolVacation
+from custom_components.intellicenter.const import MANHT_ATTR
+from custom_components.intellicenter.switch import (
+    ManualHeatSwitch,
+    PoolBody,
+    PoolCircuit,
+    PoolVacation,
+    _build_entities,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -54,6 +63,104 @@ async def test_switch_setup_creates_entities(
     # Verify we have circuit switches
     circuit_switches = [e for e in entities_added if isinstance(e, PoolCircuit)]
     assert len(circuit_switches) >= 2
+
+
+async def test_manual_heat_created_only_for_spa_unconditionally(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+) -> None:
+    """SPA bodies always get Manual Heat; pools do not, regardless of MANHT state."""
+    spa = PoolObject(
+        "SPA01",
+        {"OBJTYP": BODY_TYPE, "SUBTYP": "SPA", "SNAME": "Spa"},
+    )
+    pool = PoolObject(
+        "POOL1",
+        {"OBJTYP": BODY_TYPE, "SUBTYP": "POOL", "SNAME": "Pool"},
+    )
+
+    switches = _build_entities(mock_coordinator, [spa, pool])
+
+    manual_heat = [
+        switch for switch in switches if isinstance(switch, ManualHeatSwitch)
+    ]
+    assert len(manual_heat) == 1
+    assert manual_heat[0]._pool_object.objnam == "SPA01"
+    assert manual_heat[0].name == "Spa Manual Heat"
+    assert manual_heat[0].entity_category == EntityCategory.CONFIG
+    assert manual_heat[0].entity_registry_enabled_default is True
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [("ON", True), ("OFF", False), (None, None), ("BAD", None)],
+)
+async def test_manual_heat_state_mapping(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+    raw: str | None,
+    expected: bool | None,
+) -> None:
+    """Manual Heat reports unknown for missing or malformed runtime state."""
+    spa = PoolObject(
+        "SPA01",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SUBTYP": "SPA",
+            "SNAME": "Spa",
+            MANHT_ATTR: raw,
+        },
+    )
+    switch = ManualHeatSwitch(mock_coordinator, spa)
+
+    assert switch.is_on is expected
+
+
+@pytest.mark.parametrize(("turn_on", "expected"), [(True, "ON"), (False, "OFF")])
+async def test_manual_heat_write(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+    turn_on: bool,
+    expected: str,
+) -> None:
+    """Manual Heat writes MANHT directly on its SPA body."""
+    spa = PoolObject(
+        "SPA01",
+        {"OBJTYP": BODY_TYPE, "SUBTYP": "SPA", "SNAME": "Spa"},
+    )
+    switch = ManualHeatSwitch(mock_coordinator, spa)
+
+    if turn_on:
+        await switch.async_turn_on()
+    else:
+        await switch.async_turn_off()
+
+    mock_coordinator.controller.request_changes.assert_awaited_once_with(
+        "SPA01", {MANHT_ATTR: expected}
+    )
+
+
+async def test_manual_heat_write_error_is_translated(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A failed MANHT write surfaces a translated service error."""
+    from pyintellicenter import ICConnectionError
+
+    spa = PoolObject(
+        "SPA01",
+        {"OBJTYP": BODY_TYPE, "SUBTYP": "SPA", "SNAME": "Spa"},
+    )
+    mock_coordinator.controller.request_changes.side_effect = ICConnectionError(
+        "offline"
+    )
+    switch = ManualHeatSwitch(mock_coordinator, spa)
+
+    with pytest.raises(HomeAssistantError) as err:
+        await switch.async_turn_on()
+
+    assert err.value.translation_domain == "intellicenter"
+    assert err.value.translation_key == "command_failed"
 
 
 async def test_circuit_switch_properties(

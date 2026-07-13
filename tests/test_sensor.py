@@ -26,6 +26,7 @@ from pyintellicenter import (
     SALT_ATTR,
     SENSE_TYPE,
     SERVICE_ATTR,
+    SINDEX_ATTR,
     SOURCE_ATTR,
     SYSTEM_TYPE,
     PoolModel,
@@ -35,7 +36,12 @@ import pytest
 
 from custom_components.intellicenter.const import CONST_GPM, CONST_RPM
 from custom_components.intellicenter.coordinator import DEFAULT_ATTRIBUTES_MAP
-from custom_components.intellicenter.sensor import PoolSensor, SystemModeSensor
+from custom_components.intellicenter.sensor import (
+    PoolSensor,
+    SaturationIndexSensor,
+    SystemModeSensor,
+    _build_entities,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -330,6 +336,57 @@ async def test_intellichem_orp_sensor(
     )
 
     assert sensor.native_value == 650
+
+
+async def test_intellichem_saturation_index_sensor_created_unconditionally(
+    hass: HomeAssistant,
+    pool_object_intellichem: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """IntelliChem always exposes LSI, even before SINDEX is received."""
+    sensors = _build_entities(mock_coordinator, [pool_object_intellichem])
+
+    lsi_sensors = [
+        sensor for sensor in sensors if isinstance(sensor, SaturationIndexSensor)
+    ]
+    assert len(lsi_sensors) == 1
+    sensor = lsi_sensors[0]
+    assert sensor.name == "IntelliChem LSI"
+    assert sensor.unique_id == "test_entry_CHEM1SINDEX"
+    assert sensor.state_class == SensorStateClass.MEASUREMENT
+    assert sensor.native_unit_of_measurement is None
+    assert sensor.suggested_display_precision == 2
+    assert sensor.entity_registry_enabled_default is True
+
+
+@pytest.mark.parametrize("value", [0.12, -0.35, None])
+async def test_intellichem_saturation_index_uses_helper(
+    hass: HomeAssistant,
+    pool_object_intellichem: PoolObject,
+    mock_coordinator: MagicMock,
+    value: float | None,
+) -> None:
+    """LSI delegates parsing of valid, missing, and malformed values to the library."""
+    mock_coordinator.controller.get_saturation_index.return_value = value
+    sensor = SaturationIndexSensor(mock_coordinator, pool_object_intellichem)
+
+    assert sensor.native_value == value
+    mock_coordinator.controller.get_saturation_index.assert_called_once_with("CHEM1")
+
+
+async def test_saturation_index_not_created_for_intellichlor(
+    hass: HomeAssistant,
+    pool_object_intellichlor: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """SINDEX belongs only to IntelliChem objects."""
+    pool_object_intellichlor.update({SINDEX_ATTR: "0.20"})
+
+    sensors = _build_entities(mock_coordinator, [pool_object_intellichlor])
+
+    assert not [
+        sensor for sensor in sensors if isinstance(sensor, SaturationIndexSensor)
+    ]
 
 
 async def test_intellichem_tank_level_sensors(

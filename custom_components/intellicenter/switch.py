@@ -22,6 +22,8 @@ from pyintellicenter import (
     HEATER_ATTR,
     HTMODE_ATTR,
     STATUS_ATTR,
+    STATUS_OFF,
+    STATUS_ON,
     SUPER_ATTR,
     SYSTEM_TYPE,
     VACFLO_ATTR,
@@ -35,6 +37,7 @@ from . import (
     PoolEntity,
     async_setup_pool_entities,
 )
+from .const import DOMAIN, MANHT_ATTR
 from .coordinator import IntelliCenterCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -51,6 +54,8 @@ def _build_entities(
     for pool_obj in candidates:
         if pool_obj.objtype == BODY_TYPE:
             switches.append(PoolBody(coordinator, pool_obj))
+            if pool_obj.subtype == "SPA":
+                switches.append(ManualHeatSwitch(coordinator, pool_obj))
         elif (
             pool_obj.objtype == CHEM_TYPE
             and pool_obj.subtype == "ICHLOR"
@@ -134,6 +139,57 @@ class PoolBody(PoolCircuit):
         """Initialize a Pool body from the underlying circuit."""
         super().__init__(coordinator, pool_object)
         self._extra_state_attrs = {VOL_ATTR, HEATER_ATTR, HTMODE_ATTR}
+
+
+class ManualHeatSwitch(PoolEntity, SwitchEntity):
+    """Spa Manual Heat configuration switch."""
+
+    _attr_device_class = SwitchDeviceClass.SWITCH
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_icon = "mdi:heat-wave"
+
+    def __init__(
+        self,
+        coordinator: IntelliCenterCoordinator,
+        pool_object: PoolObject,
+    ) -> None:
+        """Initialize Spa Manual Heat."""
+        super().__init__(
+            coordinator,
+            pool_object,
+            attribute_key=MANHT_ATTR,
+            name="+ Manual Heat",
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return the configured state, or unknown if it has not synchronized."""
+        value = self._pool_object[self._attribute_key]
+        if value not in (STATUS_ON, STATUS_OFF):
+            return None
+        return bool(value == STATUS_ON)
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Enable Spa Manual Heat."""
+        await self._async_set_manual_heat(STATUS_ON)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Disable Spa Manual Heat."""
+        await self._async_set_manual_heat(STATUS_OFF)
+
+    async def _async_set_manual_heat(self, value: str) -> None:
+        """Write MANHT and translate protocol failures."""
+        try:
+            await self._async_execute_command(
+                self._controller.request_changes(
+                    self._pool_object.objnam, {MANHT_ATTR: value}
+                )
+            )
+        except HomeAssistantError as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="command_failed",
+            ) from err
 
 
 class PoolVacation(PoolEntity, SwitchEntity):

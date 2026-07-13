@@ -72,6 +72,7 @@ from pyintellicenter import (
     SELECT_ATTR,
     SENSE_TYPE,
     SERVICE_ATTR,
+    SINDEX_ATTR,
     SNAME_ATTR,
     SOURCE_ATTR,
     SPEED_ATTR,
@@ -80,6 +81,7 @@ from pyintellicenter import (
     SUPER_ATTR,
     SYSTEM_TYPE,
     TIME_ATTR,
+    TIMOUT_ATTR,
     USE_ATTR,
     VACFLO_ATTR,
     VER_ATTR,
@@ -92,7 +94,7 @@ from pyintellicenter import (
     PoolObject,
 )
 
-from .const import DEFAULT_TRANSPORT, DOMAIN, TransportType
+from .const import CHLOR_ATTR, DEFAULT_TRANSPORT, DOMAIN, MANHT_ATTR, TransportType
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -111,6 +113,7 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
         LOTMP_ATTR,
         LSTTMP_ATTR,
         MODE_ATTR,  # Heat mode (used by multi-mode heaters like HCOMBO)
+        MANHT_ATTR,
         STATUS_ATTR,
         VOL_ATTR,
     },
@@ -147,13 +150,16 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
         ALK_ATTR,
         CALC_ATTR,
         CYACID_ATTR,
+        SINDEX_ATTR,
         # IntelliChem alarm indicators (diagnostic)
         PHHI_ATTR,
         PHLO_ATTR,
         ORPHI_ATTR,
         ORPLO_ATTR,
         # IntelliChlor sensors
+        CHLOR_ATTR,
         SALT_ATTR,
+        TIMOUT_ATTR,
     },
     # External instruments (pool covers). Without this entry PoolModel drops the
     # objects entirely and the cover platform never sees them (the model only
@@ -192,8 +198,8 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
     },
     SENSE_TYPE: {SNAME_ATTR, SOURCE_ATTR},
     SCHED_TYPE: {SNAME_ATTR, ACT_ATTR, VACFLO_ATTR},
-    # MODE/VACFLO/VER plus SERVICE for the system operating mode sensor
-    SYSTEM_TYPE: {MODE_ATTR, SERVICE_ATTR, VACFLO_ATTR, VER_ATTR},
+    # System unit/mode, vacation, firmware, and manual-heat configuration
+    SYSTEM_TYPE: {MANHT_ATTR, MODE_ATTR, SERVICE_ATTR, VACFLO_ATTR, VER_ATTR},
 }
 
 

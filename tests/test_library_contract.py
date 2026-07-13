@@ -19,6 +19,9 @@ from __future__ import annotations
 
 import pyintellicenter
 
+from custom_components.intellicenter.const import CHLOR_ATTR, MANHT_ATTR
+from custom_components.intellicenter.coordinator import DEFAULT_ATTRIBUTES_MAP
+
 # Methods the integration invokes on the controller (ICModelController, which
 # inherits ICBaseController). Existence + callability is asserted, not the exact
 # signature: that catches the real drift risk (rename/removal) without coupling
@@ -34,8 +37,11 @@ import pyintellicenter
 #   set_orp_setpoint, set_ph_setpoint
 CONTROLLER_METHODS = (
     "body_supports_cooling",
+    "get_chem_alerts",
     "get_chlorinator_output",
     "get_pump_circuit_speed",
+    "get_saturation_index",
+    "has_chem_alert",
     "is_body_cooling",
     "is_body_heating",
     "is_vacation_mode",
@@ -46,6 +52,7 @@ CONTROLLER_METHODS = (
     "set_chlorinator_output",
     "set_cooling_setpoint",
     "set_cyanuric_acid",
+    "set_heat_mode",
     "set_heating_setpoint",
     "set_light_effect",
     "set_orp_setpoint",
@@ -108,3 +115,14 @@ def test_light_effects_includes_sam_show() -> None:
         "Installed pyintellicenter is missing the SAMMOD->'SAm' light show. "
         "Bump the manifest pin to a version that includes it."
     )
+
+
+def test_chemistry_and_manual_heat_attributes_are_tracked() -> None:
+    """Every attribute consumed by the new entities is requested into PoolModel."""
+    assert {
+        CHLOR_ATTR,
+        pyintellicenter.SINDEX_ATTR,
+        pyintellicenter.TIMOUT_ATTR,
+    } <= DEFAULT_ATTRIBUTES_MAP[pyintellicenter.CHEM_TYPE]
+    assert MANHT_ATTR in DEFAULT_ATTRIBUTES_MAP[pyintellicenter.BODY_TYPE]
+    assert MANHT_ATTR in DEFAULT_ATTRIBUTES_MAP[pyintellicenter.SYSTEM_TYPE]

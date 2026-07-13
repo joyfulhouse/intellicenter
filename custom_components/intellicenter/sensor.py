@@ -50,6 +50,7 @@ from pyintellicenter import (
     SALT_ATTR,
     SENSE_TYPE,
     SERVICE_ATTR,
+    SINDEX_ATTR,
     SOURCE_ATTR,
     SYSTEM_TYPE,
     VER_ATTR,
@@ -218,6 +219,7 @@ def _build_entities(
                             unit_of_measurement="mV",
                         )
                     )
+                sensors.append(SaturationIndexSensor(coordinator, obj))
                 if QUALTY_ATTR in obj.attribute_keys:
                     sensors.append(
                         PoolSensor(
@@ -406,6 +408,32 @@ class PoolSensor(PoolEntity, SensorEntity):
         if self._attr_device_class == SensorDeviceClass.TEMPERATURE:
             return self.pentairTemperatureSettings()
         return self._attr_native_unit_of_measurement
+
+
+class SaturationIndexSensor(PoolSensor):
+    """Controller-computed Langelier Saturation Index for IntelliChem."""
+
+    _attr_suggested_display_precision = 2
+
+    def __init__(
+        self,
+        coordinator: IntelliCenterCoordinator,
+        pool_object: PoolObject,
+    ) -> None:
+        """Initialize the LSI sensor."""
+        super().__init__(
+            coordinator,
+            pool_object,
+            device_class=None,
+            attribute_key=SINDEX_ATTR,
+            name="+ LSI",
+            icon="mdi:water-check-outline",
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the library-parsed saturation index."""
+        return self._controller.get_saturation_index(self._pool_object.objnam)
 
 
 # The canonical IntelliCenter system operating modes exposed as enum states

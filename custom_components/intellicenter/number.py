@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 import logging
+import math
 from typing import Any
 
 from homeassistant.components.number import (
@@ -25,6 +26,7 @@ from homeassistant.const import (
     CONCENTRATION_PARTS_PER_MILLION,
     PERCENTAGE,
     EntityCategory,
+    UnitOfTime,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -51,6 +53,7 @@ from pyintellicenter import (
     SEC_ATTR,
     SELECT_ATTR,
     SPEED_ATTR,
+    TIMOUT_ATTR,
     PoolObject,
 )
 
@@ -61,7 +64,7 @@ from . import (
     body_temperature_limits,
     safe_int,
 )
-from .const import CONST_GPM, CONST_RPM
+from .const import CONST_GPM, CONST_RPM, DOMAIN
 from .coordinator import IntelliCenterCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -104,6 +107,11 @@ PUMP_GPM_MIN_DEFAULT = 15
 PUMP_GPM_MAX_DEFAULT = 140
 PUMP_GPM_STEP = 5
 
+SUPERCHLOR_DURATION_MIN = 1
+SUPERCHLOR_DURATION_MAX = 96
+SUPERCHLOR_DURATION_STEP = 1
+SECONDS_PER_HOUR = 3600
+
 # -------------------------------------------------------------------------------------
 
 
@@ -118,6 +126,8 @@ def _build_entities(
 
     for pool_obj in candidate_objects:
         if pool_obj.objtype == CHEM_TYPE:
+            if pool_obj.subtype == "ICHLOR":
+                numbers.append(SuperChlorinateDurationNumber(coordinator, pool_obj))
             if pool_obj.subtype == "ICHLOR" and PRIM_ATTR in pool_obj.attribute_keys:
                 # IntelliChlor output percentage controls (CONFIG category)
                 body_attr = pool_obj[BODY_ATTR]
@@ -508,6 +518,70 @@ class PoolNumber(PoolEntity, NumberEntity):
         else:
             # Fallback for other number entities (e.g., HITMP)
             self.request_changes({self._attribute_key: str(int(value))})
+
+
+class SuperChlorinateDurationNumber(PoolNumber):
+    """IntelliChlor superchlorinate duration exposed in hours."""
+
+    def __init__(
+        self,
+        coordinator: IntelliCenterCoordinator,
+        pool_object: PoolObject,
+    ) -> None:
+        """Initialize the duration number."""
+        super().__init__(
+            coordinator,
+            pool_object,
+            min_value=SUPERCHLOR_DURATION_MIN,
+            max_value=SUPERCHLOR_DURATION_MAX,
+            step=SUPERCHLOR_DURATION_STEP,
+            attribute_key=TIMOUT_ATTR,
+            name="+ Superchlorinate Duration",
+            icon="mdi:timer-cog-outline",
+            unit_of_measurement=UnitOfTime.HOURS,
+            mode=NumberMode.BOX,
+            entity_category=EntityCategory.CONFIG,
+            integer_only=False,
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        """Return protocol seconds converted to hours."""
+        seconds = self._safe_float_conversion(self._pool_object[self._attribute_key])
+        if seconds is None or not math.isfinite(seconds):
+            return None
+        hours = seconds / SECONDS_PER_HOUR
+        if (
+            hours < SUPERCHLOR_DURATION_MIN
+            or hours > SUPERCHLOR_DURATION_MAX
+            or not hours.is_integer()
+        ):
+            return None
+        return hours
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Write whole hours as protocol seconds."""
+        if (
+            value < SUPERCHLOR_DURATION_MIN
+            or value > SUPERCHLOR_DURATION_MAX
+            or not float(value).is_integer()
+        ):
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="invalid_superchlorinate_duration",
+            )
+        try:
+            await self._async_execute_command(
+                self._controller.request_changes(
+                    self._pool_object.objnam,
+                    {TIMOUT_ATTR: str(int(value * SECONDS_PER_HOUR))},
+                )
+            )
+        except HomeAssistantError as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="command_failed",
+            ) from err
 
 
 # -------------------------------------------------------------------------------------

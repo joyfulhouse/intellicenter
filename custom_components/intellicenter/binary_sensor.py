@@ -38,12 +38,14 @@ from pyintellicenter import (
     SCHED_TYPE,
     SERVICE_ATTR,
     STATUS_ATTR,
+    STATUS_OFF,
     STATUS_ON,
     SYSTEM_TYPE,
     PoolObject,
 )
 
 from . import IntelliCenterConfigEntry, PoolEntity, async_setup_pool_entities
+from .const import CHLOR_ATTR
 from .coordinator import IntelliCenterCoordinator
 from .sensor import normalize_system_mode
 
@@ -52,11 +54,15 @@ _LOGGER = logging.getLogger(__name__)
 # Coordinator handles updates via push, so no parallel update limit needed
 PARALLEL_UPDATES = 0
 
+_CHEM_ALERT_ENTITY_KEY = "CHEM_ALERT"
+
 
 def _build_entities(
     coordinator: IntelliCenterCoordinator, candidates: Iterable[PoolObject]
 ) -> list[
     PoolBinarySensor
+    | ChemAlertBinarySensor
+    | ChlorinatorBinarySensor
     | HeaterBinarySensor
     | ScheduleBinarySensor
     | SystemModeBinarySensor
@@ -64,6 +70,8 @@ def _build_entities(
     """Build binary sensor entities for the given candidate pool objects."""
     sensors: list[
         PoolBinarySensor
+        | ChemAlertBinarySensor
+        | ChlorinatorBinarySensor
         | HeaterBinarySensor
         | ScheduleBinarySensor
         | SystemModeBinarySensor
@@ -104,6 +112,7 @@ def _build_entities(
                 )
             )
         elif obj.objtype == CHEM_TYPE and obj.subtype == "ICHEM":
+            sensors.append(ChemAlertBinarySensor(coordinator, obj))
             # IntelliChem alarm indicators (diagnostic entities)
             if PHHI_ATTR in obj.attribute_keys:
                 sensors.append(
@@ -153,6 +162,8 @@ def _build_entities(
                         entity_category=EntityCategory.DIAGNOSTIC,
                     )
                 )
+        elif obj.objtype == CHEM_TYPE and obj.subtype == "ICHLOR":
+            sensors.append(ChlorinatorBinarySensor(coordinator, obj))
         elif obj.objtype == SYSTEM_TYPE and SERVICE_ATTR in obj.attribute_keys:
             # Panel operating-mode problem indicator: on whenever the panel is
             # not in normal automatic operation (Service or Time Out), e.g.
@@ -210,6 +221,85 @@ class PoolBinarySensor(PoolEntity, BinarySensorEntity):
     def is_on(self) -> bool:
         """Return true if sensor is on."""
         return bool(self._pool_object[self._attribute_key] == self._value_for_on)
+
+
+class ChemAlertBinarySensor(PoolEntity, BinarySensorEntity):
+    """Aggregate IntelliChem alarm state."""
+
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:flask-empty-remove-outline"
+    _alert_attributes = (PHHI_ATTR, PHLO_ATTR, ORPHI_ATTR, ORPLO_ATTR)
+
+    def __init__(
+        self,
+        coordinator: IntelliCenterCoordinator,
+        pool_object: PoolObject,
+    ) -> None:
+        """Initialize the aggregate alert sensor."""
+        super().__init__(
+            coordinator,
+            pool_object,
+            attribute_key=_CHEM_ALERT_ENTITY_KEY,
+            name="+ Chemistry Alert",
+        )
+
+    @property
+    def _inputs_valid(self) -> bool:
+        """Return whether every helper input has a known on/off value."""
+        return all(
+            self._pool_object[attribute] in (STATUS_ON, STATUS_OFF)
+            for attribute in self._alert_attributes
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return whether any chemistry alarm is active."""
+        if not self._inputs_valid:
+            return None
+        return self._controller.has_chem_alert(self._pool_object.objnam)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return active alert names alongside the standard metadata."""
+        attributes = super().extra_state_attributes
+        if self._inputs_valid:
+            attributes["active_alerts"] = self._controller.get_chem_alerts(
+                self._pool_object.objnam
+            )
+        return attributes
+
+    def isUpdated(self, updates: dict[str, dict[str, Any]]) -> bool:
+        """Return whether any contributing alarm attribute changed."""
+        return self._check_attributes_updated(updates, *self._alert_attributes)
+
+
+class ChlorinatorBinarySensor(PoolEntity, BinarySensorEntity):
+    """IntelliChlor operating status."""
+
+    _attr_device_class = BinarySensorDeviceClass.RUNNING
+    _attr_icon = "mdi:water-sync"
+
+    def __init__(
+        self,
+        coordinator: IntelliCenterCoordinator,
+        pool_object: PoolObject,
+    ) -> None:
+        """Initialize the chlorinator status sensor."""
+        super().__init__(
+            coordinator,
+            pool_object,
+            attribute_key=CHLOR_ATTR,
+            name="+ Running",
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return running state, or unknown for missing/malformed values."""
+        value = self._pool_object[self._attribute_key]
+        if value not in (STATUS_ON, STATUS_OFF):
+            return None
+        return bool(value == STATUS_ON)
 
 
 # -------------------------------------------------------------------------------------

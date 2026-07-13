@@ -171,10 +171,6 @@ def test_roadmap_attributes_are_tracked() -> None:
         pyintellicenter.VER_ATTR,
         PORT_ATTR,
     } <= DEFAULT_ATTRIBUTES_MAP[pyintellicenter.MODULE_TYPE]
-    assert {
-        pyintellicenter.SNAME_ATTR,
-        pyintellicenter.SUBTYP_ATTR,
-    } <= DEFAULT_ATTRIBUTES_MAP[pyintellicenter.PANEL_TYPE]
 
 
 def test_sensor_diagnostic_helpers_are_available() -> None:

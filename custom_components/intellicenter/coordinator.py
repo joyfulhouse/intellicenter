@@ -54,7 +54,6 @@ from pyintellicenter import (
     ORPTNK_ATTR,
     ORPVAL_ATTR,
     ORPVOL_ATTR,
-    PANEL_TYPE,
     PARENT_ATTR,
     PHHI_ATTR,
     PHLO_ATTR,
@@ -243,7 +242,6 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
         VER_ATTR,
     },
     MODULE_TYPE: {SNAME_ATTR, SUBTYP_ATTR, VER_ATTR, PORT_ATTR},
-    PANEL_TYPE: {SNAME_ATTR, SUBTYP_ATTR},
 }
 
 

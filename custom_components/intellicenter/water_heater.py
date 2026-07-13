@@ -233,10 +233,17 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
         for heater in self._heater_list:
             heater_obj = self.coordinator.model[heater]
             if heater_obj is not None and operation == heater_obj.sname:
-                # Standard heater: assign it. We intentionally do NOT write MODE here
-                # (MODE=OFF would disable heating; the correct MODE depends on the
-                # heater's type and the panel derives it). current_operation prefers an
-                # assigned standard heater over a possibly-stale HCOMBO MODE.
+                # Standard heater: assign it. On solar-capable bodies also write
+                # MODE=HEATER so a previously selected solar mode does not linger
+                # (current_operation gives a valid solar MODE precedence). On
+                # non-solar bodies MODE is left alone: the panel derives it, and
+                # current_operation prefers the assigned standard heater over a
+                # possibly-stale HCOMBO MODE.
+                if self._has_solar:
+                    return {
+                        HEATER_ATTR: heater,
+                        MODE_ATTR: str(HeaterType.HEATER.value),
+                    }
                 return {HEATER_ATTR: heater}
         return None
 
@@ -351,28 +358,27 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
         For multi-mode (HCOMBO) heaters, operation is controlled via MODE_ATTR
         on the body rather than HEATER_ATTR assignment.
         """
-        # An assigned standard (non-HCOMBO) heater takes precedence. This also makes
-        # the state correct when a stale HCOMBO MODE remains after switching to a
-        # standard heater on a mixed body.
+        # A valid solar MODE takes precedence: selecting Solar Only/Preferred
+        # writes MODE and leaves HEATER pointing at the previous heater, so the
+        # heater assignment alone cannot be trusted on solar-capable bodies.
+        # (Hardware: MODE is the panel's authoritative heat-mode plane; a body
+        # heating with a standard heater reports MODE=2/HEATER.)
+        solar_mode = self._current_solar_mode()
+        if solar_mode is not None:
+            return _SOLAR_MODE_LABELS[solar_mode]
+        # Otherwise an assigned standard (non-HCOMBO) heater is the operation.
+        # This also keeps the state correct when a stale HCOMBO MODE remains
+        # after switching to a standard heater on a mixed body.
         heater = self._pool_object[HEATER_ATTR]
         heater_obj = (
             self.coordinator.model[heater] if heater in self._heater_list else None
         )
-        standard_name: str | None = None
         if (
             heater_obj is not None
             and heater_obj.sname is not None
             and heater_obj.subtype != _HCOMBO_SUBTYPE
         ):
-            standard_name = str(heater_obj.sname)
-            # A standard non-solar heater takes precedence over solar mode.
-            if heater_obj.subtype != "SOLAR":
-                return standard_name
-        solar_mode = self._current_solar_mode()
-        if solar_mode is not None:
-            return _SOLAR_MODE_LABELS[solar_mode]
-        if standard_name is not None:
-            return standard_name
+            return str(heater_obj.sname)
         if self._is_multimode:
             mode = self._current_hcombo_mode()
             if mode is not None:

@@ -7,10 +7,15 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from pyintellicenter import (
     BODY_TYPE,
+    CHEM_TYPE,
     CIRCUIT_TYPE,
     HEATER_ATTR,
     HEATER_TYPE,
     HTMODE_ATTR,
+    ORPHI_ATTR,
+    ORPLO_ATTR,
+    PHHI_ATTR,
+    PHLO_ATTR,
     PUMP_TYPE,
     SCHED_TYPE,
     STATUS_ATTR,
@@ -21,13 +26,19 @@ from pyintellicenter import (
 import pytest
 
 from custom_components.intellicenter.binary_sensor import (
+    ChemAlertBinarySensor,
+    ChlorinatorBinarySensor,
     HeaterBinarySensor,
     PoolBinarySensor,
     ScheduleBinarySensor,
     SystemModeBinarySensor,
     _build_entities,
 )
-from custom_components.intellicenter.const import DNTSTP_ATTR, SINGLE_ATTR
+from custom_components.intellicenter.const import (
+    CHLOR_ATTR,
+    DNTSTP_ATTR,
+    SINGLE_ATTR,
+)
 from custom_components.intellicenter.coordinator import DEFAULT_ATTRIBUTES_MAP
 
 pytestmark = pytest.mark.asyncio
@@ -142,6 +153,175 @@ async def test_binary_sensor_setup_creates_entities(
     # - Pump (PUMP1)
     # - Schedule (SCHED1)
     assert len(entities_added) >= 3
+
+
+async def test_chemistry_binary_sensors_created_by_subtype_unconditionally(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Aggregate alert and chlorinator status exist before runtime values arrive."""
+    intellichem = PoolObject(
+        "CHEM1",
+        {"OBJTYP": CHEM_TYPE, "SUBTYP": "ICHEM", "SNAME": "IntelliChem"},
+    )
+    intellichlor = PoolObject(
+        "CHEM2",
+        {"OBJTYP": CHEM_TYPE, "SUBTYP": "ICHLOR", "SNAME": "IntelliChlor"},
+    )
+
+    sensors = _build_entities(mock_coordinator, [intellichem, intellichlor])
+
+    assert (
+        len([sensor for sensor in sensors if isinstance(sensor, ChemAlertBinarySensor)])
+        == 1
+    )
+    assert (
+        len(
+            [
+                sensor
+                for sensor in sensors
+                if isinstance(sensor, ChlorinatorBinarySensor)
+            ]
+        )
+        == 1
+    )
+    chemistry_alert = next(
+        sensor for sensor in sensors if isinstance(sensor, ChemAlertBinarySensor)
+    )
+    chlorinator_status = next(
+        sensor for sensor in sensors if isinstance(sensor, ChlorinatorBinarySensor)
+    )
+    assert chemistry_alert.unique_id == "test_entry_CHEM1CHEM_ALERT"
+    assert chemistry_alert.entity_registry_enabled_default is True
+    assert chlorinator_status.entity_registry_enabled_default is True
+
+
+async def test_legacy_alarm_sensors_remain_on_intellichem_subtype(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+) -> None:
+    """All four existing per-alarm sensors remain attached only to IntelliChem."""
+    alarm_values = {
+        PHHI_ATTR: "OFF",
+        PHLO_ATTR: "OFF",
+        ORPHI_ATTR: "OFF",
+        ORPLO_ATTR: "OFF",
+    }
+    intellichem = PoolObject(
+        "CHEM1",
+        {
+            "OBJTYP": CHEM_TYPE,
+            "SUBTYP": "ICHEM",
+            "SNAME": "IntelliChem",
+            **alarm_values,
+        },
+    )
+    intellichlor = PoolObject(
+        "CHEM2",
+        {
+            "OBJTYP": CHEM_TYPE,
+            "SUBTYP": "ICHLOR",
+            "SNAME": "IntelliChlor",
+            **alarm_values,
+        },
+    )
+
+    chem_sensors = _build_entities(mock_coordinator, [intellichem])
+    chlor_sensors = _build_entities(mock_coordinator, [intellichlor])
+
+    individual_chem_alarms = {
+        sensor._attribute_key
+        for sensor in chem_sensors
+        if type(sensor) is PoolBinarySensor
+    }
+    individual_chlor_alarms = {
+        sensor._attribute_key
+        for sensor in chlor_sensors
+        if type(sensor) is PoolBinarySensor
+    }
+    assert individual_chem_alarms == {
+        PHHI_ATTR,
+        PHLO_ATTR,
+        ORPHI_ATTR,
+        ORPLO_ATTR,
+    }
+    assert individual_chlor_alarms == set()
+
+
+@pytest.mark.parametrize(
+    ("values", "helper_result", "expected"),
+    [
+        (
+            {PHHI_ATTR: "OFF", PHLO_ATTR: "OFF", ORPHI_ATTR: "OFF", ORPLO_ATTR: "OFF"},
+            False,
+            False,
+        ),
+        (
+            {PHHI_ATTR: "ON", PHLO_ATTR: "OFF", ORPHI_ATTR: "OFF", ORPLO_ATTR: "OFF"},
+            True,
+            True,
+        ),
+        (
+            {PHHI_ATTR: None, PHLO_ATTR: "OFF", ORPHI_ATTR: "OFF", ORPLO_ATTR: "OFF"},
+            False,
+            None,
+        ),
+        (
+            {PHHI_ATTR: "BAD", PHLO_ATTR: "OFF", ORPHI_ATTR: "OFF", ORPLO_ATTR: "OFF"},
+            False,
+            None,
+        ),
+    ],
+)
+async def test_chem_alert_state_mapping(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+    values: dict[str, str | None],
+    helper_result: bool,
+    expected: bool | None,
+) -> None:
+    """Aggregate alerts use the helper only when every alarm input is valid."""
+    chem = PoolObject(
+        "CHEM1",
+        {"OBJTYP": CHEM_TYPE, "SUBTYP": "ICHEM", "SNAME": "IntelliChem", **values},
+    )
+    mock_coordinator.controller.has_chem_alert.return_value = helper_result
+    mock_coordinator.controller.get_chem_alerts.return_value = (
+        ["pH High"] if helper_result else []
+    )
+    sensor = ChemAlertBinarySensor(mock_coordinator, chem)
+
+    assert sensor.is_on is expected
+    if expected is not None:
+        assert sensor.extra_state_attributes["active_alerts"] == (
+            ["pH High"] if helper_result else []
+        )
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [("ON", True), ("OFF", False), (None, None), ("BAD", None)],
+)
+async def test_chlorinator_running_state_mapping(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+    raw: str | None,
+    expected: bool | None,
+) -> None:
+    """CHLOR reports running, stopped, or unknown without fabricating state."""
+    chlor = PoolObject(
+        "CHEM2",
+        {
+            "OBJTYP": CHEM_TYPE,
+            "SUBTYP": "ICHLOR",
+            "SNAME": "IntelliChlor",
+            CHLOR_ATTR: raw,
+        },
+    )
+    sensor = ChlorinatorBinarySensor(mock_coordinator, chlor)
+
+    assert sensor.is_on is expected
+    assert sensor.device_class == BinarySensorDeviceClass.RUNNING
 
 
 async def test_freeze_protection_sensor_off(

@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTime
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from pyintellicenter import (
     BODY_TYPE,
     CHEM_TYPE,
@@ -16,13 +17,19 @@ from pyintellicenter import (
     SELECT_ATTR,
     SPEED_ATTR,
     TIME_ATTR,
+    TIMOUT_ATTR,
     PoolModel,
     PoolObject,
 )
 import pytest
 
 from custom_components.intellicenter.coordinator import DEFAULT_ATTRIBUTES_MAP
-from custom_components.intellicenter.number import PoolNumber, PumpSpeedNumber
+from custom_components.intellicenter.number import (
+    PoolNumber,
+    PumpSpeedNumber,
+    SuperChlorinateDurationNumber,
+    _build_entities,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -109,8 +116,132 @@ async def test_number_setup_creates_entities(
 
     await async_setup_entry(hass, mock_entry, capture_entities)
 
-    # Should create 2 number entities (one for each body)
-    assert len(entities_added) == 2
+    # Two body outputs plus one superchlorinate duration control.
+    assert len(entities_added) == 3
+
+
+async def test_superchlorinate_duration_created_without_runtime_value(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Every IntelliChlor gets a stable duration entity before TIMOUT arrives."""
+    chlor = PoolObject(
+        "ICHLOR1",
+        {"OBJTYP": CHEM_TYPE, "SUBTYP": "ICHLOR", "SNAME": "IntelliChlor"},
+    )
+
+    numbers = _build_entities(mock_coordinator, [chlor])
+
+    durations = [
+        number
+        for number in numbers
+        if isinstance(number, SuperChlorinateDurationNumber)
+    ]
+    assert len(durations) == 1
+    number = durations[0]
+    assert number.name == "IntelliChlor Superchlorinate Duration"
+    assert number.unique_id == "test_entry_ICHLOR1TIMOUT"
+    assert number.entity_category == EntityCategory.CONFIG
+    assert number.native_unit_of_measurement == UnitOfTime.HOURS
+    assert number.native_min_value == 1
+    assert number.native_max_value == 96
+    assert number.native_step == 1
+    assert number.entity_registry_enabled_default is True
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("86400", 24.0),
+        ("3600", 1.0),
+        (None, None),
+        ("bad", None),
+        ("nan", None),
+        ("1800", None),
+        ("349200", None),
+    ],
+)
+async def test_superchlorinate_duration_state_mapping(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+    raw: str | None,
+    expected: float | None,
+) -> None:
+    """TIMOUT seconds are exposed as hours, with invalid values unknown."""
+    chlor = PoolObject(
+        "ICHLOR1",
+        {
+            "OBJTYP": CHEM_TYPE,
+            "SUBTYP": "ICHLOR",
+            "SNAME": "IntelliChlor",
+            TIMOUT_ATTR: raw,
+        },
+    )
+    number = SuperChlorinateDurationNumber(mock_coordinator, chlor)
+
+    assert number.native_value == expected
+
+
+async def test_superchlorinate_duration_write(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Writing hours sends TIMOUT in protocol seconds."""
+    chlor = PoolObject(
+        "ICHLOR1",
+        {"OBJTYP": CHEM_TYPE, "SUBTYP": "ICHLOR", "SNAME": "IntelliChlor"},
+    )
+    number = SuperChlorinateDurationNumber(mock_coordinator, chlor)
+
+    await number.async_set_native_value(12)
+
+    mock_coordinator.controller.request_changes.assert_awaited_once_with(
+        "ICHLOR1", {TIMOUT_ATTR: "43200"}
+    )
+
+
+async def test_superchlorinate_duration_write_error_is_translated(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A failed duration write surfaces a translated service error."""
+    from pyintellicenter import ICConnectionError
+
+    chlor = PoolObject(
+        "ICHLOR1",
+        {"OBJTYP": CHEM_TYPE, "SUBTYP": "ICHLOR", "SNAME": "IntelliChlor"},
+    )
+    mock_coordinator.controller.request_changes.side_effect = ICConnectionError(
+        "offline"
+    )
+    number = SuperChlorinateDurationNumber(mock_coordinator, chlor)
+
+    with pytest.raises(HomeAssistantError) as err:
+        await number.async_set_native_value(12)
+
+    assert err.value.translation_domain == "intellicenter"
+    assert err.value.translation_key == "command_failed"
+
+
+@pytest.mark.parametrize("value", [0.0, 97.0, 12.5])
+async def test_superchlorinate_duration_refuses_invalid_value(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+    value: float,
+) -> None:
+    """Duration writes outside the documented whole-hour range are refused."""
+    chlor = PoolObject(
+        "ICHLOR1",
+        {"OBJTYP": CHEM_TYPE, "SUBTYP": "ICHLOR", "SNAME": "IntelliChlor"},
+    )
+    number = SuperChlorinateDurationNumber(mock_coordinator, chlor)
+
+    with pytest.raises(HomeAssistantError) as err:
+        await number.async_set_native_value(value)
+
+    assert err.value.translation_domain == "intellicenter"
+    assert err.value.translation_key == "invalid_superchlorinate_duration"
+    mock_coordinator.controller.request_changes.assert_not_called()
 
 
 async def test_egg_timer_number_created_for_every_user_circuit(
@@ -499,8 +630,9 @@ async def test_number_no_bodies_configured(
 
     await async_setup_entry(hass, mock_entry, capture_entities)
 
-    # Should create no entities when no bodies configured
-    assert len(entities_added) == 0
+    # Output controls need a body, but the object-level duration remains stable.
+    assert len(entities_added) == 1
+    assert isinstance(entities_added[0], SuperChlorinateDurationNumber)
 
 
 # --- Pump Speed Control Tests ---

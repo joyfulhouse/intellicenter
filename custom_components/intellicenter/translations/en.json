@@ -112,8 +112,17 @@
     }
   },
   "exceptions": {
+    "command_failed": {
+      "message": "The IntelliCenter command failed. Check the panel connection and try again."
+    },
     "cover_position_unsupported": {
       "message": "This IntelliCenter firmware does not report cover position (no POSIT attribute); open/close is not supported. Update the panel firmware to control the cover."
+    },
+    "invalid_heat_mode": {
+      "message": "The selected heat mode is not available for this body."
+    },
+    "invalid_superchlorinate_duration": {
+      "message": "Superchlorinate duration must be a whole number from 1 to 96 hours."
     }
   }
 }

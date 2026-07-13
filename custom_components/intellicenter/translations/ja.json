@@ -110,9 +110,51 @@
       "description": "IntelliCenter パネルはファームウェア {firmware} を実行しています。1.064 より前のリリースはかなり前に置き換えられており、文書化されたプロトコル制限があります。Pentair の公式アップグレードパスは 1.047 → 1.064 → 3.004 → 3.008 です。ワイヤレスリモコンもパネルと一緒に更新してください。"
     }
   },
+  "services": {
+    "capture": {
+      "name": "MagicStream の色をキャプチャ",
+      "description": "MagicStream ライトの現在の色をキャプチャします。"
+    },
+    "thumper": {
+      "name": "MagicStream サンパーを切り替え",
+      "description": "MagicStream ライトのサンパー効果を切り替えます。"
+    },
+    "hold": {
+      "name": "MagicStream の色をホールド",
+      "description": "MagicStream ライトの現在の色をホールドして保存します。"
+    },
+    "recall": {
+      "name": "MagicStream の色を呼び出し",
+      "description": "MagicStream ライトに保存された色を呼び出します。"
+    }
+  },
   "exceptions": {
+    "cancel_delays_failed": {
+      "message": "IntelliCenter はアクティブなシステム遅延をキャンセルできませんでした。接続を確認してから、もう一度お試しください。"
+    },
+    "circuit_group_members_missing": {
+      "message": "IntelliCenter がこのグループのメンバー回路を報告していないため、安全に制御できません。"
+    },
+    "command_failed": {
+      "message": "IntelliCenter コマンドが失敗しました。パネルとの接続を確認してから、もう一度お試しください。"
+    },
     "cover_position_unsupported": {
       "message": "この IntelliCenter ファームウェアはカバー位置を報告しません(POSIT 属性なし)。開閉はサポートされていません。カバーを制御するにはパネルのファームウェアを更新してください。"
+    },
+    "invalid_heat_mode": {
+      "message": "選択した加熱モードはこの水域では利用できません。"
+    },
+    "invalid_superchlorinate_duration": {
+      "message": "スーパー塩素処理の時間は 1 から 96 時間までの整数で指定してください。"
+    },
+    "magicstream_command_unsupported": {
+      "message": "このコマンドは MagicStream ライトでのみ利用できます。"
+    },
+    "no_active_delays": {
+      "message": "IntelliCenter はキャンセルできるアクティブなシステム遅延を報告していません。"
+    },
+    "unknown_light_effect": {
+      "message": "指定されたライト効果は、この IntelliCenter ライトではサポートされていません。"
     }
   }
 }

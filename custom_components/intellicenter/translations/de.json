@@ -110,9 +110,51 @@
       "description": "Ihr IntelliCenter-Panel läuft mit Firmware {firmware}. Versionen vor 1.064 sind längst überholt und haben dokumentierte Protokolleinschränkungen. Der offizielle Upgrade-Pfad von Pentair ist 1.047 → 1.064 → 3.004 → 3.008; aktualisieren Sie die Funkfernbedienung zusammen mit dem Panel."
     }
   },
+  "services": {
+    "capture": {
+      "name": "MagicStream-Farbe erfassen",
+      "description": "Erfasst die aktuelle Farbe einer MagicStream-Leuchte."
+    },
+    "thumper": {
+      "name": "MagicStream-Thumper umschalten",
+      "description": "Schaltet den Thumper-Effekt einer MagicStream-Leuchte um."
+    },
+    "hold": {
+      "name": "MagicStream-Farbe halten",
+      "description": "Hält und speichert die aktuelle Farbe einer MagicStream-Leuchte."
+    },
+    "recall": {
+      "name": "MagicStream-Farbe abrufen",
+      "description": "Ruft die gespeicherte Farbe einer MagicStream-Leuchte wieder auf."
+    }
+  },
   "exceptions": {
+    "cancel_delays_failed": {
+      "message": "Das IntelliCenter konnte die aktiven Systemverzögerungen nicht abbrechen. Überprüfen Sie die Verbindung und versuchen Sie es erneut."
+    },
+    "circuit_group_members_missing": {
+      "message": "Das IntelliCenter hat keine Mitgliedskreise für diese Gruppe gemeldet, daher kann sie nicht sicher gesteuert werden."
+    },
+    "command_failed": {
+      "message": "Der IntelliCenter-Befehl ist fehlgeschlagen. Überprüfen Sie die Verbindung zum Panel und versuchen Sie es erneut."
+    },
     "cover_position_unsupported": {
       "message": "Diese IntelliCenter-Firmware meldet keine Abdeckungsposition (kein POSIT-Attribut); Öffnen/Schließen wird nicht unterstützt. Aktualisieren Sie die Panel-Firmware, um die Abdeckung zu steuern."
+    },
+    "invalid_heat_mode": {
+      "message": "Der ausgewählte Heizmodus ist für dieses Becken nicht verfügbar."
+    },
+    "invalid_superchlorinate_duration": {
+      "message": "Die Dauer der Superchlorierung muss eine ganze Zahl zwischen 1 und 96 Stunden sein."
+    },
+    "magicstream_command_unsupported": {
+      "message": "Dieser Befehl ist nur für MagicStream-Leuchten verfügbar."
+    },
+    "no_active_delays": {
+      "message": "Das IntelliCenter meldet keine aktiven Systemverzögerungen, die abgebrochen werden könnten."
+    },
+    "unknown_light_effect": {
+      "message": "Der angeforderte Lichteffekt wird von dieser IntelliCenter-Leuchte nicht unterstützt."
     }
   }
 }

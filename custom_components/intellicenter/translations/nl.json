@@ -110,9 +110,51 @@
       "description": "Uw IntelliCenter-paneel draait firmware {firmware}. Versies vóór 1.064 zijn allang vervangen en hebben gedocumenteerde protocolbeperkingen. Het officiële upgradepad van Pentair is 1.047 → 1.064 → 3.004 → 3.008; werk de draadloze afstandsbediening samen met het paneel bij."
     }
   },
+  "services": {
+    "capture": {
+      "name": "MagicStream-kleur vastleggen",
+      "description": "Legt de huidige kleur van een MagicStream-lamp vast."
+    },
+    "thumper": {
+      "name": "MagicStream-thumper omschakelen",
+      "description": "Schakelt het thumper-effect van een MagicStream-lamp in of uit."
+    },
+    "hold": {
+      "name": "MagicStream-kleur vasthouden",
+      "description": "Houdt de huidige kleur van een MagicStream-lamp vast en slaat deze op."
+    },
+    "recall": {
+      "name": "MagicStream-kleur oproepen",
+      "description": "Roept de opgeslagen kleur van een MagicStream-lamp op."
+    }
+  },
   "exceptions": {
+    "cancel_delays_failed": {
+      "message": "De IntelliCenter kon de actieve systeemvertragingen niet annuleren. Controleer de verbinding en probeer het opnieuw."
+    },
+    "circuit_group_members_missing": {
+      "message": "De IntelliCenter heeft geen ledencircuits voor deze groep gerapporteerd, waardoor deze niet veilig kan worden bediend."
+    },
+    "command_failed": {
+      "message": "De IntelliCenter-opdracht is mislukt. Controleer de verbinding met het paneel en probeer het opnieuw."
+    },
     "cover_position_unsupported": {
       "message": "Deze IntelliCenter-firmware rapporteert geen afdekkingspositie (geen POSIT-attribuut); openen/sluiten wordt niet ondersteund. Werk de paneelfirmware bij om de afdekking te bedienen."
+    },
+    "invalid_heat_mode": {
+      "message": "De geselecteerde verwarmingsmodus is niet beschikbaar voor dit bassin."
+    },
+    "invalid_superchlorinate_duration": {
+      "message": "De duur van superchloring moet een geheel getal van 1 tot 96 uur zijn."
+    },
+    "magicstream_command_unsupported": {
+      "message": "Deze opdracht is alleen beschikbaar voor MagicStream-lampen."
+    },
+    "no_active_delays": {
+      "message": "De IntelliCenter rapporteert geen actieve systeemvertragingen om te annuleren."
+    },
+    "unknown_light_effect": {
+      "message": "Het gevraagde lichteffect wordt niet ondersteund door deze IntelliCenter-lamp."
     }
   }
 }

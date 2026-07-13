@@ -110,9 +110,51 @@
       "description": "O seu painel IntelliCenter está a executar o firmware {firmware}. As versões anteriores à 1.064 foram há muito substituídas e têm limitações de protocolo documentadas. O caminho de atualização oficial da Pentair é 1.047 → 1.064 → 3.004 → 3.008; atualize o comando sem fios juntamente com o painel."
     }
   },
+  "services": {
+    "capture": {
+      "name": "Capturar cor do MagicStream",
+      "description": "Captura a cor atual de uma luz MagicStream."
+    },
+    "thumper": {
+      "name": "Alternar thumper do MagicStream",
+      "description": "Ativa ou desativa o efeito thumper de uma luz MagicStream."
+    },
+    "hold": {
+      "name": "Manter cor do MagicStream",
+      "description": "Mantém e salva a cor atual de uma luz MagicStream."
+    },
+    "recall": {
+      "name": "Recuperar cor do MagicStream",
+      "description": "Recupera a cor salva de uma luz MagicStream."
+    }
+  },
   "exceptions": {
+    "cancel_delays_failed": {
+      "message": "O IntelliCenter não conseguiu cancelar os atrasos ativos do sistema. Verifique a conexão e tente novamente."
+    },
+    "circuit_group_members_missing": {
+      "message": "O IntelliCenter não reportou nenhum circuito membro para este grupo, portanto ele não pode ser controlado com segurança."
+    },
+    "command_failed": {
+      "message": "O comando do IntelliCenter falhou. Verifique a conexão com o painel e tente novamente."
+    },
     "cover_position_unsupported": {
       "message": "Este firmware IntelliCenter não reporta a posição da cobertura (sem atributo POSIT); abrir/fechar não é suportado. Atualize o firmware do painel para controlar a cobertura."
+    },
+    "invalid_heat_mode": {
+      "message": "O modo de aquecimento selecionado não está disponível para este corpo d'água."
+    },
+    "invalid_superchlorinate_duration": {
+      "message": "A duração da supercloração deve ser um número inteiro de 1 a 96 horas."
+    },
+    "magicstream_command_unsupported": {
+      "message": "Este comando está disponível apenas para luzes MagicStream."
+    },
+    "no_active_delays": {
+      "message": "O IntelliCenter não está reportando nenhum atraso ativo do sistema para cancelar."
+    },
+    "unknown_light_effect": {
+      "message": "O efeito de luz solicitado não é suportado por esta luz IntelliCenter."
     }
   }
 }

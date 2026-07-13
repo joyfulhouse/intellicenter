@@ -110,9 +110,51 @@
       "description": "Ваша панель IntelliCenter работает на прошивке {firmware}. Версии до 1.064 давно устарели и имеют задокументированные ограничения протокола. Официальный путь обновления Pentair: 1.047 → 1.064 → 3.004 → 3.008; обновите беспроводной пульт вместе с панелью."
     }
   },
+  "services": {
+    "capture": {
+      "name": "Захватить цвет MagicStream",
+      "description": "Захватывает текущий цвет светильника MagicStream."
+    },
+    "thumper": {
+      "name": "Переключить Thumper MagicStream",
+      "description": "Включает или выключает эффект Thumper светильника MagicStream."
+    },
+    "hold": {
+      "name": "Удержать цвет MagicStream",
+      "description": "Удерживает и сохраняет текущий цвет светильника MagicStream."
+    },
+    "recall": {
+      "name": "Вызвать цвет MagicStream",
+      "description": "Вызывает сохраненный цвет светильника MagicStream."
+    }
+  },
   "exceptions": {
+    "cancel_delays_failed": {
+      "message": "IntelliCenter не удалось отменить активные системные задержки. Проверьте подключение и повторите попытку."
+    },
+    "circuit_group_members_missing": {
+      "message": "IntelliCenter не сообщил ни об одном контуре, входящем в эту группу, поэтому безопасное управление ею невозможно."
+    },
+    "command_failed": {
+      "message": "Команда IntelliCenter не выполнена. Проверьте подключение к панели и повторите попытку."
+    },
     "cover_position_unsupported": {
       "message": "Эта прошивка IntelliCenter не сообщает положение покрытия (нет атрибута POSIT); открытие/закрытие не поддерживается. Обновите прошивку панели для управления покрытием."
+    },
+    "invalid_heat_mode": {
+      "message": "Выбранный режим нагрева недоступен для этого водоема."
+    },
+    "invalid_superchlorinate_duration": {
+      "message": "Длительность суперхлорирования должна быть целым числом от 1 до 96 часов."
+    },
+    "magicstream_command_unsupported": {
+      "message": "Эта команда доступна только для светильников MagicStream."
+    },
+    "no_active_delays": {
+      "message": "IntelliCenter не сообщает об активных системных задержках, которые можно отменить."
+    },
+    "unknown_light_effect": {
+      "message": "Запрошенный световой эффект не поддерживается этим светильником IntelliCenter."
     }
   }
 }

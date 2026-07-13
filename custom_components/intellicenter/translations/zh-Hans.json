@@ -110,9 +110,51 @@
       "description": "您的 IntelliCenter 面板正在运行固件 {firmware}。1.064 之前的版本早已被取代,并存在已记录的协议限制。Pentair 官方升级路径为 1.047 → 1.064 → 3.004 → 3.008;无线遥控器需与面板一起更新。"
     }
   },
+  "services": {
+    "capture": {
+      "name": "捕捉 MagicStream 颜色",
+      "description": "捕捉 MagicStream 灯的当前颜色。"
+    },
+    "thumper": {
+      "name": "切换 MagicStream Thumper",
+      "description": "切换 MagicStream 灯的 Thumper 效果。"
+    },
+    "hold": {
+      "name": "保持 MagicStream 颜色",
+      "description": "保持并保存 MagicStream 灯的当前颜色。"
+    },
+    "recall": {
+      "name": "调用 MagicStream 颜色",
+      "description": "调用 MagicStream 灯已保存的颜色。"
+    }
+  },
   "exceptions": {
+    "cancel_delays_failed": {
+      "message": "IntelliCenter 无法取消当前激活的系统延时。请检查连接后重试。"
+    },
+    "circuit_group_members_missing": {
+      "message": "IntelliCenter 未报告此组的任何成员回路,因此无法安全地对其进行控制。"
+    },
+    "command_failed": {
+      "message": "IntelliCenter 命令执行失败。请检查面板连接后重试。"
+    },
     "cover_position_unsupported": {
       "message": "此 IntelliCenter 固件不报告泳池盖位置(无 POSIT 属性);不支持打开/关闭。请更新面板固件以控制泳池盖。"
+    },
+    "invalid_heat_mode": {
+      "message": "所选加热模式不适用于该水体。"
+    },
+    "invalid_superchlorinate_duration": {
+      "message": "超氯化时长必须是 1 到 96 小时之间的整数。"
+    },
+    "magicstream_command_unsupported": {
+      "message": "此命令仅适用于 MagicStream 灯。"
+    },
+    "no_active_delays": {
+      "message": "IntelliCenter 未报告任何可取消的激活系统延时。"
+    },
+    "unknown_light_effect": {
+      "message": "此 IntelliCenter 灯不支持所请求的灯光效果。"
     }
   }
 }

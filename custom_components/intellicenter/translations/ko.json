@@ -110,9 +110,51 @@
       "description": "IntelliCenter 패널이 펌웨어 {firmware}를 실행 중입니다. 1.064 이전 릴리스는 오래전에 대체되었으며 문서화된 프로토콜 제한이 있습니다. Pentair의 공식 업그레이드 경로는 1.047 → 1.064 → 3.004 → 3.008입니다. 무선 리모컨을 패널과 함께 업데이트하세요."
     }
   },
+  "services": {
+    "capture": {
+      "name": "MagicStream 색상 캡처",
+      "description": "MagicStream 조명의 현재 색상을 캡처합니다."
+    },
+    "thumper": {
+      "name": "MagicStream 썸퍼 전환",
+      "description": "MagicStream 조명의 썸퍼 효과를 켜거나 끕니다."
+    },
+    "hold": {
+      "name": "MagicStream 색상 유지",
+      "description": "MagicStream 조명의 현재 색상을 유지하고 저장합니다."
+    },
+    "recall": {
+      "name": "MagicStream 색상 불러오기",
+      "description": "MagicStream 조명에 저장된 색상을 불러옵니다."
+    }
+  },
   "exceptions": {
+    "cancel_delays_failed": {
+      "message": "IntelliCenter가 활성 시스템 지연을 취소하지 못했습니다. 연결을 확인한 후 다시 시도하세요."
+    },
+    "circuit_group_members_missing": {
+      "message": "IntelliCenter가 이 그룹의 구성원 회로를 보고하지 않아 안전하게 제어할 수 없습니다."
+    },
+    "command_failed": {
+      "message": "IntelliCenter 명령이 실패했습니다. 패널 연결을 확인한 후 다시 시도하세요."
+    },
     "cover_position_unsupported": {
       "message": "이 IntelliCenter 펌웨어는 커버 위치를 보고하지 않습니다(POSIT 속성 없음). 열기/닫기가 지원되지 않습니다. 커버를 제어하려면 패널 펌웨어를 업데이트하세요."
+    },
+    "invalid_heat_mode": {
+      "message": "선택한 가열 모드는 이 수역에서 사용할 수 없습니다."
+    },
+    "invalid_superchlorinate_duration": {
+      "message": "슈퍼 염소 처리 시간은 1시간에서 96시간 사이의 정수여야 합니다."
+    },
+    "magicstream_command_unsupported": {
+      "message": "이 명령은 MagicStream 조명에서만 사용할 수 있습니다."
+    },
+    "no_active_delays": {
+      "message": "IntelliCenter가 취소할 활성 시스템 지연을 보고하지 않습니다."
+    },
+    "unknown_light_effect": {
+      "message": "요청한 조명 효과는 이 IntelliCenter 조명에서 지원되지 않습니다."
     }
   }
 }

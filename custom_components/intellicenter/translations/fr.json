@@ -110,9 +110,51 @@
       "description": "Votre panneau IntelliCenter utilise le micrologiciel {firmware}. Les versions antérieures à 1.064 sont depuis longtemps dépassées et présentent des limitations de protocole documentées. Le chemin de mise à niveau officiel de Pentair est 1.047 → 1.064 → 3.004 → 3.008 ; mettez à jour la télécommande sans fil avec le panneau."
     }
   },
+  "services": {
+    "capture": {
+      "name": "Capturer la couleur MagicStream",
+      "description": "Capture la couleur actuelle d'une lampe MagicStream."
+    },
+    "thumper": {
+      "name": "Basculer le thumper MagicStream",
+      "description": "Active ou désactive l'effet thumper d'une lampe MagicStream."
+    },
+    "hold": {
+      "name": "Conserver la couleur MagicStream",
+      "description": "Conserve et enregistre la couleur actuelle d'une lampe MagicStream."
+    },
+    "recall": {
+      "name": "Rappeler la couleur MagicStream",
+      "description": "Rappelle la couleur enregistrée d'une lampe MagicStream."
+    }
+  },
   "exceptions": {
+    "cancel_delays_failed": {
+      "message": "L'IntelliCenter n'a pas pu annuler les délais système actifs. Vérifiez la connexion et réessayez."
+    },
+    "circuit_group_members_missing": {
+      "message": "L'IntelliCenter n'a signalé aucun circuit membre pour ce groupe ; il ne peut donc pas être contrôlé en toute sécurité."
+    },
+    "command_failed": {
+      "message": "La commande IntelliCenter a échoué. Vérifiez la connexion au panneau et réessayez."
+    },
     "cover_position_unsupported": {
       "message": "Ce micrologiciel IntelliCenter ne signale pas la position de la couverture (pas d'attribut POSIT) ; l'ouverture/fermeture n'est pas prise en charge. Mettez à jour le micrologiciel du panneau pour contrôler la couverture."
+    },
+    "invalid_heat_mode": {
+      "message": "Le mode de chauffage sélectionné n'est pas disponible pour ce bassin."
+    },
+    "invalid_superchlorinate_duration": {
+      "message": "La durée de superchloration doit être un nombre entier compris entre 1 et 96 heures."
+    },
+    "magicstream_command_unsupported": {
+      "message": "Cette commande n'est disponible que pour les lampes MagicStream."
+    },
+    "no_active_delays": {
+      "message": "L'IntelliCenter ne signale aucun délai système actif à annuler."
+    },
+    "unknown_light_effect": {
+      "message": "L'effet lumineux demandé n'est pas pris en charge par cette lampe IntelliCenter."
     }
   }
 }

@@ -14,6 +14,7 @@ CONST_GPM = "gpm"  # gallons per minute
 CALIB_ATTR = "CALIB"  # not yet in pyintellicenter
 CHLOR_ATTR = "CHLOR"  # not yet in pyintellicenter
 DNTSTP_ATTR = "DNTSTP"  # not yet in pyintellicenter
+LIMIT_ATTR = "LIMIT"  # not yet in pyintellicenter
 MANHT_ATTR = "MANHT"  # not yet in pyintellicenter
 PORT_ATTR = "PORT"  # not yet in pyintellicenter
 PRIMFLO_ATTR = "PRIMFLO"  # not yet in pyintellicenter

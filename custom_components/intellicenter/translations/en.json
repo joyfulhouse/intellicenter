@@ -111,6 +111,24 @@
       "description": "Your IntelliCenter panel is running firmware {firmware}. Releases before 1.064 are long superseded and have documented protocol limitations. Pentair's official upgrade path is 1.047 → 1.064 → 3.004 → 3.008; update the wireless remote together with the panel."
     }
   },
+  "services": {
+    "capture": {
+      "name": "Capture MagicStream color",
+      "description": "Captures the current color on a MagicStream light."
+    },
+    "thumper": {
+      "name": "Toggle MagicStream thumper",
+      "description": "Toggles the thumper effect on a MagicStream light."
+    },
+    "hold": {
+      "name": "Hold MagicStream color",
+      "description": "Holds and saves the current color on a MagicStream light."
+    },
+    "recall": {
+      "name": "Recall MagicStream color",
+      "description": "Recalls the saved color on a MagicStream light."
+    }
+  },
   "exceptions": {
     "cancel_delays_failed": {
       "message": "The IntelliCenter could not cancel the active system delays. Check the connection and try again."
@@ -121,14 +139,23 @@
     "cover_position_unsupported": {
       "message": "This IntelliCenter firmware does not report cover position (no POSIT attribute); open/close is not supported. Update the panel firmware to control the cover."
     },
+    "circuit_group_members_missing": {
+      "message": "The IntelliCenter has not reported any member circuits for this group, so it cannot be controlled safely."
+    },
     "invalid_heat_mode": {
       "message": "The selected heat mode is not available for this body."
     },
     "invalid_superchlorinate_duration": {
       "message": "Superchlorinate duration must be a whole number from 1 to 96 hours."
     },
+    "magicstream_command_unsupported": {
+      "message": "This command is available only for MagicStream lights."
+    },
     "no_active_delays": {
       "message": "The IntelliCenter is not reporting any active system delays to cancel."
+    },
+    "unknown_light_effect": {
+      "message": "The requested light effect is not supported by this IntelliCenter light."
     }
   }
 }

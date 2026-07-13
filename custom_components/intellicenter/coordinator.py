@@ -107,6 +107,7 @@ from .const import (
     DEFAULT_TRANSPORT,
     DNTSTP_ATTR,
     DOMAIN,
+    LIMIT_ATTR,
     MANHT_ATTR,
     PORT_ATTR,
     PRIMFLO_ATTR,
@@ -146,6 +147,7 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
         USE_ATTR,
         SUBTYP_ATTR,
         FEATR_ATTR,
+        LIMIT_ATTR,
         TIME_ATTR,  # Egg timer duration
         DNTSTP_ATTR,
         FREEZE_ATTR,  # Freeze protection status

@@ -427,6 +427,7 @@ def mock_coordinator(
     mock_controller.set_orp_setpoint = AsyncMock()
     mock_controller.set_chlorinator_output = AsyncMock()
     mock_controller.set_light_effect = AsyncMock()
+    mock_controller.set_multiple_circuit_states = AsyncMock()
     mock_controller.set_setpoint = AsyncMock()
     mock_controller.set_heat_mode = AsyncMock()
     mock_controller.get_chlorinator_output = MagicMock(
@@ -461,6 +462,34 @@ def mock_coordinator(
     mock_controller.is_body_heating = MagicMock(return_value=False)
     # Body cooling detection
     mock_controller.is_body_cooling = MagicMock(return_value=False)
+    mock_controller.get_circuit_groups = MagicMock(
+        side_effect=lambda: pool_model.get_by_type("CIRCGRP")
+    )
+
+    def get_circuits_in_group(objnam: str) -> list[PoolObject]:
+        """Return the circuits referenced by a test circuit group."""
+        group = pool_model[objnam]
+        if group is None or not isinstance(group["CIRCUIT"], str):
+            return []
+        return [
+            circuit
+            for member in group["CIRCUIT"].split()
+            if (circuit := pool_model[member]) is not None
+        ]
+
+    mock_controller.get_circuits_in_group = MagicMock(side_effect=get_circuits_in_group)
+    mock_controller.circuit_group_has_color_lights = MagicMock(
+        side_effect=lambda objnam: any(
+            circuit.supports_color_effects for circuit in get_circuits_in_group(objnam)
+        )
+    )
+    mock_controller.get_color_light_groups = MagicMock(
+        side_effect=lambda: [
+            group
+            for group in pool_model.get_by_type("CIRCGRP")
+            if mock_controller.circuit_group_has_color_lights(group.objnam)
+        ]
+    )
     mock_coord.controller = mock_controller
 
     # Configure system info

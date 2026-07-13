@@ -19,6 +19,7 @@ from pyintellicenter import (
     BODY_TYPE,
     BOOST_ATTR,
     CHEM_TYPE,
+    CIRCGRP_TYPE,
     HEATER_ATTR,
     HTMODE_ATTR,
     SCHED_TYPE,
@@ -99,6 +100,13 @@ def _build_entities(
                     entity_category=EntityCategory.CONFIG,
                 )
             )
+        elif (
+            pool_obj.objtype == CIRCGRP_TYPE
+            and not coordinator.controller.circuit_group_has_color_lights(
+                pool_obj.objnam
+            )
+        ):
+            switches.append(PoolCircuitGroup(coordinator, pool_obj))
         elif pool_obj.objtype == SCHED_TYPE:
             switches.append(PoolSchedule(coordinator, pool_obj))
         elif pool_obj.objtype == SYSTEM_TYPE:
@@ -180,6 +188,55 @@ class PoolSchedule(PoolCircuit):
         if self._pool_object[STATUS_ATTR] not in (STATUS_ON, STATUS_OFF):
             return None
         return bool(self._controller.is_schedule_enabled(self._pool_object.objnam))
+
+
+class PoolCircuitGroup(PoolCircuit):
+    """Representation of a true CIRCGRP without color lights."""
+
+    _attr_icon = "mdi:alpha-g-box-outline"
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return group power state, or unknown for an invalid panel value."""
+        if self._optimistic_state is not None:
+            return self._optimistic_state
+        status = self._pool_object[STATUS_ATTR]
+        if not isinstance(status, str) or status not in (STATUS_ON, STATUS_OFF):
+            return None
+        return status == STATUS_ON
+
+    def _member_objnams(self) -> list[str]:
+        """Return current member circuit identifiers or raise if unavailable."""
+        members = self._controller.get_circuits_in_group(self._pool_object.objnam)
+        objnams = [member.objnam for member in members]
+        if not objnams:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="circuit_group_members_missing",
+            )
+        return objnams
+
+    async def _async_set_group_state(self, state: bool) -> None:
+        """Atomically set every circuit referenced by the group."""
+        member_objnams = self._member_objnams()
+        self._optimistic_state = state
+        self.async_write_ha_state()
+        try:
+            await self._async_execute_command(
+                self._controller.set_multiple_circuit_states(member_objnams, state)
+            )
+        except HomeAssistantError:
+            self._clear_optimistic_state()
+            self.async_write_ha_state()
+            raise
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn on every member circuit."""
+        await self._async_set_group_state(True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn off every member circuit."""
+        await self._async_set_group_state(False)
 
 
 class PoolBody(PoolCircuit):

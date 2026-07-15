@@ -15,11 +15,14 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock
 
+from homeassistant.components.light.const import LightEntityFeature
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 from pyintellicenter import (
     CHEM_TYPE,
+    CIRCGRP_TYPE,
+    CIRCUIT_TYPE,
     PMPCIRC_TYPE,
     PUMP_TYPE,
     SENSE_TYPE,
@@ -410,6 +413,105 @@ async def test_setup_pool_entities_dedups_across_calls(
     added.clear()
     state["listener"]([pool_model["CHEM1"]])
     assert added == []
+
+
+async def test_light_group_parent_refreshes_when_members_arrive_later(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A parent built first gains and loses effects without replacement."""
+    from custom_components.intellicenter.light import _build_entities
+
+    model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
+    parent = model.add_object(
+        "GROUP",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "LITSHO",
+            "SNAME": "Color Group",
+            "STATUS": "OFF",
+            "USE": "WHITER",
+        },
+    )
+    assert parent is not None
+    mock_coordinator.model = model
+    state = _capture_listener(mock_coordinator)
+    entry = MagicMock()
+    entry.runtime_data = mock_coordinator
+    entry.async_on_unload = MagicMock()
+
+    added: list[Any] = []
+    async_setup_pool_entities(entry, added.extend, _build_entities)
+
+    assert len(added) == 1
+    parent_entity = added[0]
+    assert parent_entity._pool_object is parent
+    assert parent_entity.effect_list is None
+    assert not parent_entity.supported_features & LightEntityFeature.EFFECT
+    parent_entity.hass = hass
+    parent_entity.async_write_ha_state = MagicMock()
+
+    added.clear()
+    later_objects = (
+        (
+            "GLOW1",
+            {
+                "OBJTYP": CIRCUIT_TYPE,
+                "SUBTYP": "GLOW",
+                "SNAME": "GloBrite One",
+                "STATUS": "OFF",
+                "USE": "WHITER",
+            },
+        ),
+        (
+            "GLOW2",
+            {
+                "OBJTYP": CIRCUIT_TYPE,
+                "SUBTYP": "GLOW",
+                "SNAME": "GloBrite Two",
+                "STATUS": "OFF",
+                "USE": "WHITER",
+            },
+        ),
+        (
+            "GROUP_ROW_1",
+            {
+                "OBJTYP": CIRCGRP_TYPE,
+                "PARENT": "GROUP",
+                "CIRCUIT": "GLOW1",
+                "LISTORD": "1",
+            },
+        ),
+        (
+            "GROUP_ROW_2",
+            {
+                "OBJTYP": CIRCGRP_TYPE,
+                "PARENT": "GROUP",
+                "CIRCUIT": "GLOW2",
+                "LISTORD": "2",
+            },
+        ),
+    )
+    for objnam, params in later_objects:
+        candidate = model.add_object(objnam, params)
+        assert candidate is not None
+        state["listener"]([candidate])
+
+    assert {entity._pool_object.objnam for entity in added} == {"GLOW1", "GLOW2"}
+    assert all(entity is not parent_entity for entity in added)
+    assert parent_entity.effect_list is not None
+    assert parent_entity.supported_features & LightEntityFeature.EFFECT
+    parent_entity.async_write_ha_state.assert_called_once_with()
+
+    row = model["GROUP_ROW_2"]
+    assert row is not None
+    row.update({"CIRCUIT": "MISSING"})
+    mock_coordinator.data = {"GROUP_ROW_2": {"CIRCUIT": "MISSING"}}
+    parent_entity._handle_coordinator_update()
+
+    assert parent_entity.effect_list is None
+    assert not parent_entity.supported_features & LightEntityFeature.EFFECT
+    assert parent_entity.async_write_ha_state.call_count == 2
 
 
 # -------------------------------------------------------------------------------------

@@ -245,7 +245,8 @@ def async_setup_pool_entities(
 
     Entities are de-duplicated by ``unique_id`` so an object can never produce a
     duplicate entity, even though the coordinator already reports each new object
-    only once.
+    only once. A duplicate builder result refreshes the original entity's shared
+    model context, allowing cross-object capabilities to change in place.
 
     Args:
         entry: The config entry whose ``runtime_data`` is the coordinator.
@@ -255,16 +256,18 @@ def async_setup_pool_entities(
             objects to consider; returns the list of entities to add.
     """
     coordinator = entry.runtime_data
-    created_unique_ids: set[str] = set()
+    created_entities: dict[str, Any] = {}
 
     @callback
     def _add(candidates: Iterable[PoolObject]) -> None:
         entities: list[Any] = []
         for entity in build_entities(coordinator, candidates):
             uid = entity.unique_id
-            if uid in created_unique_ids:
+            existing = created_entities.get(uid)
+            if existing is not None:
+                existing.async_refresh_model_context()
                 continue
-            created_unique_ids.add(uid)
+            created_entities[uid] = entity
             entities.append(entity)
         if entities:
             async_add_entities(entities)
@@ -645,6 +648,10 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
     def isUpdated(self, updates: dict[str, dict[str, Any]]) -> bool:
         """Return true if the entity is updated by the updates from IntelliCenter."""
         return self._attribute_key in updates.get(self._pool_object.objnam, {})
+
+    @callback
+    def async_refresh_model_context(self) -> None:
+        """Refresh state derived from other objects in the shared model."""
 
     @callback
     def _handle_coordinator_update(self) -> None:

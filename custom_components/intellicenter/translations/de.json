@@ -126,6 +126,10 @@
     "recall": {
       "name": "MagicStream-Farbe abrufen",
       "description": "Ruft die gespeicherte Farbe einer MagicStream-Leuchte wieder auf."
+    },
+    "color_sync": {
+      "name": "Farben der Lichtgruppe synchronisieren",
+      "description": "Synchronisiert genau zwei GloBrite-Leuchten in einer vollständigen IntelliCenter-Lichtgruppe mit Firmware 1.064. Der Aufruf wartet auf die physische Aktion, eine 60-sekündige Beobachtung nach der Aktion und eine abschließende Abfrage des Controllers."
     }
   },
   "exceptions": {
@@ -143,6 +147,18 @@
     },
     "magicstream_command_unsupported": {
       "message": "Dieser Befehl ist nur für MagicStream-Leuchten verfügbar."
+    },
+    "light_group_command_unsupported": {
+      "message": "Color Sync ist nur mit IntelliCenter-Firmware 1.064 für eine vollständige Lichtgruppe mit genau zwei verschiedenen GloBrite-Leuchten verfügbar."
+    },
+    "light_group_command_failed": {
+      "message": "Color Sync ist vor dem Senden fehlgeschlagen oder wurde von IntelliCenter ausdrücklich abgelehnt. Es wurde keine Aktion bestätigt."
+    },
+    "light_group_command_uncertain": {
+      "message": "Der Versand von Color Sync wurde begonnen, aber IntelliCenter hat nicht geantwortet. Die Aktion wurde möglicherweise ausgeführt. Prüfen Sie die Leuchten und den Bedienfeldstatus, bevor Sie es erneut versuchen."
+    },
+    "light_group_command_incomplete": {
+      "message": "IntelliCenter hat Color Sync bestätigt oder sichtbar gestartet, aber der zuverlässige Abschluss konnte nicht bestätigt werden. Prüfen Sie die Leuchten und den Bedienfeldstatus, bevor Sie es erneut versuchen."
     },
     "unknown_light_effect": {
       "message": "Der angeforderte Lichteffekt wird von dieser IntelliCenter-Leuchte nicht unterstützt."

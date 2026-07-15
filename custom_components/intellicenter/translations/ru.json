@@ -126,6 +126,10 @@
     "recall": {
       "name": "Вызвать цвет MagicStream",
       "description": "Вызывает сохраненный цвет светильника MagicStream."
+    },
+    "color_sync": {
+      "name": "Синхронизировать цвета группы освещения",
+      "description": "Синхронизирует ровно два разных светильника GloBrite в полной группе освещения IntelliCenter с прошивкой 1.064. Вызов ожидает физическое действие, 60-секундное наблюдение после действия и окончательное чтение данных контроллера."
     }
   },
   "exceptions": {
@@ -143,6 +147,18 @@
     },
     "magicstream_command_unsupported": {
       "message": "Эта команда доступна только для светильников MagicStream."
+    },
+    "light_group_command_unsupported": {
+      "message": "Color Sync доступна только с прошивкой IntelliCenter 1.064 для полной группы освещения, содержащей ровно два разных светильника GloBrite."
+    },
+    "light_group_command_failed": {
+      "message": "Сбой Color Sync произошёл до отправки либо IntelliCenter явно отклонил команду. Выполнение действия не подтверждено."
+    },
+    "light_group_command_uncertain": {
+      "message": "Отправка Color Sync началась, но IntelliCenter не ответил. Возможно, действие было выполнено. Перед повторной попыткой проверьте светильники и состояние панели."
+    },
+    "light_group_command_incomplete": {
+      "message": "IntelliCenter подтвердил или явно начал Color Sync, но достоверное завершение подтвердить не удалось. Перед повторной попыткой проверьте светильники и состояние панели."
     },
     "unknown_light_effect": {
       "message": "Запрошенный световой эффект не поддерживается этим светильником IntelliCenter."

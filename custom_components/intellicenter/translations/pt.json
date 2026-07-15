@@ -126,6 +126,10 @@
     "recall": {
       "name": "Recuperar cor do MagicStream",
       "description": "Recupera a cor salva de uma luz MagicStream."
+    },
+    "color_sync": {
+      "name": "Sincronizar cores do grupo de luzes",
+      "description": "Sincroniza exatamente duas luzes GloBrite de um grupo de luzes IntelliCenter completo com o firmware 1.064. A chamada aguarda a ação física, uma observação de 60 segundos após a ação e uma leitura final do controlador."
     }
   },
   "exceptions": {
@@ -143,6 +147,18 @@
     },
     "magicstream_command_unsupported": {
       "message": "Este comando está disponível apenas para luzes MagicStream."
+    },
+    "light_group_command_unsupported": {
+      "message": "Color Sync está disponível apenas com o firmware 1.064 do IntelliCenter para um grupo de luzes completo com exatamente duas luzes GloBrite distintas."
+    },
+    "light_group_command_failed": {
+      "message": "Color Sync falhou antes do envio ou o IntelliCenter o rejeitou explicitamente. Nenhuma ação foi confirmada."
+    },
+    "light_group_command_uncertain": {
+      "message": "O envio de Color Sync foi iniciado, mas o IntelliCenter não respondeu. A ação pode ter sido executada. Inspecione as luzes e o estado do painel antes de tentar novamente."
+    },
+    "light_group_command_incomplete": {
+      "message": "O IntelliCenter confirmou ou iniciou visivelmente o Color Sync, mas não foi possível confirmar a conclusão de forma confiável. Inspecione as luzes e o estado do painel antes de tentar novamente."
     },
     "unknown_light_effect": {
       "message": "O efeito de luz solicitado não é suportado por esta luz IntelliCenter."

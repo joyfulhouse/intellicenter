@@ -126,6 +126,10 @@
     "recall": {
       "name": "MagicStream の色を呼び出し",
       "description": "MagicStream ライトに保存された色を呼び出します。"
+    },
+    "color_sync": {
+      "name": "ライトグループの色を同期",
+      "description": "ファームウェア 1.064 の IntelliCenter で、完全なライトグループ内の異なる 2 台の GloBrite ライトを同期します。この呼び出しは、実際の動作、動作後 60 秒間の監視、コントローラーの最終読み取りが完了するまで待機します。"
     }
   },
   "exceptions": {
@@ -143,6 +147,18 @@
     },
     "magicstream_command_unsupported": {
       "message": "このコマンドは MagicStream ライトでのみ利用できます。"
+    },
+    "light_group_command_unsupported": {
+      "message": "Color Sync は、IntelliCenter ファームウェア 1.064 で、異なる GloBrite ライトが正確に 2 台ある完全なライトグループに対してのみ使用できます。"
+    },
+    "light_group_command_failed": {
+      "message": "Color Sync は送信前に失敗したか、IntelliCenter によって明示的に拒否されました。動作は確認されていません。"
+    },
+    "light_group_command_uncertain": {
+      "message": "Color Sync の送信は開始されましたが、IntelliCenter から応答がありませんでした。動作した可能性があります。再試行する前に、ライトとパネルの状態を確認してください。"
+    },
+    "light_group_command_incomplete": {
+      "message": "IntelliCenter は Color Sync を確認または明らかに開始しましたが、確実な完了を確認できませんでした。再試行する前に、ライトとパネルの状態を確認してください。"
     },
     "unknown_light_effect": {
       "message": "指定されたライト効果は、この IntelliCenter ライトではサポートされていません。"

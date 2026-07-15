@@ -129,7 +129,7 @@ After setup, configure connection settings:
 |----------|-------------|----------|
 | **Pool/Spa** | Switch, Sensors, Water Heater | On/off, temperature, heater control (incl. HCOMBO hybrid modes) |
 | **Lights** | Light | On/off, color effects (IntelliBrite, MagicStream) |
-| **Light Shows** | Light | Coordinated multi-light effects |
+| **Light Shows** | Light | Coordinated multi-light effects and the Color Sync action over TCP or WebSocket |
 | **Circuits** | Switch | All "Featured" circuits (cleaner, blower, etc.) |
 | **Pumps** | Binary Sensor, Sensors | Running status, power (W), speed (RPM), flow (GPM) |
 | **Chemistry** | Sensors, Number | pH, ORP, tank levels, setpoints (IntelliChem) |
@@ -148,6 +148,38 @@ After setup, configure connection settings:
   so it stays accurate while the pump is idle.
 
 ## Automation Examples
+
+### Color Sync for a GloBrite Light Group
+
+Use the `intellicenter.color_sync` action with the complete light-group entity:
+
+```yaml
+action:
+  - service: intellicenter.color_sync
+    target:
+      entity_id: light.pool_light_group
+```
+
+Color Sync is intentionally limited to the hardware-confirmed safety envelope:
+firmware `1.064`, one complete light group containing exactly two distinct
+GloBrite members, and a uniform starting state in which both members are all off
+or all on. Color Set, Color Swim, and member-position controls are not exposed.
+
+The call is synchronous. On the observed firmware it usually takes roughly
+96-97 seconds plus request latency because it waits for the physical action, a
+60-second post-terminal observation, and a final controller read before
+returning. During that interval, other IntelliCenter object mutations requested
+through this Home Assistant connection fail immediately rather than queueing
+behind Color Sync. Read-only updates continue. Urgent control from the physical
+panel remains available, but changing panel state during the action can make the
+action report an incomplete outcome.
+
+An explicit failure means dispatch did not begin or IntelliCenter rejected the
+command, so no action was confirmed. An uncertain no-response outcome means
+dispatch started but IntelliCenter did not respond, so the action may have run.
+An acknowledged or visibly started but incomplete outcome means authoritative
+completion could not be confirmed. For either uncertain or incomplete outcomes,
+inspect the lights and panel state before retrying.
 
 ### Evening Spa Warmup
 

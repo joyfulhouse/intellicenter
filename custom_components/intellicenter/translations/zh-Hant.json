@@ -126,6 +126,10 @@
     "recall": {
       "name": "叫出 MagicStream 顏色",
       "description": "叫出 MagicStream 燈已儲存的顏色。"
+    },
+    "color_sync": {
+      "name": "同步燈光群組色彩",
+      "description": "在韌體版本為 1.064 的 IntelliCenter 上，同步完整燈光群組中恰好兩個不同的 GloBrite 燈。此呼叫會等待實際動作、動作後的 60 秒觀察及最終控制器讀取完成。"
     }
   },
   "exceptions": {
@@ -143,6 +147,18 @@
     },
     "magicstream_command_unsupported": {
       "message": "此命令僅適用於 MagicStream 燈。"
+    },
+    "light_group_command_unsupported": {
+      "message": "Color Sync 僅適用於執行 IntelliCenter 韌體 1.064 且包含恰好兩個不同 GloBrite 燈的完整燈光群組。"
+    },
+    "light_group_command_failed": {
+      "message": "Color Sync 在傳送前失敗，或被 IntelliCenter 明確拒絕。未確認任何動作。"
+    },
+    "light_group_command_uncertain": {
+      "message": "Color Sync 已開始傳送，但 IntelliCenter 未回應。動作可能已執行。重試前請檢查燈光與面板狀態。"
+    },
+    "light_group_command_incomplete": {
+      "message": "IntelliCenter 已確認或明顯啟動 Color Sync，但無法確認操作可靠完成。重試前請檢查燈光與面板狀態。"
     },
     "unknown_light_effect": {
       "message": "此 IntelliCenter 燈不支援所要求的燈光效果。"

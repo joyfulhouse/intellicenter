@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Color Sync light-group action** (#93) - Added the blocking `intellicenter.color_sync` service for complete light groups with exactly two distinct GloBrite members on firmware 1.064, available over TCP and WebSocket.
+
+### Changed
+
+- **Requires pyintellicenter >= 0.1.22** (#93) - The Color Sync action uses the protocol library's blocking authoritative lifecycle: it observes the physical action, continues through a 60-second post-terminal window, and performs a final controller read while isolating other mutations on the Home Assistant connection.
+
+### Fixed
+
+- **Light-group parent modeling** (#93) - Real `CIRCUIT` light-group parents are no longer confused with `CIRCGRP` membership rows, preventing row-derived duplicate entities while preserving ordered group membership.
+
 ## [3.8.1] - 2026-07-05
 
 ### Fixed

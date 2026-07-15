@@ -126,6 +126,10 @@
     "recall": {
       "name": "MagicStream 색상 불러오기",
       "description": "MagicStream 조명에 저장된 색상을 불러옵니다."
+    },
+    "color_sync": {
+      "name": "조명 그룹 색상 동기화",
+      "description": "펌웨어 1.064를 실행하는 IntelliCenter의 완전한 조명 그룹에서 서로 다른 GloBrite 조명 두 개를 정확히 동기화합니다. 이 호출은 실제 동작, 동작 후 60초 관찰 및 최종 컨트롤러 읽기가 완료될 때까지 기다립니다."
     }
   },
   "exceptions": {
@@ -143,6 +147,18 @@
     },
     "magicstream_command_unsupported": {
       "message": "이 명령은 MagicStream 조명에서만 사용할 수 있습니다."
+    },
+    "light_group_command_unsupported": {
+      "message": "Color Sync는 IntelliCenter 펌웨어 1.064에서 서로 다른 GloBrite 조명이 정확히 두 개인 완전한 조명 그룹에만 사용할 수 있습니다."
+    },
+    "light_group_command_failed": {
+      "message": "Color Sync가 전송 전에 실패했거나 IntelliCenter가 명시적으로 거부했습니다. 확인된 동작이 없습니다."
+    },
+    "light_group_command_uncertain": {
+      "message": "Color Sync 전송이 시작되었지만 IntelliCenter가 응답하지 않았습니다. 동작이 실행되었을 수 있습니다. 다시 시도하기 전에 조명과 패널 상태를 확인하십시오."
+    },
+    "light_group_command_incomplete": {
+      "message": "IntelliCenter가 Color Sync를 확인했거나 눈에 띄게 시작했지만 신뢰할 수 있는 완료를 확인하지 못했습니다. 다시 시도하기 전에 조명과 패널 상태를 확인하십시오."
     },
     "unknown_light_effect": {
       "message": "요청한 조명 효과는 이 IntelliCenter 조명에서 지원되지 않습니다."

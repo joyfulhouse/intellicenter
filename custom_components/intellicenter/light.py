@@ -23,6 +23,8 @@ from pyintellicenter import (
     LIGHT_EFFECTS,
     STATUS_ATTR,
     USE_ATTR,
+    ICError,
+    ICLightGroupError,
     PoolObject,
 )
 
@@ -42,11 +44,12 @@ PARALLEL_UPDATES = 0
 
 _DIMMABLE_SUBTYPES = frozenset({"DIMMER"})
 _SUPPORTED_DIMMER_LEVELS = (50, 75, 100)
-_MAGICSTREAM_SERVICES = {
+_ENTITY_SERVICES = {
     "capture": "async_capture",
     "thumper": "async_thumper",
     "hold": "async_hold",
     "recall": "async_recall",
+    "color_sync": "async_color_sync",
 }
 
 
@@ -151,7 +154,7 @@ async def async_setup_entry(
 ) -> None:
     """Load pool lights based on a config entry."""
     platform = entity_platform.async_get_current_platform()
-    for service_name, method_name in _MAGICSTREAM_SERVICES.items():
+    for service_name, method_name in _ENTITY_SERVICES.items():
         platform.async_register_entity_service(service_name, None, method_name)
     async_setup_pool_entities(entry, async_add_entities, _build_entities)
 
@@ -343,6 +346,37 @@ class PoolLight(PoolEntity, OnOffControlMixin, LightEntity):
     async def async_recall(self) -> None:
         """Recall the saved MagicStream color."""
         await self._async_magicstream_command("RECALL")
+
+    async def async_color_sync(self) -> None:
+        """Synchronize the supported two-light IntelliCenter group."""
+        if not _is_color_sync_eligible(self.coordinator, self._pool_object):
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="light_group_command_unsupported",
+            )
+        try:
+            await self._controller.run_light_group_sync(self._pool_object.objnam)
+        except ValueError as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="light_group_command_unsupported",
+            ) from err
+        except ICLightGroupError as err:
+            if err.acknowledged or err.onset_seen:
+                translation_key = "light_group_command_incomplete"
+            elif err.dispatch_started and not err.response_received:
+                translation_key = "light_group_command_uncertain"
+            else:
+                translation_key = "light_group_command_failed"
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key=translation_key,
+            ) from err
+        except ICError as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="light_group_command_failed",
+            ) from err
 
     def isUpdated(self, updates: dict[str, dict[str, Any]]) -> bool:
         """Return true if the entity is updated by the updates from IntelliCenter."""

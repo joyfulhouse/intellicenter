@@ -63,6 +63,7 @@ CONTROLLER_METHODS = (
     "is_vacation_mode",
     "refresh_pump_circuit_speed",
     "request_changes",
+    "run_light_group_sync",
     "set_alkalinity",
     "set_calcium_hardness",
     "set_chlorinator_output",
@@ -85,6 +86,7 @@ REQUIRED_SYMBOLS = (
     "ICModelController",
     "ICConnectionHandler",
     "ICConnectionError",
+    "ICLightGroupError",
     "ICTimeoutError",
     "ICSystemInfo",
     "PoolModel",
@@ -116,6 +118,34 @@ def test_controller_methods_exist_and_callable() -> None:
         f"ICModelController is missing methods the integration calls: {missing}. "
         "This is library/integration contract drift that mocked tests cannot catch."
     )
+
+
+def test_light_group_error_contract_is_available() -> None:
+    """The installed library exposes certainty metadata consumed by the service."""
+    error_type = pyintellicenter.ICLightGroupError
+    assert callable(pyintellicenter.ICModelController.run_light_group_sync)
+    assert issubclass(error_type, pyintellicenter.ICError)
+
+    error = error_type(
+        "failed",
+        phase="terminal",
+        response_received=True,
+        acknowledged=True,
+        onset_seen=True,
+    )
+    assert error.phase == "terminal"
+    assert error.dispatch_started is True
+    assert error.response_received is True
+    assert error.acknowledged is True
+    assert error.onset_seen is True
+
+
+def test_only_scoped_light_group_writer_exists() -> None:
+    """The installed controller does not expose speculative group writers."""
+    controller = pyintellicenter.ICModelController
+    assert not hasattr(controller, "run_light_group_command")
+    assert not hasattr(controller, "run_light_group_swim")
+    assert not hasattr(controller, "set_light_group_member_position")
 
 
 def test_light_effects_includes_sam_show() -> None:

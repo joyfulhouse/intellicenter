@@ -1,6 +1,7 @@
 """Test the Pentair IntelliCenter light platform."""
 
-from unittest.mock import MagicMock, patch
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.components.light import ATTR_BRIGHTNESS, ATTR_EFFECT
 from homeassistant.components.light.const import ColorMode
@@ -12,10 +13,14 @@ from pyintellicenter import (
     CIRCUIT_TYPE,
     LIGHT_EFFECTS,
     STATUS_ATTR,
+    USE_ATTR,
+    ICError,
+    ICLightGroupError,
     PoolModel,
     PoolObject,
 )
 import pytest
+import yaml
 
 from custom_components.intellicenter import light as light_platform
 from custom_components.intellicenter.const import LIMIT_ATTR
@@ -23,6 +28,13 @@ from custom_components.intellicenter.coordinator import DEFAULT_ATTRIBUTES_MAP
 from custom_components.intellicenter.light import PoolLight, _build_entities
 
 pytestmark = pytest.mark.asyncio
+
+_SERVICES_YAML = (
+    Path(__file__).parent.parent
+    / "custom_components"
+    / "intellicenter"
+    / "services.yaml"
+)
 
 
 def _make_light_group_model(
@@ -75,6 +87,43 @@ def _set_firmware(mock_coordinator: MagicMock, version: str | None) -> None:
     mock_coordinator.system_info = system_info
 
 
+def _group_light_for_model(
+    mock_coordinator: MagicMock,
+    model: PoolModel,
+    firmware: str | None = "1.064",
+) -> PoolLight:
+    """Return the parent entity for a supplied group topology."""
+    mock_coordinator.model = model
+    _set_firmware(mock_coordinator, firmware)
+    return next(
+        entity
+        for entity in _build_entities(mock_coordinator, list(model))
+        if entity._pool_object.objnam == "GROUP"
+    )
+
+
+def _color_sync_state(light: PoolLight) -> tuple[object, ...]:
+    """Capture every entity/model value Color Sync must leave untouched."""
+    return (
+        light.effect,
+        light.effect_list,
+        light._optimistic_state,
+        light._pool_object[STATUS_ATTR],
+        light._pool_object[USE_ATTR],
+    )
+
+
+async def _assert_color_sync_error(
+    light: PoolLight, translation_key: str
+) -> HomeAssistantError:
+    """Assert one translated Color Sync failure and return it."""
+    with pytest.raises(HomeAssistantError) as raised:
+        await light.async_color_sync()
+    assert raised.value.translation_domain == "intellicenter"
+    assert raised.value.translation_key == translation_key
+    return raised.value
+
+
 async def test_coordinator_tracks_light_limit() -> None:
     """The model must request LIMIT or brightness never reaches entities."""
     assert LIMIT_ATTR in DEFAULT_ATTRIBUTES_MAP[CIRCUIT_TYPE]
@@ -113,6 +162,7 @@ async def test_light_setup_creates_entities(
         "thumper",
         "hold",
         "recall",
+        "color_sync",
     ]
 
     # Should create entities for:
@@ -1020,3 +1070,241 @@ async def test_magicstream_service_refuses_other_light_subtypes(
 
     assert err.value.translation_key == "magicstream_command_unsupported"
     mock_coordinator.controller.request_changes.assert_not_awaited()
+
+
+async def test_color_sync_service_metadata_has_only_an_entity_target() -> None:
+    """Color Sync metadata exposes no arguments beyond the light target."""
+    services = yaml.safe_load(_SERVICES_YAML.read_text(encoding="utf-8"))
+
+    assert set(services) == {"capture", "thumper", "hold", "recall", "color_sync"}
+    assert services["color_sync"] == {
+        "target": {
+            "entity": {
+                "integration": "intellicenter",
+                "domain": "light",
+            }
+        }
+    }
+
+
+async def test_color_sync_calls_dedicated_library_helper_without_state_mutation(
+    complete_group_light: PoolLight,
+    mock_coordinator: MagicMock,
+) -> None:
+    """The service awaits only the scoped helper and invents no entity state."""
+    sync = AsyncMock(return_value={"command": "SetParamList"})
+    mock_coordinator.controller.run_light_group_sync = sync
+    before = _color_sync_state(complete_group_light)
+
+    await complete_group_light.async_color_sync()
+
+    sync.assert_awaited_once_with("GROUP")
+    mock_coordinator.controller.request_changes.assert_not_awaited()
+    assert _color_sync_state(complete_group_light) == before
+
+
+@pytest.mark.parametrize("subtype", ("LIGHT", "INTELLI", "MAGIC2", "CIRCGRP"))
+async def test_color_sync_rejects_ordinary_non_group_entities_before_library_call(
+    mock_coordinator: MagicMock,
+    subtype: str,
+) -> None:
+    """Ordinary light-like entities cannot invoke the group writer."""
+    sync = AsyncMock()
+    mock_coordinator.controller.run_light_group_sync = sync
+    _set_firmware(mock_coordinator, "1.064")
+    light = PoolLight(
+        mock_coordinator,
+        PoolObject(
+            "LIGHT",
+            {
+                "OBJTYP": CIRCUIT_TYPE,
+                "SUBTYP": subtype,
+                "SNAME": subtype,
+                "STATUS": "OFF",
+                "USE": "WHITER",
+            },
+        ),
+        LIGHT_EFFECTS,
+    )
+
+    await _assert_color_sync_error(light, "light_group_command_unsupported")
+
+    sync.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("member_refs", "child_shapes"),
+    [
+        ((), {}),
+        (("GLOW1",), {"GLOW1": (CIRCUIT_TYPE, "GLOW")}),
+        (
+            ("GLOW1", "GLOW2", "GLOW3"),
+            {
+                "GLOW1": (CIRCUIT_TYPE, "GLOW"),
+                "GLOW2": (CIRCUIT_TYPE, "GLOW"),
+                "GLOW3": (CIRCUIT_TYPE, "GLOW"),
+            },
+        ),
+        (("MISSING1", "MISSING2"), {}),
+        (("GLOW1", "GLOW1"), {"GLOW1": (CIRCUIT_TYPE, "GLOW")}),
+        (
+            ("GLOW1", "PLAIN"),
+            {
+                "GLOW1": (CIRCUIT_TYPE, "GLOW"),
+                "PLAIN": (CIRCUIT_TYPE, "LIGHT"),
+            },
+        ),
+        (
+            ("LIGHT1", "LIGHT2"),
+            {
+                "LIGHT1": (CIRCUIT_TYPE, "INTELLI"),
+                "LIGHT2": (CIRCUIT_TYPE, "INTELLI"),
+            },
+        ),
+        (
+            ("LIGHT1", "LIGHT2"),
+            {
+                "LIGHT1": (CIRCUIT_TYPE, "MAGIC2"),
+                "LIGHT2": (CIRCUIT_TYPE, "MAGIC2"),
+            },
+        ),
+        (
+            ("GLOW1", "NOT_A_CIRCUIT"),
+            {
+                "GLOW1": (CIRCUIT_TYPE, "GLOW"),
+                "NOT_A_CIRCUIT": (BODY_TYPE, "GLOW"),
+            },
+        ),
+    ],
+    ids=(
+        "zero",
+        "one",
+        "three",
+        "missing",
+        "duplicate",
+        "mixed",
+        "intellibrite",
+        "magicstream",
+        "non-circuit-glow",
+    ),
+)
+async def test_color_sync_rejects_unsupported_group_topologies_before_library_call(
+    mock_coordinator: MagicMock,
+    member_refs: tuple[str, ...],
+    child_shapes: dict[str, tuple[str, str]],
+) -> None:
+    """Every topology outside the evidence-backed pair is rejected locally."""
+    sync = AsyncMock()
+    mock_coordinator.controller.run_light_group_sync = sync
+    light = _group_light_for_model(
+        mock_coordinator,
+        _make_light_group_model(member_refs, child_shapes),
+    )
+
+    await _assert_color_sync_error(light, "light_group_command_unsupported")
+
+    sync.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "firmware",
+    (None, "1.063", "1.065", "IC: 1.064", "1.064 ", "1.064-build7"),
+)
+async def test_color_sync_rejects_non_exact_firmware_before_library_call(
+    complete_light_group_model: PoolModel,
+    mock_coordinator: MagicMock,
+    firmware: str | None,
+) -> None:
+    """Semantic version lookalikes never widen the service's raw token gate."""
+    sync = AsyncMock()
+    mock_coordinator.controller.run_light_group_sync = sync
+    light = _group_light_for_model(
+        mock_coordinator, complete_light_group_model, firmware
+    )
+
+    await _assert_color_sync_error(light, "light_group_command_unsupported")
+
+    sync.assert_not_awaited()
+
+
+async def test_color_sync_maps_library_value_error_to_unsupported(
+    complete_group_light: PoolLight,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A topology race caught by the library remains an unsupported outcome."""
+    sync = AsyncMock(side_effect=ValueError("topology changed"))
+    mock_coordinator.controller.run_light_group_sync = sync
+    before = _color_sync_state(complete_group_light)
+
+    await _assert_color_sync_error(
+        complete_group_light, "light_group_command_unsupported"
+    )
+
+    sync.assert_awaited_once_with("GROUP")
+    assert _color_sync_state(complete_group_light) == before
+
+
+async def test_color_sync_maps_ordinary_library_error_to_failed(
+    complete_group_light: PoolLight,
+    mock_coordinator: MagicMock,
+) -> None:
+    """An ordinary pre-dispatch library failure reports definite failure."""
+    sync = AsyncMock(side_effect=ICError("pre-dispatch failure"))
+    mock_coordinator.controller.run_light_group_sync = sync
+    before = _color_sync_state(complete_group_light)
+
+    await _assert_color_sync_error(complete_group_light, "light_group_command_failed")
+
+    sync.assert_awaited_once_with("GROUP")
+    assert _color_sync_state(complete_group_light) == before
+
+
+@pytest.mark.parametrize(
+    (
+        "response_received",
+        "acknowledged",
+        "onset_seen",
+        "translation_key",
+    ),
+    [
+        (True, False, False, "light_group_command_failed"),
+        (False, False, False, "light_group_command_uncertain"),
+        (False, True, False, "light_group_command_incomplete"),
+        (False, False, True, "light_group_command_incomplete"),
+    ],
+    ids=("explicit-rejection", "no-response", "acknowledged", "onset"),
+)
+async def test_color_sync_maps_lifecycle_certainty_with_started_precedence(
+    complete_group_light: PoolLight,
+    mock_coordinator: MagicMock,
+    response_received: bool,
+    acknowledged: bool,
+    onset_seen: bool,
+    translation_key: str,
+) -> None:
+    """Acknowledgement/onset take precedence over rejection or uncertainty."""
+    library_error = ICLightGroupError(
+        "lifecycle failed",
+        phase="acknowledgement",
+        response_received=response_received,
+        acknowledged=acknowledged,
+        onset_seen=onset_seen,
+    )
+    sync = AsyncMock(side_effect=library_error)
+    mock_coordinator.controller.run_light_group_sync = sync
+    before = _color_sync_state(complete_group_light)
+
+    raised = await _assert_color_sync_error(complete_group_light, translation_key)
+
+    sync.assert_awaited_once_with("GROUP")
+    assert raised.__cause__ is library_error
+    assert _color_sync_state(complete_group_light) == before
+
+
+async def test_only_color_sync_group_action_is_exposed() -> None:
+    """Set, Swim, and member-position actions remain outside integration scope."""
+    services = yaml.safe_load(_SERVICES_YAML.read_text(encoding="utf-8"))
+    assert {"color_set", "color_swim", "member_position"}.isdisjoint(services)
+    assert not hasattr(PoolLight, "async_color_set")
+    assert not hasattr(PoolLight, "async_color_swim")
+    assert not any("member" in name and "position" in name for name in dir(PoolLight))

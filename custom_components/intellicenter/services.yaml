@@ -21,3 +21,9 @@ recall:
     entity:
       integration: intellicenter
       domain: light
+
+color_sync:
+  target:
+    entity:
+      integration: intellicenter
+      domain: light

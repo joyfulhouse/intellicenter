@@ -46,6 +46,8 @@ CONTROLLER_METHODS = (
     "body_supports_cooling",
     "get_chem_alerts",
     "get_chlorinator_output",
+    "get_circuit_group_members",
+    "get_circuits_in_group",
     "get_pump_circuit_speed",
     "get_saturation_index",
     "get_schedule_circuit",
@@ -140,6 +142,15 @@ def test_chemistry_and_manual_heat_attributes_are_tracked() -> None:
     assert "CHLOR" not in DEFAULT_ATTRIBUTES_MAP[pyintellicenter.CHEM_TYPE]
     assert MANHT_ATTR not in DEFAULT_ATTRIBUTES_MAP[pyintellicenter.BODY_TYPE]
     assert MANHT_ATTR in DEFAULT_ATTRIBUTES_MAP[pyintellicenter.SYSTEM_TYPE]
+
+
+def test_circuit_group_membership_rows_track_only_relationship_fields() -> None:
+    """Circuit-group rows retain only their real relationship attributes."""
+    assert DEFAULT_ATTRIBUTES_MAP[pyintellicenter.CIRCGRP_TYPE] == {
+        pyintellicenter.PARENT_ATTR,
+        pyintellicenter.CIRCUIT_ATTR,
+        pyintellicenter.LISTORD_ATTR,
+    }
 
 
 def test_roadmap_attributes_are_tracked() -> None:

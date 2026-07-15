@@ -18,7 +18,7 @@ from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyintellicenter import (
     ACT_ATTR,
-    CIRCUIT_ATTR,
+    CIRCUIT_TYPE,
     LIGHT_EFFECTS,
     STATUS_ATTR,
     USE_ATTR,
@@ -49,6 +49,51 @@ _MAGICSTREAM_SERVICES = {
 }
 
 
+def _complete_light_group_children(
+    coordinator: IntelliCenterCoordinator, parent: PoolObject
+) -> tuple[PoolObject, ...] | None:
+    """Resolve every distinct child of a real light-group parent."""
+    if parent.objtype != CIRCUIT_TYPE or parent.subtype != "LITSHO":
+        return None
+    members = coordinator.controller.get_circuit_group_members(parent.objnam)
+    children = coordinator.controller.get_circuits_in_group(parent.objnam)
+    if (
+        not members
+        or len(children) != len(members)
+        or len({child.objnam for child in children}) != len(children)
+    ):
+        return None
+    return tuple(children)
+
+
+def _is_complete_color_light_group(
+    coordinator: IntelliCenterCoordinator, parent: PoolObject
+) -> bool:
+    """Return whether a complete light group supports existing color effects."""
+    children = _complete_light_group_children(coordinator, parent)
+    return children is not None and all(
+        child.supports_color_effects for child in children
+    )
+
+
+def _is_color_sync_eligible(
+    coordinator: IntelliCenterCoordinator, parent: PoolObject
+) -> bool:
+    """Return whether the group matches the evidence-scoped Color Sync gate."""
+    children = _complete_light_group_children(coordinator, parent)
+    system_info = coordinator.system_info
+    return bool(
+        system_info is not None
+        and system_info.sw_version == "1.064"
+        and children is not None
+        and len(children) == 2
+        and all(
+            child.objtype == CIRCUIT_TYPE and child.subtype == "GLOW"
+            for child in children
+        )
+    )
+
+
 def _build_entities(
     coordinator: IntelliCenterCoordinator, candidates: Iterable[PoolObject]
 ) -> list[PoolLight]:
@@ -64,18 +109,13 @@ def _build_entities(
                 )
             )
         elif obj.is_a_light_show:
-            # Check if all child lights support color effects
-            children = coordinator.model.get_children(obj)
-            supports_color = all(
-                circuit_obj.supports_color_effects
-                for child in children
-                if (circuit_obj := coordinator.model[child[CIRCUIT_ATTR]]) is not None
-            )
             lights.append(
                 PoolLight(
                     coordinator,
                     obj,
-                    LIGHT_EFFECTS if supports_color else None,
+                    LIGHT_EFFECTS
+                    if _is_complete_color_light_group(coordinator, obj)
+                    else None,
                 )
             )
     return lights

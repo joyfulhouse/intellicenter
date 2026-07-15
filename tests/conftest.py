@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from pyintellicenter import (
     BODY_TYPE,
     CHEM_TYPE,
+    CIRCGRP_TYPE,
     CIRCUIT_TYPE,
     HEATER_TYPE,
     PMPCIRC_TYPE,
@@ -287,6 +288,65 @@ def pool_model(pool_model_data: list[dict[str, Any]]) -> PoolModel:
 
 
 @pytest.fixture
+def complete_light_group_model() -> PoolModel:
+    """Return a real two-member GloBrite light-group topology."""
+    model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
+    model.add_objects(
+        [
+            {
+                "objnam": "GROUP",
+                "params": {
+                    "OBJTYP": CIRCUIT_TYPE,
+                    "SUBTYP": "LITSHO",
+                    "SNAME": "Color Group",
+                    "STATUS": "OFF",
+                    "USE": "WHITER",
+                },
+            },
+            {
+                "objnam": "GROUP_ROW_2",
+                "params": {
+                    "OBJTYP": CIRCGRP_TYPE,
+                    "PARENT": "GROUP",
+                    "CIRCUIT": "GLOW2",
+                    "LISTORD": "2",
+                },
+            },
+            {
+                "objnam": "GROUP_ROW_1",
+                "params": {
+                    "OBJTYP": CIRCGRP_TYPE,
+                    "PARENT": "GROUP",
+                    "CIRCUIT": "GLOW1",
+                    "LISTORD": "1",
+                },
+            },
+            {
+                "objnam": "GLOW1",
+                "params": {
+                    "OBJTYP": CIRCUIT_TYPE,
+                    "SUBTYP": "GLOW",
+                    "SNAME": "GloBrite One",
+                    "STATUS": "OFF",
+                    "USE": "WHITER",
+                },
+            },
+            {
+                "objnam": "GLOW2",
+                "params": {
+                    "OBJTYP": CIRCUIT_TYPE,
+                    "SUBTYP": "GLOW",
+                    "SNAME": "GloBrite Two",
+                    "STATUS": "OFF",
+                    "USE": "WHITER",
+                },
+            },
+        ]
+    )
+    return model
+
+
+@pytest.fixture
 def pool_object_light() -> PoolObject:
     """Return a PoolObject representing an IntelliBrite light."""
     return PoolObject(
@@ -429,7 +489,23 @@ def mock_coordinator(
 
     # Configure controller with all convenience methods
     mock_controller = MagicMock()
+    real_model_controller = ICModelController("192.0.2.1", pool_model)
+
+    def get_circuit_group_members(parent_objnam: str) -> list[PoolObject]:
+        """Delegate membership lookup to the real controller and active model."""
+        real_model_controller._model = mock_coord.model
+        return real_model_controller.get_circuit_group_members(parent_objnam)
+
+    def get_circuits_in_group(group_objnam: str) -> list[PoolObject]:
+        """Delegate circuit resolution to the real controller and active model."""
+        real_model_controller._model = mock_coord.model
+        return real_model_controller.get_circuits_in_group(group_objnam)
+
     mock_controller.request_changes = AsyncMock()
+    mock_controller.get_circuit_group_members = MagicMock(
+        side_effect=get_circuit_group_members
+    )
+    mock_controller.get_circuits_in_group = MagicMock(side_effect=get_circuits_in_group)
     # Convenience methods from pyintellicenter v0.1.2
     mock_controller.set_vacation_mode = AsyncMock()
     mock_controller.set_ph_setpoint = AsyncMock()
@@ -490,6 +566,27 @@ def mock_coordinator(
     mock_coord.connected = True
 
     return mock_coord
+
+
+@pytest.fixture
+def complete_group_light(
+    complete_light_group_model: PoolModel,
+    mock_coordinator: MagicMock,
+) -> Any:
+    """Return the parent entity for the evidence-backed Color Sync topology."""
+    from custom_components.intellicenter.light import _build_entities
+
+    mock_coordinator.model = complete_light_group_model
+    system_info = MagicMock()
+    system_info.sw_version = "1.064"
+    mock_coordinator.system_info = system_info
+    return next(
+        entity
+        for entity in _build_entities(
+            mock_coordinator, list(complete_light_group_model)
+        )
+        if entity._pool_object.objnam == "GROUP"
+    )
 
 
 @pytest.fixture

@@ -145,7 +145,11 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
         DNTSTP_ATTR,
         FREEZE_ATTR,  # Freeze protection status
     },
-    CIRCGRP_TYPE: {SNAME_ATTR, STATUS_ATTR, USE_ATTR, CIRCUIT_ATTR},  # Circuit groups
+    CIRCGRP_TYPE: {
+        PARENT_ATTR,
+        CIRCUIT_ATTR,
+        LISTORD_ATTR,
+    },  # Circuit-group membership rows
     CHEM_TYPE: {
         SNAME_ATTR,
         BODY_ATTR,

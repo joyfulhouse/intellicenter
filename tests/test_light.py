@@ -7,6 +7,8 @@ from homeassistant.components.light.const import ColorMode
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from pyintellicenter import (
+    BODY_TYPE,
+    CIRCGRP_TYPE,
     CIRCUIT_TYPE,
     LIGHT_EFFECTS,
     STATUS_ATTR,
@@ -15,11 +17,62 @@ from pyintellicenter import (
 )
 import pytest
 
+from custom_components.intellicenter import light as light_platform
 from custom_components.intellicenter.const import LIMIT_ATTR
 from custom_components.intellicenter.coordinator import DEFAULT_ATTRIBUTES_MAP
-from custom_components.intellicenter.light import PoolLight
+from custom_components.intellicenter.light import PoolLight, _build_entities
 
 pytestmark = pytest.mark.asyncio
+
+
+def _make_light_group_model(
+    member_refs: tuple[str, ...],
+    child_shapes: dict[str, tuple[str, str]],
+) -> PoolModel:
+    """Build one light-show parent with real membership rows and children."""
+    model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
+    model.add_object(
+        "GROUP",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "LITSHO",
+            "SNAME": "Color Group",
+            "STATUS": "OFF",
+            "USE": "WHITER",
+        },
+    )
+    for index, circuit_ref in enumerate(member_refs, start=1):
+        model.add_object(
+            f"GROUP_ROW_{index}",
+            {
+                "OBJTYP": CIRCGRP_TYPE,
+                "PARENT": "GROUP",
+                "CIRCUIT": circuit_ref,
+                "LISTORD": str(index),
+            },
+        )
+    for objnam, (objtype, subtype) in child_shapes.items():
+        model.add_object(
+            objnam,
+            {
+                "OBJTYP": objtype,
+                "SUBTYP": subtype,
+                "SNAME": objnam,
+                "STATUS": "OFF",
+                "USE": "WHITER",
+            },
+        )
+    return model
+
+
+def _set_firmware(mock_coordinator: MagicMock, version: str | None) -> None:
+    """Set the cached raw firmware token used by the local action gate."""
+    if version is None:
+        mock_coordinator.system_info = None
+        return
+    system_info = MagicMock()
+    system_info.sw_version = version
+    mock_coordinator.system_info = system_info
 
 
 async def test_coordinator_tracks_light_limit() -> None:
@@ -288,6 +341,238 @@ async def test_light_show_entity(
 
     assert light_show.name == "Party Show"
     assert light_show.is_on is False
+
+
+async def test_complete_light_group_builds_parent_and_children_without_rows(
+    complete_light_group_model: PoolModel,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A complete real topology creates one parent plus ordinary child lights."""
+    mock_coordinator.model = complete_light_group_model
+
+    entities = _build_entities(mock_coordinator, list(complete_light_group_model))
+    objnams = [entity._pool_object.objnam for entity in entities]
+
+    assert objnams.count("GROUP") == 1
+    assert {"GLOW1", "GLOW2"} <= set(objnams)
+    assert {"GROUP_ROW_1", "GROUP_ROW_2"}.isdisjoint(objnams)
+
+    parent = complete_light_group_model["GROUP"]
+    assert parent is not None
+    children = light_platform._complete_light_group_children(mock_coordinator, parent)
+    assert children is not None
+    assert [child.objnam for child in children] == ["GLOW1", "GLOW2"]
+
+    group_entity = next(
+        entity for entity in entities if entity._pool_object.objnam == "GROUP"
+    )
+    assert group_entity.effect_list is not None
+
+
+@pytest.mark.parametrize(
+    (
+        "member_refs",
+        "child_shapes",
+        "expected_complete",
+        "expected_effects",
+    ),
+    [
+        ((), {}, False, False),
+        (("GLOW1",), {"GLOW1": (CIRCUIT_TYPE, "GLOW")}, True, True),
+        (
+            ("GLOW1", "GLOW2", "GLOW3"),
+            {
+                "GLOW1": (CIRCUIT_TYPE, "GLOW"),
+                "GLOW2": (CIRCUIT_TYPE, "GLOW"),
+                "GLOW3": (CIRCUIT_TYPE, "GLOW"),
+            },
+            True,
+            True,
+        ),
+        (("MISSING",), {}, False, False),
+        (("GLOW1", "GLOW1"), {"GLOW1": (CIRCUIT_TYPE, "GLOW")}, False, False),
+        (
+            ("GLOW1", "PLAIN"),
+            {
+                "GLOW1": (CIRCUIT_TYPE, "GLOW"),
+                "PLAIN": (CIRCUIT_TYPE, "LIGHT"),
+            },
+            True,
+            False,
+        ),
+    ],
+    ids=("zero", "one", "three", "missing", "duplicate", "mixed"),
+)
+async def test_light_group_requires_complete_non_vacuous_membership(
+    mock_coordinator: MagicMock,
+    member_refs: tuple[str, ...],
+    child_shapes: dict[str, tuple[str, str]],
+    expected_complete: bool,
+    expected_effects: bool,
+) -> None:
+    """Incomplete groups retain their parent but never gain effects vacuously."""
+    model = _make_light_group_model(member_refs, child_shapes)
+    mock_coordinator.model = model
+    parent = model["GROUP"]
+    assert parent is not None
+
+    children = light_platform._complete_light_group_children(mock_coordinator, parent)
+    assert (children is not None) is expected_complete
+    assert (
+        light_platform._is_complete_color_light_group(mock_coordinator, parent)
+        is expected_effects
+    )
+
+    entities = _build_entities(mock_coordinator, list(model))
+    group_entities = [
+        entity for entity in entities if entity._pool_object.objnam == "GROUP"
+    ]
+    assert len(group_entities) == 1
+    assert (group_entities[0].effect_list is not None) is expected_effects
+    assert all(entity._pool_object.objtype != CIRCGRP_TYPE for entity in entities)
+
+
+async def test_legacy_standalone_group_row_never_creates_an_entity(
+    mock_coordinator: MagicMock,
+) -> None:
+    """A compatibility-only standalone row resolves children but is not a light."""
+    model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
+    for objnam in ("GLOW1", "GLOW2"):
+        model.add_object(
+            objnam,
+            {
+                "OBJTYP": CIRCUIT_TYPE,
+                "SUBTYP": "GLOW",
+                "SNAME": objnam,
+                "STATUS": "OFF",
+            },
+        )
+    model.add_object(
+        "LEGACY_ROW",
+        {
+            "OBJTYP": CIRCGRP_TYPE,
+            "CIRCUIT": "GLOW1 GLOW2",
+        },
+    )
+    mock_coordinator.model = model
+
+    assert [
+        circuit.objnam
+        for circuit in mock_coordinator.controller.get_circuits_in_group("LEGACY_ROW")
+    ] == ["GLOW1", "GLOW2"]
+    assert {
+        entity._pool_object.objnam
+        for entity in _build_entities(mock_coordinator, list(model))
+    } == {"GLOW1", "GLOW2"}
+
+
+@pytest.mark.parametrize("subtype", ("INTELLI", "MAGIC2"))
+async def test_complete_non_glow_color_group_keeps_effects_but_rejects_sync(
+    mock_coordinator: MagicMock,
+    subtype: str,
+) -> None:
+    """Broad read/display effects do not widen the evidence-scoped action gate."""
+    model = _make_light_group_model(
+        ("LIGHT1", "LIGHT2"),
+        {
+            "LIGHT1": (CIRCUIT_TYPE, subtype),
+            "LIGHT2": (CIRCUIT_TYPE, subtype),
+        },
+    )
+    mock_coordinator.model = model
+    _set_firmware(mock_coordinator, "1.064")
+    parent = model["GROUP"]
+    assert parent is not None
+
+    assert light_platform._is_complete_color_light_group(mock_coordinator, parent)
+    assert not light_platform._is_color_sync_eligible(mock_coordinator, parent)
+
+
+@pytest.mark.parametrize(
+    "version",
+    (None, "1.063", "1.065", "IC: 1.064", "1.064 ", "1.064-build7"),
+)
+async def test_color_sync_group_rejects_non_exact_raw_firmware(
+    complete_light_group_model: PoolModel,
+    mock_coordinator: MagicMock,
+    version: str | None,
+) -> None:
+    """Only the captured raw firmware token is eligible for the writer."""
+    mock_coordinator.model = complete_light_group_model
+    _set_firmware(mock_coordinator, version)
+    parent = complete_light_group_model["GROUP"]
+    assert parent is not None
+
+    assert not light_platform._is_color_sync_eligible(mock_coordinator, parent)
+
+
+async def test_color_sync_group_accepts_exact_raw_firmware_and_two_glow_children(
+    complete_light_group_model: PoolModel,
+    mock_coordinator: MagicMock,
+) -> None:
+    """The local action gate matches the only evidence-backed topology."""
+    mock_coordinator.model = complete_light_group_model
+    _set_firmware(mock_coordinator, "1.064")
+    parent = complete_light_group_model["GROUP"]
+    assert parent is not None
+
+    assert light_platform._is_color_sync_eligible(mock_coordinator, parent)
+
+
+@pytest.mark.parametrize("member_count", (0, 1, 3))
+async def test_color_sync_group_rejects_wrong_member_count(
+    mock_coordinator: MagicMock,
+    member_count: int,
+) -> None:
+    """Color Sync requires exactly two distinct resolved members."""
+    objnams = tuple(f"GLOW{index}" for index in range(member_count))
+    model = _make_light_group_model(
+        objnams,
+        dict.fromkeys(objnams, (CIRCUIT_TYPE, "GLOW")),
+    )
+    mock_coordinator.model = model
+    _set_firmware(mock_coordinator, "1.064")
+    parent = model["GROUP"]
+    assert parent is not None
+
+    assert not light_platform._is_color_sync_eligible(mock_coordinator, parent)
+
+
+@pytest.mark.parametrize(
+    ("member_refs", "child_shapes"),
+    [
+        (("MISSING1", "MISSING2"), {}),
+        (("GLOW1", "GLOW1"), {"GLOW1": (CIRCUIT_TYPE, "GLOW")}),
+        (
+            ("GLOW1", "PLAIN"),
+            {
+                "GLOW1": (CIRCUIT_TYPE, "GLOW"),
+                "PLAIN": (CIRCUIT_TYPE, "LIGHT"),
+            },
+        ),
+        (
+            ("GLOW1", "NOT_A_CIRCUIT"),
+            {
+                "GLOW1": (CIRCUIT_TYPE, "GLOW"),
+                "NOT_A_CIRCUIT": (BODY_TYPE, "GLOW"),
+            },
+        ),
+    ],
+    ids=("missing", "duplicate", "mixed", "non-circuit-glow"),
+)
+async def test_color_sync_group_rejects_malformed_or_unsupported_children(
+    mock_coordinator: MagicMock,
+    member_refs: tuple[str, ...],
+    child_shapes: dict[str, tuple[str, str]],
+) -> None:
+    """Missing, duplicate, mixed, and fake GLOW children are never eligible."""
+    model = _make_light_group_model(member_refs, child_shapes)
+    mock_coordinator.model = model
+    _set_firmware(mock_coordinator, "1.064")
+    parent = model["GROUP"]
+    assert parent is not None
+
+    assert not light_platform._is_color_sync_eligible(mock_coordinator, parent)
 
 
 async def test_light_is_not_updated_by_other_objects(

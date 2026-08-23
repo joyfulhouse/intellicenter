@@ -5,7 +5,7 @@ import errno
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST
+from homeassistant.const import CONF_HOST, EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from pyintellicenter import ICCommandError, ICConnectionError, ICTimeoutError
@@ -334,9 +334,12 @@ class TestIntelliCenterCoordinator:
         # Initially not connected
         assert coordinator.connected is False
 
-        # Simulate connection
-        coordinator._connected = True
+        # The coordinator no longer tracks its own flag: ``connected`` is the
+        # handler's debounced availability property (pyintellicenter 0.2.0).
+        coordinator._handler._is_connected = True
         assert coordinator.connected is True
+        coordinator._handler._is_connected = False
+        assert coordinator.connected is False
 
     async def test_coordinator_model_property(self, hass: HomeAssistant) -> None:
         """Test coordinator model property."""
@@ -390,7 +393,7 @@ def _make_started_coordinator(hass: HomeAssistant) -> IntelliCenterCoordinator:
     coordinator.model.add_object(
         "C0002", {"OBJTYP": "CIRCUIT", "SNAME": "Spa Jets", "STATUS": "OFF"}
     )
-    coordinator._connected = True
+    coordinator._handler._is_connected = True
     return coordinator
 
 
@@ -413,6 +416,9 @@ class TestConnectionStatePropagation:
         coordinator.async_set_updated_data({"C0001": {"STATUS": "OFF"}})
         assert coordinator.data == {"C0001": {"STATUS": "OFF"}}
 
+        # The handler flips its availability flag BEFORE the debounced
+        # on_disconnected callback runs async_set_connection_state.
+        coordinator._handler._is_connected = False
         coordinator.async_set_connection_state(False)
         assert coordinator.data == {}
         assert coordinator.connected is False
@@ -434,7 +440,9 @@ class TestConnectionStatePropagation:
         entity.async_write_ha_state.assert_not_called()
 
         # Disconnect: the entity must re-render as unavailable even though it
-        # was not named in the last push diff.
+        # was not named in the last push diff. (The handler flips its flag
+        # before the debounced callback runs async_set_connection_state.)
+        coordinator._handler._is_connected = False
         coordinator.async_set_connection_state(False)
         entity._handle_coordinator_update()
         entity.async_write_ha_state.assert_called_once()
@@ -442,6 +450,7 @@ class TestConnectionStatePropagation:
 
         # Reconnect: it must come back too.
         entity.async_write_ha_state.reset_mock()
+        coordinator._handler._is_connected = True
         coordinator.async_set_connection_state(True)
         entity._handle_coordinator_update()
         entity.async_write_ha_state.assert_called_once()
@@ -469,3 +478,133 @@ class TestConnectionStatePropagation:
 
         assert entity._optimistic_state is None
         assert entity.is_on is False  # back to the model's truth
+
+
+# -------------------------------------------------------------------------------------
+# pyintellicenter 0.2.0 adoption (astop / connected / subscribe / removal entries)
+# -------------------------------------------------------------------------------------
+
+
+class TestPyIntellicenter020Adoption:
+    """Coordinator adoption of the pyintellicenter 0.2.0 API surface."""
+
+    async def test_async_stop_awaits_controller_teardown(
+        self, hass: HomeAssistant
+    ) -> None:
+        """async_stop() must not return before the controller is fully stopped.
+
+        The pre-0.2.0 ``handler.stop()`` scheduled the teardown as a
+        fire-and-forget task, so ``async_unload_entry`` could complete while
+        the connection was still closing. ``astop()`` waits for the real
+        teardown.
+        """
+        entry = MagicMock(spec=ConfigEntry)
+        entry.entry_id = "test_entry_123"
+        entry.data = {CONF_HOST: "192.168.1.100"}
+
+        coordinator = IntelliCenterCoordinator(hass, entry, host="192.168.1.100")
+        with (
+            patch.object(coordinator._controller, "start", new_callable=AsyncMock),
+            patch.object(
+                coordinator._controller, "stop", new_callable=AsyncMock
+            ) as mock_stop,
+        ):
+            await coordinator.async_start()
+            await coordinator.async_stop()
+            # The teardown ran to completion INSIDE async_stop, not later.
+            mock_stop.assert_awaited_once()
+        assert coordinator.connected is False
+
+    async def test_hass_stop_event_awaits_controller_teardown(
+        self, hass: HomeAssistant
+    ) -> None:
+        """The EVENT_HOMEASSISTANT_STOP listener performs the full async stop."""
+        entry = MagicMock(spec=ConfigEntry)
+        entry.entry_id = "test_entry_123"
+        entry.data = {CONF_HOST: "192.168.1.100"}
+
+        coordinator = IntelliCenterCoordinator(hass, entry, host="192.168.1.100")
+        with (
+            patch.object(coordinator._controller, "start", new_callable=AsyncMock),
+            patch.object(
+                coordinator._controller, "stop", new_callable=AsyncMock
+            ) as mock_stop,
+        ):
+            await coordinator.async_start()
+            hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)
+            await hass.async_block_till_done()
+            mock_stop.assert_awaited_once()
+
+    async def test_model_updates_flow_through_subscription(
+        self, hass: HomeAssistant
+    ) -> None:
+        """The coordinator receives updates via handler.subscribe(), end to end.
+
+        Drives the REAL library dispatch path (``_notify_updated`` is the
+        single site that invokes the legacy callback and all subscribers), so
+        this fails if the coordinator's subscription is never registered.
+        """
+        coordinator = _make_started_coordinator(hass)
+
+        coordinator._controller._notify_updated({"C0001": {"STATUS": "OFF"}})
+
+        assert coordinator.data == {"C0001": {"STATUS": "OFF"}}
+
+    async def test_removal_entry_dispatched_through_subscription(
+        self, hass: HomeAssistant
+    ) -> None:
+        """A ``{objnam: None}`` removal entry from the library reaches the
+        coordinator's removal handling via the real dispatch path."""
+        coordinator = _make_started_coordinator(hass)
+        removed_batches: list[set[str]] = []
+        coordinator.async_add_removed_objects_listener(removed_batches.append)
+
+        # The library prunes the model BEFORE dispatching the removal entry.
+        coordinator.model.remove_object("C0002")
+        coordinator._controller._notify_updated({"C0002": None})
+
+        assert removed_batches == [{"C0002"}]
+        assert coordinator.data == {}
+
+    async def test_removal_entry_does_not_crash_entity_update(
+        self, hass: HomeAssistant
+    ) -> None:
+        """An entity whose object was removed must survive the fan-out.
+
+        Before removal filtering, ``PoolEntity.isUpdated`` computed
+        ``attribute in updates.get(objnam, {})`` - a removal entry made that
+        ``attribute in None`` and raised TypeError.
+        """
+        coordinator = _make_started_coordinator(hass)
+        c0002 = coordinator.model["C0002"]
+        assert c0002 is not None
+        entity = PoolEntity(coordinator, c0002)
+        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]
+
+        coordinator.model.remove_object("C0002")
+        coordinator.async_set_updated_data({"C0002": None})
+
+        entity._handle_coordinator_update()  # must not raise
+
+        # The diff was cleared of the removal entry, so this is a
+        # connection-event style re-render for surviving entities.
+        entity.async_write_ha_state.assert_called_once()
+
+    async def test_mixed_update_filters_removals_from_data(
+        self, hass: HomeAssistant
+    ) -> None:
+        """Removal entries are split out; attribute changes fan out unchanged."""
+        coordinator = _make_started_coordinator(hass)
+        coordinator._started = True
+        coordinator._known_objnams = {"C0001", "C0002"}
+        coordinator._pending_redispatch = {"C0002"}
+        removed_batches: list[set[str]] = []
+        coordinator.async_add_removed_objects_listener(removed_batches.append)
+
+        coordinator.model.remove_object("C0002")
+        coordinator.async_set_updated_data({"C0002": None, "C0001": {"STATUS": "OFF"}})
+
+        assert coordinator.data == {"C0001": {"STATUS": "OFF"}}
+        assert removed_batches == [{"C0002"}]
+        assert "C0002" not in coordinator._known_objnams
+        assert coordinator._pending_redispatch == set()

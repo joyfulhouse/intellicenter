@@ -17,6 +17,8 @@ To regenerate ``CONTROLLER_METHODS`` after the integration changes::
 
 from __future__ import annotations
 
+import inspect
+
 import pyintellicenter
 
 from custom_components.intellicenter.const import (
@@ -218,3 +220,36 @@ def test_sensor_diagnostic_helpers_are_available() -> None:
     """The installed library supplies the typed sensor diagnostic helpers."""
     assert callable(pyintellicenter.ICModelController.get_sensor_probe_reading)
     assert callable(pyintellicenter.ICModelController.get_sensor_calibration)
+
+
+def test_connection_handler_020_surface() -> None:
+    """The installed library exposes the 0.2.0 handler API the coordinator uses.
+
+    The coordinator awaits ``astop()`` in ``async_stop``, delegates its
+    ``connected`` property to the handler, and registers its update tap via
+    ``subscribe()``. All three shipped in pyintellicenter 0.2.0 - a stale pin
+    would only fail in production without these assertions.
+    """
+    handler_cls = pyintellicenter.ICConnectionHandler
+    assert inspect.iscoroutinefunction(handler_cls.astop)
+    assert isinstance(inspect.getattr_static(handler_cls, "connected"), property)
+    assert callable(handler_cls.subscribe)
+    assert callable(pyintellicenter.ICModelController.subscribe)
+
+
+def test_model_supports_removal_reconciliation() -> None:
+    """The installed library prunes ghost equipment and can report removals.
+
+    The coordinator's removal handling relies on ``PoolModel.remove_object``
+    (used by reconnect reconciliation, which reports ``{objnam: None}``
+    entries through the updated callback and all subscribers).
+    """
+    assert callable(pyintellicenter.PoolModel.remove_object)
+    assert callable(pyintellicenter.PoolModel.reconcile)
+
+    remover = pyintellicenter.ICModelController(
+        "192.0.2.1", pyintellicenter.PoolModel({})
+    ).subscribe(None, lambda _controller, _updates: None)
+    assert callable(remover)
+    remover()
+    remover()  # documented as idempotent

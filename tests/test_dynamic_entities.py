@@ -215,13 +215,20 @@ def _capture_listener(
     Returns a dict with the captured ``listener`` (populated once the platform
     registers it) and the list of ``added`` entity batches.
     """
-    state: dict[str, Any] = {"listener": None, "added": []}
+    state: dict[str, Any] = {"listener": None, "removed_listener": None, "added": []}
 
     def _register(listener: Any) -> Any:
         state["listener"] = listener
         return MagicMock()
 
+    def _register_removed(listener: Any) -> Any:
+        state["removed_listener"] = listener
+        return MagicMock()
+
     mock_coordinator.async_add_new_objects_listener = MagicMock(side_effect=_register)
+    mock_coordinator.async_add_removed_objects_listener = MagicMock(
+        side_effect=_register_removed
+    )
     return state
 
 
@@ -798,3 +805,181 @@ async def test_pump_sensors_built_after_attribute_backfill(
     added.clear()
     coordinator.async_set_updated_data({PUMP3_OBJNAM: {"RPM": "2600"}})
     assert added_for(PUMP3_OBJNAM) == []
+
+
+# -------------------------------------------------------------------------------------
+# Runtime object removal (ghost equipment, pyintellicenter 0.2.0)
+# -------------------------------------------------------------------------------------
+
+
+class TestCoordinatorObjectRemoval:
+    """Coordinator handling of ``{objnam: None}`` removal entries.
+
+    pyintellicenter 0.2.0 reconciles the model against the authoritative
+    connect snapshot: equipment deleted at the panel is pruned from the model
+    and reported to the updated callback as a ``None`` entry so the
+    integration can remove the corresponding entities.
+    """
+
+    async def test_removed_listener_dispatched_and_bookkeeping_pruned(
+        self, hass: HomeAssistant, pool_model: PoolModel
+    ) -> None:
+        """A removal entry notifies listeners and prunes coordinator state."""
+        coordinator = _make_coordinator(hass, pool_model)
+        coordinator._pending_redispatch = {"CHEM1"}
+
+        removed_batches: list[set[str]] = []
+        coordinator.async_add_removed_objects_listener(removed_batches.append)
+
+        pool_model.remove_object("CHEM1")
+        coordinator.async_set_updated_data({"CHEM1": None})
+
+        assert removed_batches == [{"CHEM1"}]
+        assert "CHEM1" not in coordinator._known_objnams
+        assert coordinator._pending_redispatch == set()
+        assert coordinator.data == {}
+
+    async def test_removed_listener_unregister(
+        self, hass: HomeAssistant, pool_model: PoolModel
+    ) -> None:
+        """An unregistered removal listener is no longer notified."""
+        coordinator = _make_coordinator(hass, pool_model)
+
+        removed_batches: list[set[str]] = []
+        unregister = coordinator.async_add_removed_objects_listener(
+            removed_batches.append
+        )
+        unregister()
+
+        pool_model.remove_object("CHEM1")
+        coordinator.async_set_updated_data({"CHEM1": None})
+
+        assert removed_batches == []
+
+    async def test_removed_listener_exception_does_not_block_others(
+        self, hass: HomeAssistant, pool_model: PoolModel
+    ) -> None:
+        """One raising removal listener must not starve the rest."""
+        coordinator = _make_coordinator(hass, pool_model)
+
+        def _boom(_removed: set[str]) -> None:
+            raise RuntimeError("platform listener failed")
+
+        removed_batches: list[set[str]] = []
+        coordinator.async_add_removed_objects_listener(_boom)
+        coordinator.async_add_removed_objects_listener(removed_batches.append)
+
+        pool_model.remove_object("CHEM1")
+        coordinator.async_set_updated_data({"CHEM1": None})
+
+        assert removed_batches == [{"CHEM1"}]
+
+    async def test_removed_object_can_return_as_new(
+        self, hass: HomeAssistant, pool_model: PoolModel
+    ) -> None:
+        """Equipment removed then re-added at the panel is detected as new again."""
+        coordinator = _make_coordinator(hass, pool_model)
+
+        received: list[list[PoolObject]] = []
+        coordinator.async_add_new_objects_listener(received.append)
+
+        pool_model.remove_object("CHEM1")
+        coordinator.async_set_updated_data({"CHEM1": None})
+        assert received == []
+
+        # The panel re-adds the equipment: it must dispatch as new.
+        pool_model.add_object("CHEM1", dict(CHEM2_PARAMS))
+        coordinator.async_set_updated_data({"CHEM1": {"PHVAL": "7.4"}})
+
+        assert len(received) == 1
+        assert [obj.objnam for obj in received[0]] == ["CHEM1"]
+
+
+async def test_setup_pool_entities_removes_registry_entity(
+    hass: HomeAssistant, pool_model: PoolModel, mock_coordinator: MagicMock
+) -> None:
+    """Removal dispatch deletes the removed object's entities from the registry."""
+    from homeassistant.helpers import entity_registry as er
+
+    from custom_components.intellicenter.sensor import async_setup_entry
+
+    mock_coordinator.model = pool_model
+    state = _capture_listener(mock_coordinator)
+
+    entry = MagicMock()
+    entry.runtime_data = mock_coordinator
+    entry.async_on_unload = MagicMock()
+
+    added: list[Any] = []
+    await async_setup_entry(hass, entry, added.extend)
+    assert state["removed_listener"] is not None
+
+    # Simulate HA having registered one of the CHEM1 entities.
+    target = next(e for e in added if e._pool_object.objnam == "CHEM1")
+    registry = er.async_get(hass)
+    reg_entry = registry.async_get_or_create(
+        "sensor", "intellicenter", target.unique_id
+    )
+    target.entity_id = reg_entry.entity_id
+    target.hass = hass
+
+    state["removed_listener"]({"CHEM1"})
+
+    assert registry.async_get(reg_entry.entity_id) is None
+
+
+async def test_setup_pool_entities_readds_entities_after_removal(
+    hass: HomeAssistant, pool_model: PoolModel, mock_coordinator: MagicMock
+) -> None:
+    """After a removal, the same object coming back produces fresh entities.
+
+    This proves the removal path also drops the unique_id bookkeeping: without
+    it, the dedup map would silently swallow the re-added equipment forever.
+    """
+    from custom_components.intellicenter.sensor import async_setup_entry
+
+    mock_coordinator.model = pool_model
+    state = _capture_listener(mock_coordinator)
+
+    entry = MagicMock()
+    entry.runtime_data = mock_coordinator
+    entry.async_on_unload = MagicMock()
+
+    added: list[Any] = []
+    await async_setup_entry(hass, entry, added.extend)
+    chem1 = pool_model["CHEM1"]
+    assert chem1 is not None
+    assert any(e._pool_object.objnam == "CHEM1" for e in added)
+
+    state["removed_listener"]({"CHEM1"})
+
+    added.clear()
+    state["listener"]([chem1])
+
+    assert any(e._pool_object.objnam == "CHEM1" for e in added)
+
+
+async def test_setup_pool_entities_removal_leaves_other_entities_alone(
+    hass: HomeAssistant, pool_model: PoolModel, mock_coordinator: MagicMock
+) -> None:
+    """Removing one object never touches entities of the others."""
+    from custom_components.intellicenter.sensor import async_setup_entry
+
+    mock_coordinator.model = pool_model
+    state = _capture_listener(mock_coordinator)
+
+    entry = MagicMock()
+    entry.runtime_data = mock_coordinator
+    entry.async_on_unload = MagicMock()
+
+    added: list[Any] = []
+    await async_setup_entry(hass, entry, added.extend)
+
+    state["removed_listener"]({"CHEM1"})
+
+    # Re-dispatching a surviving object still dedups (its entities were kept).
+    sense1 = pool_model["SENSE1"]
+    assert sense1 is not None
+    added.clear()
+    state["listener"]([sense1])
+    assert added == []

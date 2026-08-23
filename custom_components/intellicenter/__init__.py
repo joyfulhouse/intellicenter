@@ -18,7 +18,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, Platform, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
-from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -248,6 +248,12 @@ def async_setup_pool_entities(
     only once. A duplicate builder result refreshes the original entity's shared
     model context, allowing cross-object capabilities to change in place.
 
+    The reverse direction is handled too: equipment deleted at the panel is
+    pruned from the model by pyintellicenter's reconnect reconciliation and
+    reported through the coordinator's removed-objects listeners; the removed
+    object's entities are deleted from the entity registry (and the dedup map),
+    so re-added equipment gets fresh entities instead of being swallowed.
+
     Args:
         entry: The config entry whose ``runtime_data`` is the coordinator.
         async_add_entities: The platform's add-entities callback.
@@ -272,11 +278,35 @@ def async_setup_pool_entities(
         if entities:
             async_add_entities(entities)
 
+    @callback
+    def _remove(removed_objnams: set[str]) -> None:
+        registry = er.async_get(coordinator.hass)
+        for uid, entity in list(created_entities.items()):
+            if entity._pool_object.objnam not in removed_objnams:
+                continue
+            # Drop the dedup record first so the equipment coming back later
+            # is built fresh rather than swallowed by the unique_id filter.
+            del created_entities[uid]
+            entity_id = getattr(entity, "entity_id", None)
+            if entity_id and registry.async_get(entity_id) is not None:
+                # Registry removal also removes the entity from the state
+                # machine; it must not linger as a restorable ghost.
+                registry.async_remove(entity_id)
+            elif entity.hass is not None:
+                # Added to HA but (unexpectedly) not registered: remove the
+                # live entity directly.
+                entity.hass.async_create_task(
+                    entity.async_remove(force_remove=True),
+                    f"intellicenter_remove_{uid}",
+                )
+
     # Initial population from the objects discovered at setup.
     _add(list(coordinator.model))
 
-    # Dynamic population for objects added after startup.
+    # Dynamic population for objects added after startup, and removal of
+    # entities whose equipment was deleted at the panel (ghost equipment).
     entry.async_on_unload(coordinator.async_add_new_objects_listener(_add))
+    entry.async_on_unload(coordinator.async_add_removed_objects_listener(_remove))
 
 
 def bodies_affected_by(

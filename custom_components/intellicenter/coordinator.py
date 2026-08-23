@@ -8,7 +8,7 @@ notifications from the controller.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 import logging
 from typing import Any
 
@@ -119,6 +119,14 @@ _LOGGER = logging.getLogger(__name__)
 # runtime. Each platform registers one of these so it can create entities for
 # newly-added equipment without requiring a Home Assistant restart (issue #42).
 NewObjectsListener = Callable[[list[PoolObject]], None]
+
+# Callback invoked with the objnams of pool objects removed from the model.
+# pyintellicenter 0.2.0 reconciles the model against the authoritative connect
+# snapshot on every (re)connect: equipment deleted at the panel is pruned from
+# the model and reported as a ``{objnam: None}`` entry through the update
+# dispatch. Each platform registers one of these so it can remove the
+# corresponding entities.
+RemovedObjectsListener = Callable[[set[str]], None]
 
 # Default attribute tracking map - defines which attributes to monitor per object type
 DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
@@ -314,8 +322,16 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
             time_between_reconnects=reconnect_delay,
         )
 
+        # Model updates arrive through a per-object subscription
+        # (pyintellicenter 0.2.0) rather than the handler's single legacy
+        # ``on_updated`` slot. Registering here - before any start() - means no
+        # update (including the ``{objnam: None}`` removal entries emitted by
+        # reconnect reconciliation) can be dispatched unobserved.
+        self._model_updates_unsub: Callable[[], None] = self._handler.subscribe(
+            None, self._handle_model_updates
+        )
+
         self._stop_listener: CALLBACK_TYPE | None = None
-        self._connected = False
 
         # Dynamic-entity-addition state (issue #42).
         # `_known_objnams` is the set of object identifiers the platforms have
@@ -328,6 +344,7 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         self._known_objnams: set[str] = set()
         self._started = False
         self._new_objects_listeners: list[NewObjectsListener] = []
+        self._removed_objects_listeners: list[RemovedObjectsListener] = []
         # Objects dispatched to the platforms while potentially incomplete: a
         # runtime-added object is first seen with only the params its NotifyList
         # carried; the controller backfills the remaining tracked attributes via
@@ -354,16 +371,30 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
 
     @property
     def connected(self) -> bool:
-        """Return True if connected to the IntelliCenter."""
-        return self._connected
+        """Return True if connected to the IntelliCenter.
+
+        Delegates to the handler's availability property (pyintellicenter
+        0.2.0): True after a successful connect/reconnect, False on disconnect
+        or stop. Entities only *render* availability when an update or
+        connection event fans out, so the handler's immediate flip on
+        connection loss cannot cause visible flapping during the disconnect
+        debounce window - it only makes any state written in that window
+        truthful.
+        """
+        return self._handler.connected
 
     async def async_start(self) -> None:
         """Start the connection to the IntelliCenter."""
 
         # Register stop listener
         async def _on_hass_stop(event: Any) -> None:
-            """Stop the connection when Home Assistant stops."""
-            self._handler.stop()
+            """Stop the connection when Home Assistant stops.
+
+            astop() waits for the full controller teardown; the pre-0.2.0
+            fire-and-forget stop() could leave the socket half-closed when the
+            event loop shut down underneath the untracked teardown task.
+            """
+            await self._handler.astop()
 
         self._stop_listener = self.hass.bus.async_listen_once(
             EVENT_HOMEASSISTANT_STOP, _on_hass_stop
@@ -371,7 +402,6 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
 
         # Start the connection
         await self._handler.start()
-        self._connected = True
 
         # Snapshot the objects discovered during the initial connection. Anything
         # that appears in the model after this point is treated as newly-added
@@ -380,15 +410,20 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         self._started = True
 
     async def async_stop(self) -> None:
-        """Stop the connection to the IntelliCenter."""
+        """Stop the connection to the IntelliCenter.
+
+        Waits for the full controller teardown (``astop``), so
+        ``async_unload_entry`` cannot complete - and a reload cannot reconnect
+        - over a connection that is still closing.
+        """
         # Cancel stop listener
         if self._stop_listener:
             self._stop_listener()
             self._stop_listener = None
 
-        # Stop the handler
-        self._handler.stop()
-        self._connected = False
+        # Drop the model-update subscription (idempotent) and stop the handler.
+        self._model_updates_unsub()
+        await self._handler.astop()
 
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         """Fetch data from the IntelliCenter.
@@ -426,6 +461,32 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         @callback
         def _remove_listener() -> None:
             self._new_objects_listeners.remove(listener)
+
+        return _remove_listener
+
+    @callback
+    def async_add_removed_objects_listener(
+        self, listener: RemovedObjectsListener
+    ) -> CALLBACK_TYPE:
+        """Register a callback for pool objects removed from the model.
+
+        pyintellicenter reconciles the model against the authoritative connect
+        snapshot on every (re)connect: equipment deleted at the panel is pruned
+        and reported as ``{objnam: None}`` update entries. Each platform
+        registers a listener so it can remove the corresponding entities at
+        runtime instead of leaving ghosts behind until a restart.
+
+        Args:
+            listener: Callback invoked with the set of removed objnams.
+
+        Returns:
+            A callable that unregisters the listener.
+        """
+        self._removed_objects_listeners.append(listener)
+
+        @callback
+        def _remove_listener() -> None:
+            self._removed_objects_listeners.remove(listener)
 
         return _remove_listener
 
@@ -556,23 +617,80 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
                 )
 
     @callback
-    def async_set_updated_data(self, data: dict[str, dict[str, Any]]) -> None:
+    def _handle_model_updates(
+        self,
+        controller: ICModelController,
+        updates: Mapping[str, dict[str, Any] | None],
+    ) -> None:
+        """Receive model updates from the pyintellicenter subscription.
+
+        Registered via ``handler.subscribe(None, ...)`` so it observes every
+        update the library dispatches - the payload is shared and read-only by
+        contract, which ``async_set_updated_data`` honors by building its own
+        filtered dict.
+        """
+        _LOGGER.debug("Received update for %d pool objects", len(updates))
+        self.async_set_updated_data(updates)
+
+    @callback
+    def async_set_updated_data(self, data: Mapping[str, dict[str, Any] | None]) -> None:
         """Handle push update from IntelliCenter.
 
-        This is called by the connection handler when updates are received
-        from the IntelliCenter system.
+        This is called from the model-update subscription when updates are
+        received from the IntelliCenter system. An entry with value ``None``
+        marks an object *removed* from the model (equipment deleted at the
+        panel, pruned by reconnect reconciliation); those are split out and
+        routed to the removal listeners so only real attribute diffs reach the
+        entities - an entity's ``isUpdated`` would otherwise crash on the
+        ``None``.
 
         Args:
-            data: Dictionary of object updates {objnam: {attr: value}}
+            data: Mapping of object updates {objnam: {attr: value}}, where a
+                ``None`` value marks the object's removal.
         """
-        self.data = data
+        removed = {objnam for objnam, attrs in data.items() if attrs is None}
+        changes: dict[str, dict[str, Any]] = {
+            objnam: attrs for objnam, attrs in data.items() if attrs is not None
+        }
+        if removed:
+            self._async_remove_objects(removed)
+
+        self.data = changes
         # New equipment can enter the model on a reconnect (the controller
         # re-fetches every object on start), so reconcile before fanning out.
         just_added = self._async_detect_new_objects()
         # The update that introduced an object is not its backfill; only later
         # updates for that object complete it.
-        self._async_redispatch_backfilled(set(data) - just_added)
+        self._async_redispatch_backfilled(set(changes) - just_added)
+        # A removal-only update leaves ``data`` empty: the fan-out then takes
+        # the connection-event path in the entities, re-rendering everything -
+        # which is exactly what survivors that referenced the removed objects
+        # (a body's heater list, a group's members) need.
         self.async_update_listeners()
+
+    @callback
+    def _async_remove_objects(self, removed: set[str]) -> None:
+        """Handle objects pruned from the model by reconnect reconciliation.
+
+        The library has already removed them from the model and stopped
+        re-subscribing to them; here the coordinator's bookkeeping is pruned
+        (so returning equipment is detected as new again) and the platforms
+        are told to remove the corresponding entities. Dispatch to each
+        platform independently: a failure in one platform's listener must not
+        skip the rest.
+        """
+        self._known_objnams -= removed
+        self._pending_redispatch -= removed
+        _LOGGER.info(
+            "Pool object(s) removed from the panel: %s", ", ".join(sorted(removed))
+        )
+        for listener in list(self._removed_objects_listeners):
+            try:
+                listener(removed)
+            except Exception:
+                _LOGGER.exception(
+                    "Error dispatching removed pool objects to a platform listener"
+                )
 
     @callback
     def async_set_connection_state(self, connected: bool) -> None:
@@ -580,8 +698,10 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
 
         Args:
             connected: True if connected, False if disconnected
+
+        The flag itself is not stored: ``connected`` reads the handler's
+        availability property. This call's job is the fan-out below.
         """
-        self._connected = connected
         # A reconnect re-fetches the full object list into the model; surface any
         # equipment that was added while the connection was down.
         if connected:
@@ -646,10 +766,6 @@ class _CoordinatorConnectionHandler(ICConnectionHandler):
         _LOGGER.info("Disconnected from IntelliCenter: '%s'", prop_name)
         self._coordinator.async_set_connection_state(False)
 
-    @callback
-    def on_updated(
-        self, controller: ICModelController, updates: dict[str, dict[str, Any]]
-    ) -> None:
-        """Handle updates from the Pentair system."""
-        _LOGGER.debug("Received update for %d pool objects", len(updates))
-        self._coordinator.async_set_updated_data(updates)
+    # Model updates deliberately do NOT go through an ``on_updated`` override:
+    # the coordinator registers a subscription via ``handler.subscribe()``
+    # (pyintellicenter 0.2.0), leaving this handler with lifecycle events only.

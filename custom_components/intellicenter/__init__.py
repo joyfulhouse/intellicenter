@@ -287,7 +287,11 @@ def async_setup_pool_entities(
         # only dispatch during reconnect reconciliation, so an entity add
         # in flight at that moment (built but not yet registered) is a
         # theoretical gap accepted here: such an entity is dropped from the
-        # dedup map but cannot be deleted from a registry it isn't in yet.
+        # dedup map but cannot be deleted from a registry it isn't in yet, and
+        # the same equipment returning before the platform finishes the
+        # pending teardown could have its replacement rejected as a duplicate.
+        # Both require a second reconnect cycle inside the removal's own event
+        # loop turn, which cannot happen in practice.
         registry = er.async_get(coordinator.hass)
         for uid, entity in list(created_entities.items()):
             if entity._pool_object.objnam not in removed_objnams:

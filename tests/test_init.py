@@ -334,11 +334,12 @@ class TestIntelliCenterCoordinator:
         # Initially not connected
         assert coordinator.connected is False
 
-        # The coordinator no longer tracks its own flag: ``connected`` is the
-        # handler's debounced availability property (pyintellicenter 0.2.0).
-        coordinator._handler._is_connected = True
+        # The flag follows the debounced connection callbacks, NOT the
+        # handler's ``connected`` property (see the property's docstring for
+        # the reconnect callback-ordering hazard).
+        coordinator.async_set_connection_state(True)
         assert coordinator.connected is True
-        coordinator._handler._is_connected = False
+        coordinator.async_set_connection_state(False)
         assert coordinator.connected is False
 
     async def test_coordinator_model_property(self, hass: HomeAssistant) -> None:
@@ -393,7 +394,7 @@ def _make_started_coordinator(hass: HomeAssistant) -> IntelliCenterCoordinator:
     coordinator.model.add_object(
         "C0002", {"OBJTYP": "CIRCUIT", "SNAME": "Spa Jets", "STATUS": "OFF"}
     )
-    coordinator._handler._is_connected = True
+    coordinator._connected = True
     return coordinator
 
 
@@ -416,9 +417,6 @@ class TestConnectionStatePropagation:
         coordinator.async_set_updated_data({"C0001": {"STATUS": "OFF"}})
         assert coordinator.data == {"C0001": {"STATUS": "OFF"}}
 
-        # The handler flips its availability flag BEFORE the debounced
-        # on_disconnected callback runs async_set_connection_state.
-        coordinator._handler._is_connected = False
         coordinator.async_set_connection_state(False)
         assert coordinator.data == {}
         assert coordinator.connected is False
@@ -440,9 +438,7 @@ class TestConnectionStatePropagation:
         entity.async_write_ha_state.assert_not_called()
 
         # Disconnect: the entity must re-render as unavailable even though it
-        # was not named in the last push diff. (The handler flips its flag
-        # before the debounced callback runs async_set_connection_state.)
-        coordinator._handler._is_connected = False
+        # was not named in the last push diff.
         coordinator.async_set_connection_state(False)
         entity._handle_coordinator_update()
         entity.async_write_ha_state.assert_called_once()
@@ -450,7 +446,6 @@ class TestConnectionStatePropagation:
 
         # Reconnect: it must come back too.
         entity.async_write_ha_state.reset_mock()
-        coordinator._handler._is_connected = True
         coordinator.async_set_connection_state(True)
         entity._handle_coordinator_update()
         entity.async_write_ha_state.assert_called_once()
@@ -534,6 +529,36 @@ class TestPyIntellicenter020Adoption:
             hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)
             await hass.async_block_till_done()
             mock_stop.assert_awaited_once()
+
+    async def test_reconnect_callback_ordering_yields_available_entities(
+        self, hass: HomeAssistant
+    ) -> None:
+        """Entities must render available during the on_reconnected fan-out.
+
+        pyintellicenter's ``_starter`` invokes ``on_reconnected`` BEFORE it
+        sets the handler's ``_is_connected`` flag, so ``handler.connected`` is
+        still False while the reconnect fan-out runs. If the coordinator's
+        ``connected`` delegated to that property (an earlier revision of this
+        adoption did), every reconnect would render every entity unavailable
+        with no later fan-out to correct it. Availability must come from the
+        callback-driven coordinator flag.
+        """
+        coordinator = _make_started_coordinator(hass)
+        c0001 = coordinator.model["C0001"]
+        assert c0001 is not None
+        entity = PoolEntity(coordinator, c0001)
+        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]
+
+        # Simulate a disconnect that reached the coordinator...
+        coordinator._connected = False
+        # ...and the library's reconnect callback, delivered while the
+        # handler's own flag is still False (the real invocation order).
+        coordinator._handler._is_connected = False
+        coordinator._handler.on_reconnected(coordinator._controller)
+
+        entity._handle_coordinator_update()
+        assert entity.available is True
+        entity.async_write_ha_state.assert_called_once()
 
     async def test_model_updates_flow_through_subscription(
         self, hass: HomeAssistant

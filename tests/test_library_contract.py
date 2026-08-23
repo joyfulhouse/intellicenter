@@ -225,14 +225,15 @@ def test_sensor_diagnostic_helpers_are_available() -> None:
 def test_connection_handler_020_surface() -> None:
     """The installed library exposes the 0.2.0 handler API the coordinator uses.
 
-    The coordinator awaits ``astop()`` in ``async_stop``, delegates its
-    ``connected`` property to the handler, and registers its update tap via
-    ``subscribe()``. All three shipped in pyintellicenter 0.2.0 - a stale pin
-    would only fail in production without these assertions.
+    The coordinator awaits ``astop()`` in ``async_stop`` and registers its
+    update tap via ``subscribe()``. Both shipped in pyintellicenter 0.2.0 - a
+    stale pin would only fail in production without these assertions. (The
+    handler's ``connected`` property is deliberately NOT used for entity
+    availability: it flips True only after ``on_reconnected`` has run - see
+    ``IntelliCenterCoordinator.connected``.)
     """
     handler_cls = pyintellicenter.ICConnectionHandler
     assert inspect.iscoroutinefunction(handler_cls.astop)
-    assert isinstance(inspect.getattr_static(handler_cls, "connected"), property)
     assert callable(handler_cls.subscribe)
     assert callable(pyintellicenter.ICModelController.subscribe)
 

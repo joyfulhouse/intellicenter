@@ -334,6 +334,7 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         self._handler.subscribe(None, self._handle_model_updates)
 
         self._stop_listener: CALLBACK_TYPE | None = None
+        self._connected = False
 
         # Dynamic-entity-addition state (issue #42).
         # `_known_objnams` is the set of object identifiers the platforms have
@@ -375,15 +376,17 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
     def connected(self) -> bool:
         """Return True if connected to the IntelliCenter.
 
-        Delegates to the handler's availability property (pyintellicenter
-        0.2.0): True after a successful connect/reconnect, False on disconnect
-        or stop. Entities only *render* availability when an update or
-        connection event fans out, so the handler's immediate flip on
-        connection loss cannot cause visible flapping during the disconnect
-        debounce window - it only makes any state written in that window
-        truthful.
+        Deliberately the coordinator's own callback-driven flag, NOT the
+        handler's ``connected`` property (pyintellicenter 0.2.0). The library
+        flips its flag False immediately on connection loss (before the
+        debounced ``on_disconnected``) but True only AFTER ``on_reconnected``
+        has already run - so reading it during the reconnect fan-out would
+        render every entity unavailable, with no later fan-out to correct it
+        (found in adversarial review). The connection callbacks are the
+        debounced, fan-out-aligned source of truth for entity availability;
+        do not "simplify" this back to ``self._handler.connected``.
         """
-        return self._handler.connected
+        return self._connected
 
     async def async_start(self) -> None:
         """Start the connection to the IntelliCenter."""
@@ -408,6 +411,7 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
 
         # Start the connection
         await self._handler.start()
+        self._connected = True
 
         # Snapshot the objects discovered during the initial connection. Anything
         # that appears in the model after this point is treated as newly-added
@@ -431,6 +435,7 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         # subscription stays registered (see __init__): the stopped controller
         # dispatches nothing, and removing it would starve a restarted handler.
         await self._handler.astop()
+        self._connected = False
 
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         """Fetch data from the IntelliCenter.
@@ -705,10 +710,8 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
 
         Args:
             connected: True if connected, False if disconnected
-
-        The flag itself is not stored: ``connected`` reads the handler's
-        availability property. This call's job is the fan-out below.
         """
+        self._connected = connected
         # A reconnect re-fetches the full object list into the model; surface any
         # equipment that was added while the connection was down.
         if connected:

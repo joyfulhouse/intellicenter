@@ -677,7 +677,12 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         # A removal-only update leaves ``data`` empty: the fan-out then takes
         # the connection-event path in the entities, re-rendering everything -
         # which is exactly what survivors that referenced the removed objects
-        # (a body's heater list, a group's members) need.
+        # (a body's heater list, a group's members) need. This relies on a
+        # library invariant: pyintellicenter dispatches reconnect-reconciliation
+        # removals and the attribute backfill as SEPARATE _notify_updated calls,
+        # so removals always arrive alone. If a future version coalesced them,
+        # survivors not named in the mixed diff would miss this re-render (the
+        # subsequent on_reconnected full re-render still corrects availability).
         self.async_update_listeners()
 
     @callback

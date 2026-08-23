@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Color Sync light-group action** (#93) - Added the blocking `intellicenter.color_sync` service for complete light groups with exactly two distinct GloBrite members on firmware 1.064, available over TCP and WebSocket.
-- **Ghost-equipment entity removal** (#112) - Equipment deleted at the panel is now removed from Home Assistant at runtime. pyintellicenter 0.2.0 reconciles the pool model against the authoritative snapshot on every connect and reconnect and reports pruned objects as removal entries; the integration removes the corresponding entities from the entity registry, so they no longer linger as unavailable ghosts until a restart. Equipment that is later re-added is detected as new and gets fresh entities.
+- **Ghost-equipment entity removal** (#112) - Equipment deleted at the panel is now removed from Home Assistant at runtime. pyintellicenter 0.2.0 reconciles the pool model against the authoritative snapshot on every connect and reconnect and reports pruned objects as removal entries; the integration removes the corresponding entities from the entity registry, so they no longer linger as unavailable ghosts until a restart. Equipment that is later re-added is detected as new and gets fresh entities. Known limitation: entities that merely *depend* on removed equipment (e.g. a body's water heater entity after its last heater is deleted) are not retired automatically - reload the integration after deleting such equipment.
 
 ### Changed
 

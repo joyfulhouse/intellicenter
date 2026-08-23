@@ -569,26 +569,34 @@ class TestPyIntellicenter020Adoption:
     async def test_removal_entry_does_not_crash_entity_update(
         self, hass: HomeAssistant
     ) -> None:
-        """An entity whose object was removed must survive the fan-out.
+        """The removal fan-out re-renders survivors and skips the doomed entity.
 
         Before removal filtering, ``PoolEntity.isUpdated`` computed
         ``attribute in updates.get(objnam, {})`` - a removal entry made that
-        ``attribute in None`` and raised TypeError.
+        ``attribute in None`` and raised TypeError. The removed object's own
+        entity additionally skips the empty-diff re-render: it is concurrently
+        being deleted by the platform's removal listener, and writing one last
+        state would resurrect a registry-less ghost.
         """
         coordinator = _make_started_coordinator(hass)
+        c0001 = coordinator.model["C0001"]
         c0002 = coordinator.model["C0002"]
-        assert c0002 is not None
-        entity = PoolEntity(coordinator, c0002)
-        entity.async_write_ha_state = MagicMock()  # type: ignore[method-assign]
+        assert c0001 is not None and c0002 is not None
+        survivor = PoolEntity(coordinator, c0001)
+        doomed = PoolEntity(coordinator, c0002)
+        survivor.async_write_ha_state = MagicMock()  # type: ignore[method-assign]
+        doomed.async_write_ha_state = MagicMock()  # type: ignore[method-assign]
 
         coordinator.model.remove_object("C0002")
         coordinator.async_set_updated_data({"C0002": None})
 
-        entity._handle_coordinator_update()  # must not raise
+        survivor._handle_coordinator_update()  # must not raise
+        doomed._handle_coordinator_update()  # must not raise
 
-        # The diff was cleared of the removal entry, so this is a
-        # connection-event style re-render for surviving entities.
-        entity.async_write_ha_state.assert_called_once()
+        # The diff was cleared of the removal entry, so survivors take the
+        # connection-event style re-render; the doomed entity writes nothing.
+        survivor.async_write_ha_state.assert_called_once()
+        doomed.async_write_ha_state.assert_not_called()
 
     async def test_mixed_update_filters_removals_from_data(
         self, hass: HomeAssistant

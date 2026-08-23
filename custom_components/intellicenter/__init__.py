@@ -280,6 +280,14 @@ def async_setup_pool_entities(
 
     @callback
     def _remove(removed_objnams: set[str]) -> None:
+        # Scope: removes the entities OF the removed objects. Entities that
+        # merely *depend* on them (a body's water_heater/climate whose last
+        # heater was deleted) are not retired - they keep rendering from their
+        # construction-time seed until the integration is reloaded. Removals
+        # only dispatch during reconnect reconciliation, so an entity add
+        # in flight at that moment (built but not yet registered) is a
+        # theoretical gap accepted here: such an entity is dropped from the
+        # dedup map but cannot be deleted from a registry it isn't in yet.
         registry = er.async_get(coordinator.hass)
         for uid, entity in list(created_entities.items()):
             if entity._pool_object.objnam not in removed_objnams:
@@ -697,6 +705,13 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
             self._clear_optimistic_state()
             self.async_write_ha_state()
         elif not updates:
+            if self.coordinator.model[self._pool_object.objnam] is None:
+                # The object is gone from the model (equipment deleted at the
+                # panel): this entity is concurrently being removed by the
+                # platform's removed-objects listener. Skip the re-render so a
+                # doomed entity can't write one last ghost state in the same
+                # fan-out that announced its removal.
+                return
             # Connection event (the coordinator cleared its diff): re-render every
             # entity so availability changes take effect, and drop any optimistic
             # state - after a reconnect the model is the fresh source of truth, and

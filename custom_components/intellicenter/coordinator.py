@@ -326,10 +326,12 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         # (pyintellicenter 0.2.0) rather than the handler's single legacy
         # ``on_updated`` slot. Registering here - before any start() - means no
         # update (including the ``{objnam: None}`` removal entries emitted by
-        # reconnect reconciliation) can be dispatched unobserved.
-        self._model_updates_unsub: Callable[[], None] = self._handler.subscribe(
-            None, self._handle_model_updates
-        )
+        # reconnect reconciliation) can be dispatched unobserved. The
+        # subscription is deliberately never removed: its lifetime equals the
+        # controller's (both die with this coordinator), and after astop() the
+        # controller dispatches nothing - while an unsubscribe-on-stop would
+        # silently starve a handler restarted after a stop.
+        self._handler.subscribe(None, self._handle_model_updates)
 
         self._stop_listener: CALLBACK_TYPE | None = None
 
@@ -390,11 +392,15 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         async def _on_hass_stop(event: Any) -> None:
             """Stop the connection when Home Assistant stops.
 
-            astop() waits for the full controller teardown; the pre-0.2.0
-            fire-and-forget stop() could leave the socket half-closed when the
-            event loop shut down underneath the untracked teardown task.
+            Runs the same async_stop as unload, so shutdown awaits the full
+            controller teardown (astop) - the pre-0.2.0 fire-and-forget stop()
+            could leave the socket half-closed when the event loop shut down
+            underneath the untracked teardown task. The once-listener has
+            already fired, so drop its reference first: a later unload's
+            async_stop must not re-invoke the spent remover.
             """
-            await self._handler.astop()
+            self._stop_listener = None
+            await self.async_stop()
 
         self._stop_listener = self.hass.bus.async_listen_once(
             EVENT_HOMEASSISTANT_STOP, _on_hass_stop
@@ -421,8 +427,9 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
             self._stop_listener()
             self._stop_listener = None
 
-        # Drop the model-update subscription (idempotent) and stop the handler.
-        self._model_updates_unsub()
+        # Stop the handler and wait for the teardown. The model-update
+        # subscription stays registered (see __init__): the stopped controller
+        # dispatches nothing, and removing it would starve a restarted handler.
         await self._handler.astop()
 
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:

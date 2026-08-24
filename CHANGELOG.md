@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.10.0b3] - 2026-08-23
+
 ### Added
 
 - **Color Sync light-group action** (#93) - Added the blocking `intellicenter.color_sync` service for complete light groups with exactly two distinct GloBrite members on firmware 1.064, available over TCP and WebSocket.
@@ -14,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Requires pyintellicenter >= 0.2.0** (#113) - Adopts the 0.2.0 connection-handler API: `async_unload_entry` and Home Assistant shutdown now await the full controller teardown (`astop()`), so an unload or reload can never race a half-closed connection, and model updates flow through the new `subscribe()` API (the handler subclass keeps lifecycle events only). Entity availability deliberately stays on the coordinator's callback-driven flag rather than the handler's `connected` property, whose flag flips True only after `on_reconnected` has run (adopting it would have rendered every entity unavailable on each reconnect - caught in adversarial review). Also picks up the library's notification burst batching, per-frame overflow coalescing, discovery rewrite, and hot-path performance fixes.
+- **Requires pyintellicenter >= 0.2.2** (#113, #114) - Adopts the 0.2.x connection-handler API: `async_unload_entry` and Home Assistant shutdown now await the full controller teardown (`astop()`), so an unload or reload can never race a half-closed connection; model updates flow through the `subscribe()` API (the handler subclass keeps lifecycle events only); and equipment deleted at the panel is removed at runtime (see "Ghost-equipment entity removal"). Entity availability now **delegates to the handler's `connected` property**, which on pyintellicenter 0.2.2 reflects the live transport during a reconnect's in-`start()` backfill dispatch - so entities render available as the reconnect's fresh state fans out, with no spurious "unavailable" flicker. (An earlier revision kept a separate callback-driven flag because pyintellicenter 0.2.0/0.2.1 set the handler flag only *after* that dispatch, which would have flickered every entity unavailable on each reconnect; pyintellicenter 0.2.2 (#89) fixed the library and this re-adopts delegation.) Also picks up the library's notification burst batching, per-frame overflow coalescing, discovery rewrite, and hot-path performance fixes.
 - **Requires pyintellicenter >= 0.1.22** (#93) - The Color Sync action uses the protocol library's blocking authoritative lifecycle: it observes the physical action, continues through a 60-second post-terminal window, and performs a final controller read while isolating other mutations on the Home Assistant connection.
 
 ### Fixed

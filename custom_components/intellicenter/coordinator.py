@@ -334,7 +334,6 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         self._handler.subscribe(None, self._handle_model_updates)
 
         self._stop_listener: CALLBACK_TYPE | None = None
-        self._connected = False
 
         # Dynamic-entity-addition state (issue #42).
         # `_known_objnams` is the set of object identifiers the platforms have
@@ -376,17 +375,22 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
     def connected(self) -> bool:
         """Return True if connected to the IntelliCenter.
 
-        Deliberately the coordinator's own callback-driven flag, NOT the
-        handler's ``connected`` property (pyintellicenter 0.2.0). The library
-        flips its flag False immediately on connection loss (before the
-        debounced ``on_disconnected``) but True only AFTER ``on_reconnected``
-        has already run - so reading it during the reconnect fan-out would
-        render every entity unavailable, with no later fan-out to correct it
-        (found in adversarial review). The connection callbacks are the
-        debounced, fan-out-aligned source of truth for entity availability;
-        do not "simplify" this back to ``self._handler.connected``.
+        Delegates to the handler's ``connected`` property (pyintellicenter
+        >= 0.2.2), which is ``not stopped and (handler flag or live
+        transport)``. Crucially it reads ``True`` throughout a (re)connect's
+        in-``start()`` object snapshot/backfill dispatch - the socket is up even
+        though the handler's own flag is not set until ``start()`` returns - and
+        ``False`` on a genuine outage or after stop. Gating entity availability
+        on it is therefore correct: entities render available as the reconnect's
+        fresh state fans out, with no spurious "unavailable" flicker.
+
+        History: pyintellicenter 0.2.0/0.2.1 set the handler flag only *after*
+        that in-``start()`` dispatch, so an earlier attempt to delegate here
+        rendered every entity momentarily unavailable on each reconnect and was
+        reverted. The library fixed it in 0.2.2 (#89) by or-ing the live
+        transport into ``connected``; the manifest pin requires ``>= 0.2.2``.
         """
-        return self._connected
+        return self._handler.connected
 
     async def async_start(self) -> None:
         """Start the connection to the IntelliCenter."""
@@ -411,7 +415,6 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
 
         # Start the connection
         await self._handler.start()
-        self._connected = True
 
         # Snapshot the objects discovered during the initial connection. Anything
         # that appears in the model after this point is treated as newly-added
@@ -434,8 +437,10 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         # Stop the handler and wait for the teardown. The model-update
         # subscription stays registered (see __init__): the stopped controller
         # dispatches nothing, and removing it would starve a restarted handler.
+        # ``connected`` reads False immediately once the handler is stopped
+        # (its ``_stopped`` guard), even before the teardown task closes the
+        # socket.
         await self._handler.astop()
-        self._connected = False
 
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         """Fetch data from the IntelliCenter.
@@ -715,8 +720,12 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
 
         Args:
             connected: True if connected, False if disconnected
+
+        Entity availability is read live from ``self._handler.connected`` (see
+        the ``connected`` property); this callback's job is the fan-out below -
+        rendering the availability change - plus surfacing equipment added while
+        the connection was down.
         """
-        self._connected = connected
         # A reconnect re-fetches the full object list into the model; surface any
         # equipment that was added while the connection was down.
         if connected:

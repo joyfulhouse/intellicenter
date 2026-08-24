@@ -18,6 +18,7 @@ To regenerate ``CONTROLLER_METHODS`` after the integration changes::
 from __future__ import annotations
 
 import inspect
+from unittest.mock import MagicMock
 
 import pyintellicenter
 
@@ -222,20 +223,47 @@ def test_sensor_diagnostic_helpers_are_available() -> None:
     assert callable(pyintellicenter.ICModelController.get_sensor_calibration)
 
 
-def test_connection_handler_020_surface() -> None:
-    """The installed library exposes the 0.2.0 handler API the coordinator uses.
+def test_connection_handler_surface() -> None:
+    """The installed library exposes the handler API the coordinator uses.
 
-    The coordinator awaits ``astop()`` in ``async_stop`` and registers its
-    update tap via ``subscribe()``. Both shipped in pyintellicenter 0.2.0 - a
-    stale pin would only fail in production without these assertions. (The
-    handler's ``connected`` property is deliberately NOT used for entity
-    availability: it flips True only after ``on_reconnected`` has run - see
-    ``IntelliCenterCoordinator.connected``.)
+    The coordinator awaits ``astop()`` in ``async_stop`` (0.2.0), registers its
+    update tap via ``subscribe()`` (0.2.0), and gates entity availability on the
+    ``connected`` property (0.2.2 semantics, see the behavioral test below). A
+    stale pin would only fail in production without these assertions.
     """
     handler_cls = pyintellicenter.ICConnectionHandler
     assert inspect.iscoroutinefunction(handler_cls.astop)
     assert callable(handler_cls.subscribe)
     assert callable(pyintellicenter.ICModelController.subscribe)
+    assert isinstance(inspect.getattr_static(handler_cls, "connected"), property)
+
+
+def test_handler_connected_reflects_live_transport() -> None:
+    """handler.connected is True during a (re)connect's in-start() backfill.
+
+    ``IntelliCenterCoordinator.connected`` delegates to ``handler.connected``
+    and relies on the pyintellicenter >= 0.2.2 behavior that it or-s in the
+    controller's live transport: it must read True when the socket is up even
+    though the handler has not yet set its own post-start flag - the window in
+    which a reconnect's object snapshot/backfill dispatches. Without this the
+    integration would flicker every entity unavailable on each reconnect (the
+    reason plain flag-delegation was reverted before 0.2.2, #89). A stale pin
+    (< 0.2.2) fails here rather than only in production.
+    """
+    controller = pyintellicenter.ICModelController(
+        "192.0.2.1", pyintellicenter.PoolModel({})
+    )
+    handler = pyintellicenter.ICConnectionHandler(controller)
+
+    # Handler's own flag is not set (as during the in-start() dispatch), but the
+    # transport is up: connected must still read True.
+    assert handler._is_connected is False
+    controller._connection = MagicMock(connected=True)
+    assert handler.connected is True
+
+    # Genuine outage (no transport, flag unset): False.
+    controller._connection = None
+    assert handler.connected is False
 
 
 def test_model_supports_removal_reconciliation() -> None:

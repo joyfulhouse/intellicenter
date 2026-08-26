@@ -29,6 +29,7 @@ from pyintellicenter import (
     CIRCUIT_ATTR,
     CIRCUIT_TYPE,
     DAY_ATTR,
+    GPM_ATTR,
     HEATER_ATTR,
     HEATER_TYPE,
     HTMODE_ATTR,
@@ -39,6 +40,8 @@ from pyintellicenter import (
     PHLO_ATTR,
     PUMP_STATUS_ON,
     PUMP_TYPE,
+    PWR_ATTR,
+    RPM_ATTR,
     SCHED_TYPE,
     SERVICE_ATTR,
     STATUS_ATTR,
@@ -76,6 +79,7 @@ def _build_entities(
     | ChemAlertBinarySensor
     | FirmwareUpdateBinarySensor
     | HeaterBinarySensor
+    | PumpBinarySensor
     | ScheduleBinarySensor
     | SystemModeBinarySensor
 ]:
@@ -85,6 +89,7 @@ def _build_entities(
         | ChemAlertBinarySensor
         | FirmwareUpdateBinarySensor
         | HeaterBinarySensor
+        | PumpBinarySensor
         | ScheduleBinarySensor
         | SystemModeBinarySensor
     ] = []
@@ -115,14 +120,7 @@ def _build_entities(
                 )
             )
         elif obj.objtype == PUMP_TYPE:
-            sensors.append(
-                PoolBinarySensor(
-                    coordinator,
-                    obj,
-                    value_for_on=PUMP_STATUS_ON,
-                    device_class=BinarySensorDeviceClass.RUNNING,
-                )
-            )
+            sensors.append(PumpBinarySensor(coordinator, obj))
         elif obj.objtype == CHEM_TYPE and obj.subtype == CHEM_CONTROLLER_SUBTYPE:
             sensors.append(ChemAlertBinarySensor(coordinator, obj))
             # IntelliChem alarm indicators (diagnostic entities)
@@ -233,6 +231,65 @@ class PoolBinarySensor(PoolEntity, BinarySensorEntity):
     def is_on(self) -> bool:
         """Return true if sensor is on."""
         return bool(self._pool_object[self._attribute_key] == self._value_for_on)
+
+
+# Real-time telemetry a variable-speed pump publishes while it turns. A pump
+# that publishes none of these has only STATUS to go on.
+PUMP_ACTIVITY_ATTRS = (RPM_ATTR, PWR_ATTR, GPM_ATTR)
+
+
+class PumpBinarySensor(PoolEntity, BinarySensorEntity):
+    """Pump running state, derived from telemetry rather than STATUS.
+
+    IntelliCenter reports a pump's STATUS as ``PUMP_STATUS_ON`` ("10") while the
+    pump is *enabled*, not while it is turning: on VSF pumps STATUS sits at "10"
+    at 0 RPM, so a STATUS-keyed sensor reads ``on`` permanently (issue #112).
+    The panel also never pushes STATUS for a pump - only the RPM/PWR/GPM
+    telemetry - so a STATUS-keyed ``isUpdated`` never fires when a pump starts
+    or stops, even where STATUS does move.
+
+    Any of RPM, PWR or GPM reading above zero therefore means running. The
+    telemetry is re-read on each evaluation rather than latched at construction:
+    a pump's first dispatch can arrive before the panel has backfilled these
+    attributes, the same gap the coordinator's ``_pending_redispatch`` covers.
+    Single-speed pumps publish no telemetry at all and fall back to the STATUS
+    comparison, so their behaviour is unchanged.
+
+    ``attribute_key`` stays at its ``STATUS_ATTR`` default so ``unique_id`` -
+    and therefore every existing pump entity - carries over unchanged.
+    """
+
+    _attr_device_class = BinarySensorDeviceClass.RUNNING
+
+    @property
+    def _activity_values(self) -> list[float]:
+        """Return each pump telemetry reading that parses as a number.
+
+        An attribute the pump does not publish is absent (``None``) or empty and
+        is skipped; a published zero parses and counts as "not turning".
+        """
+        values: list[float] = []
+        for attribute in PUMP_ACTIVITY_ATTRS:
+            try:
+                values.append(float(self._pool_object[attribute]))
+            except (TypeError, ValueError):
+                continue
+        return values
+
+    @property
+    def is_on(self) -> bool:
+        """Return True while the pump is actually turning."""
+        values = self._activity_values
+        if not values:
+            # Single-speed pump: no telemetry, so STATUS is all we have.
+            return bool(self._pool_object[STATUS_ATTR] == PUMP_STATUS_ON)
+        return any(value > 0 for value in values)
+
+    def isUpdated(self, updates: dict[str, dict[str, Any]]) -> bool:
+        """Return whether telemetry - or, absent it, STATUS - changed."""
+        return self._check_attributes_updated(
+            updates, *PUMP_ACTIVITY_ATTRS, STATUS_ATTR
+        )
 
 
 class ChemAlertBinarySensor(PoolEntity, BinarySensorEntity):

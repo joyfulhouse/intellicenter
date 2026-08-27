@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Pumps always reported as running** (#112) - A pump's binary sensor read `on` whether or not the pump was turning. IntelliCenter sets a pump's `STATUS` to `10` while the pump is *enabled*, not while it is running, so on variable-speed pumps STATUS sits at `10` at 0 RPM. The panel also never pushes `STATUS` for a pump - only the `RPM`/`PWR`/`GPM` telemetry - so the sensor never updated when a pump started or stopped either. Running state is now derived from whichever of those three the pump publishes, and the entity updates on the same attributes. Single-speed pumps publish none of them and keep the previous STATUS behaviour; existing pump entities carry over unchanged. Thanks to @sheyman1 for the report.
+
 ## [3.10.0b3] - 2026-08-23
 
 ### Added

@@ -2014,3 +2014,784 @@ async def test_water_heater_gas_selection_clears_solar_mode(
     mock_coordinator.controller.request_changes.assert_awaited_once_with(
         "POOL1", {HEATER_ATTR: "HTR01", MODE_ATTR: "2"}
     )
+
+
+# -------------------------------------------------------------------------------------
+# issue #118: the last active setpoint is restored on HA-initiated turn-on
+# -------------------------------------------------------------------------------------
+
+
+def _gas_body(lotmp: str = "98", heater: str = "HTR01") -> PoolObject:
+    """Return a body with an assigned gas heater at the given setpoint."""
+    return PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "HEATER": heater,
+            "HTMODE": "1",
+            "LOTMP": lotmp,
+            "LSTTMP": "95",
+        },
+    )
+
+
+async def test_water_heater_turn_on_restores_last_setpoint(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """off->on writes the remembered setpoint in the SAME atomic change set.
+
+    Core issue #118: some firmwares reset a body's LOTMP while the heat source
+    is Off, so re-selecting a heater without restoring the setpoint left the
+    body heating toward the panel's reset value (e.g. 47 F).
+    """
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
+
+    body = _gas_body(lotmp="98")  # heater active -> seeds both memories
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
+    water_heater.hass = hass
+
+    # Body turned off; the panel resets LOTMP while the heat source is Off.
+    body.update({HEATER_ATTR: NULL_OBJNAM, LOTMP_ATTR: "47"})
+
+    await water_heater.async_turn_on()
+
+    # ONE atomic write carrying both the heat source and the restored setpoint.
+    mock_coordinator.controller.request_changes.assert_called_once_with(
+        "POOL1", {HEATER_ATTR: "HTR01", LOTMP_ATTR: "98"}
+    )
+
+
+async def test_water_heater_turn_on_without_setpoint_memory_writes_no_lotmp(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A fresh entity with no setpoint memory must not write LOTMP on turn-on."""
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
+
+    body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "HEATER": NULL_OBJNAM,  # off at build -> no memory seeded
+            "HTMODE": "0",
+            "LOTMP": "47",
+            "LSTTMP": "68",
+        },
+    )
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
+    water_heater.hass = hass
+
+    await water_heater.async_turn_on()
+
+    args = mock_coordinator.controller.request_changes.call_args[0]
+    assert LOTMP_ATTR not in args[1]
+
+
+async def test_water_heater_set_operation_mode_off_to_on_restores_setpoint(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """set_operation_mode from off to a heater merges the setpoint restore."""
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
+
+    body = _gas_body(lotmp="98")
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
+    water_heater.hass = hass
+
+    body.update({HEATER_ATTR: NULL_OBJNAM, LOTMP_ATTR: "47"})
+
+    await water_heater.async_set_operation_mode("Gas Heater")
+
+    mock_coordinator.controller.request_changes.assert_called_once_with(
+        "POOL1", {HEATER_ATTR: "HTR01", LOTMP_ATTR: "98"}
+    )
+
+
+async def test_water_heater_mode_switch_while_on_does_not_restore_setpoint(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    pool_object_heater2: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A non-off -> non-off operation switch never writes the remembered setpoint."""
+    lookup = {"HTR01": pool_object_heater, "HTR02": pool_object_heater2}
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(side_effect=lookup.get)
+
+    body = _gas_body(lotmp="72")  # seeds memory 72 while on
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01", "HTR02"])
+    water_heater.hass = hass
+
+    # Model drifts away from the memory: a restore WOULD write if computed.
+    body.update({LOTMP_ATTR: "60"})
+
+    await water_heater.async_set_operation_mode("Solar Only")
+
+    mock_coordinator.controller.set_heat_mode.assert_awaited_once_with(
+        "POOL1", HeaterType.SOLAR_ONLY
+    )
+    # No follow-up setpoint write: the body was not off.
+    mock_coordinator.controller.request_changes.assert_not_called()
+
+
+async def test_water_heater_solar_turn_on_restores_setpoint_via_followup(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    pool_object_heater2: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A solar off->on goes through set_heat_mode plus a LOTMP follow-up write."""
+    lookup = {"HTR01": pool_object_heater, "HTR02": pool_object_heater2}
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(side_effect=lookup.get)
+
+    body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "HEATER": NULL_OBJNAM,
+            "MODE": "3",  # Solar Only active -> seeds both memories
+            "HTMODE": "1",
+            "LOTMP": "98",
+            "LSTTMP": "95",
+        },
+    )
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01", "HTR02"])
+    water_heater.hass = hass
+    assert water_heater._last_operation == "Solar Only"
+
+    # Body turned off; the panel resets LOTMP while the heat source is Off.
+    body.update({MODE_ATTR: "1", LOTMP_ATTR: "47"})
+
+    await water_heater.async_turn_on()
+
+    # Solar goes through the typed helper, so the setpoint restore cannot be
+    # merged and follows as a second write.
+    mock_coordinator.controller.set_heat_mode.assert_awaited_once_with(
+        "POOL1", HeaterType.SOLAR_ONLY
+    )
+    mock_coordinator.controller.request_changes.assert_called_once_with(
+        "POOL1", {LOTMP_ATTR: "98"}
+    )
+
+
+async def test_water_heater_set_temperature_updates_setpoint_memory(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A successful set_temperature becomes the setpoint restored on turn-on."""
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
+
+    body = _gas_body(lotmp="72")
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
+    water_heater.hass = hass
+
+    await water_heater.async_set_temperature(**{ATTR_TEMPERATURE: 98})
+    assert water_heater._last_setpoint == 98.0
+
+    # Turn off (model LOTMP left at 72 by the mock), then back on.
+    body.update({HEATER_ATTR: NULL_OBJNAM})
+    await water_heater.async_turn_on()
+
+    mock_coordinator.controller.request_changes.assert_called_once_with(
+        "POOL1", {HEATER_ATTR: "HTR01", LOTMP_ATTR: "98"}
+    )
+
+
+async def test_water_heater_failed_set_temperature_keeps_setpoint_memory(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A set_temperature the controller rejects must not mutate the memory."""
+    from pyintellicenter import ICConnectionError
+
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
+    mock_coordinator.controller.set_setpoint.side_effect = ICConnectionError("offline")
+
+    body = _gas_body(lotmp="72")
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
+    water_heater.hass = hass
+
+    with pytest.raises(HomeAssistantError):
+        await water_heater.async_set_temperature(**{ATTR_TEMPERATURE: 98})
+
+    # Memory still holds the seeded model value, not the failed request.
+    assert water_heater._last_setpoint == 72.0
+
+
+async def test_water_heater_off_state_lotmp_push_does_not_poison_memory(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """The core #118 sequence: the panel's off-state LOTMP reset is ignored.
+
+    A LOTMP push while a heat mode is active updates the memory; the 47 the
+    panel pushes after turn-off does not, so turn-on writes back 98.
+    """
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
+
+    body = _gas_body(lotmp="72")
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
+    water_heater.hass = hass
+
+    # A LOTMP push while the heater is active updates the memory.
+    body.update({LOTMP_ATTR: "98"})
+    assert water_heater.isUpdated({"POOL1": {LOTMP_ATTR: "98"}}) is True
+    assert water_heater._last_setpoint == 98.0
+
+    # Turn off, then the panel pushes its own reset value.
+    body.update({HEATER_ATTR: NULL_OBJNAM})
+    water_heater.isUpdated({"POOL1": {HEATER_ATTR: NULL_OBJNAM}})
+    body.update({LOTMP_ATTR: "47"})
+    assert water_heater.isUpdated({"POOL1": {LOTMP_ATTR: "47"}}) is True
+    assert water_heater._last_setpoint == 98.0  # reset ignored
+
+    await water_heater.async_turn_on()
+
+    mock_coordinator.controller.request_changes.assert_called_once_with(
+        "POOL1", {HEATER_ATTR: "HTR01", LOTMP_ATTR: "98"}
+    )
+
+
+async def test_water_heater_setpoint_restore_skipped_when_model_matches(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """No LOTMP write when the model already holds the remembered setpoint."""
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
+
+    body = _gas_body(lotmp="98")
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
+    water_heater.hass = hass
+
+    # Turn off without any panel-side LOTMP reset.
+    body.update({HEATER_ATTR: NULL_OBJNAM})
+
+    await water_heater.async_turn_on()
+
+    mock_coordinator.controller.request_changes.assert_called_once_with(
+        "POOL1", {HEATER_ATTR: "HTR01"}
+    )
+
+
+async def test_water_heater_last_setpoint_in_extra_state_attributes(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """The remembered setpoint is exposed (panel-native units) for persistence."""
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
+
+    water_heater = PoolWaterHeater(mock_coordinator, _gas_body(lotmp="98"), ["HTR01"])
+
+    attrs = water_heater.extra_state_attributes
+    assert attrs["LAST_SETPOINT"] == 98.0
+    # The unit mode rides along so a restart can tell a 40 F memory from 40 C.
+    assert attrs["LAST_SETPOINT_METRIC"] is False
+
+
+async def test_water_heater_restores_saved_setpoint(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A persisted LAST_SETPOINT is adopted across restarts and used by turn-on."""
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
+
+    body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "HEATER": NULL_OBJNAM,  # off at build -> both memories start None
+            "HTMODE": "0",
+            "LOTMP": "47",
+            "LSTTMP": "68",
+        },
+    )
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
+
+    mock_last_state = MagicMock()
+    mock_last_state.attributes = {"LAST_OPERATION": "Gas Heater", "LAST_SETPOINT": 98.0}
+
+    with patch.object(
+        water_heater, "async_get_last_state", AsyncMock(return_value=mock_last_state)
+    ):
+        await water_heater.async_added_to_hass()
+
+    assert water_heater._last_setpoint == 98.0
+
+    water_heater.hass = hass
+    await water_heater.async_turn_on()
+    mock_coordinator.controller.request_changes.assert_called_once_with(
+        "POOL1", {HEATER_ATTR: "HTR01", LOTMP_ATTR: "98"}
+    )
+
+
+async def test_water_heater_saved_setpoint_rejected_on_unit_flip(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A saved 98 (Fahrenheit-era) is rejected on a METRIC (5-40 C) system."""
+    type(mock_coordinator.system_info).uses_metric = property(lambda self: True)
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
+
+    body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "HEATER": NULL_OBJNAM,
+            "HTMODE": "0",
+            "LOTMP": "24",
+            "LSTTMP": "22",
+        },
+    )
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
+
+    mock_last_state = MagicMock()
+    mock_last_state.attributes = {"LAST_SETPOINT": 98.0}
+
+    with patch.object(
+        water_heater, "async_get_last_state", AsyncMock(return_value=mock_last_state)
+    ):
+        await water_heater.async_added_to_hass()
+
+    assert water_heater._last_setpoint is None
+
+
+async def test_water_heater_saved_setpoint_rejected_when_not_numeric(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A saved LAST_SETPOINT that does not coerce to float is ignored."""
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
+
+    body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "HEATER": NULL_OBJNAM,
+            "HTMODE": "0",
+            "LOTMP": "47",
+            "LSTTMP": "68",
+        },
+    )
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
+
+    mock_last_state = MagicMock()
+    mock_last_state.attributes = {"LAST_SETPOINT": "warm"}
+
+    with patch.object(
+        water_heater, "async_get_last_state", AsyncMock(return_value=mock_last_state)
+    ):
+        await water_heater.async_added_to_hass()
+
+    assert water_heater._last_setpoint is None
+
+
+async def test_water_heater_hcombo_turn_on_restores_setpoint(
+    hass: HomeAssistant,
+    pool_object_hcombo_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """An HCOMBO off->on merges the setpoint restore into the MODE/HEATER write."""
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(
+        return_value=pool_object_hcombo_heater
+    )
+
+    body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Spa",
+            "STATUS": "ON",
+            "HEATER": NULL_OBJNAM,
+            "HTMODE": "1",
+            "MODE": "7",  # Gas Only active -> seeds both memories
+            "LOTMP": "98",
+            "LSTTMP": "95",
+        },
+    )
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR_COMBO"])
+    water_heater.hass = hass
+
+    # Body turned off; the panel resets LOTMP while the heat source is Off.
+    body.update({MODE_ATTR: "1", LOTMP_ATTR: "47"})
+
+    await water_heater.async_turn_on()
+
+    mock_coordinator.controller.request_changes.assert_called_once_with(
+        "POOL1",
+        {
+            MODE_ATTR: str(HeaterType.HYBRID_GAS.value),
+            HEATER_ATTR: NULL_OBJNAM,
+            LOTMP_ATTR: "98",
+        },
+    )
+
+
+async def test_water_heater_unrelated_push_does_not_overwrite_setpoint_memory(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A non-LOTMP push must not clobber a just-issued set_temperature.
+
+    After a successful set_temperature(98) the model still holds the old LOTMP
+    until the panel's echo arrives; an unrelated STATUS/HTMODE push in that
+    window must not overwrite the remembered 98 with the stale model value.
+    """
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
+
+    body = _gas_body(lotmp="72")
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
+    water_heater.hass = hass
+
+    await water_heater.async_set_temperature(**{ATTR_TEMPERATURE: 98})
+    assert water_heater._last_setpoint == 98.0
+
+    # Unrelated push before the LOTMP echo; the model still reads 72.
+    assert water_heater.isUpdated({"POOL1": {HTMODE_ATTR: "1"}}) is True
+    assert water_heater._last_setpoint == 98.0
+
+
+@pytest.mark.parametrize(
+    ("saved_metric", "system_is_metric"),
+    [(False, True), (True, False)],
+)
+async def test_water_heater_saved_setpoint_unit_mode_mismatch_rejected(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    mock_coordinator: MagicMock,
+    saved_metric: bool,
+    system_is_metric: bool,
+) -> None:
+    """A saved setpoint is rejected when its unit mode mismatches the panel's.
+
+    40 is within range in BOTH unit modes, so only the saved unit metadata can
+    catch this - restoring 40 F as 40 C (= 104 F) would drive the heater to max.
+    """
+    if system_is_metric:
+        type(mock_coordinator.system_info).uses_metric = property(lambda self: True)
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
+
+    body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "HEATER": NULL_OBJNAM,
+            "HTMODE": "0",
+            "LOTMP": "24" if system_is_metric else "47",
+            "LSTTMP": "22" if system_is_metric else "68",
+        },
+    )
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
+
+    mock_last_state = MagicMock()
+    mock_last_state.attributes = {
+        "LAST_SETPOINT": 40.0,
+        "LAST_SETPOINT_METRIC": saved_metric,
+    }
+
+    with patch.object(
+        water_heater, "async_get_last_state", AsyncMock(return_value=mock_last_state)
+    ):
+        await water_heater.async_added_to_hass()
+
+    assert water_heater._last_setpoint is None
+
+
+@pytest.mark.parametrize(
+    ("system_is_metric", "saved_setpoint"),
+    [(False, 98.0), (True, 38.0)],
+)
+async def test_water_heater_saved_setpoint_unit_mode_match_restored(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    mock_coordinator: MagicMock,
+    system_is_metric: bool,
+    saved_setpoint: float,
+) -> None:
+    """A saved setpoint whose unit mode matches the panel's is adopted."""
+    if system_is_metric:
+        type(mock_coordinator.system_info).uses_metric = property(lambda self: True)
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
+
+    body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "HEATER": NULL_OBJNAM,
+            "HTMODE": "0",
+            "LOTMP": "24" if system_is_metric else "47",
+            "LSTTMP": "22" if system_is_metric else "68",
+        },
+    )
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
+
+    mock_last_state = MagicMock()
+    mock_last_state.attributes = {
+        "LAST_SETPOINT": saved_setpoint,
+        "LAST_SETPOINT_METRIC": system_is_metric,
+    }
+
+    with patch.object(
+        water_heater, "async_get_last_state", AsyncMock(return_value=mock_last_state)
+    ):
+        await water_heater.async_added_to_hass()
+
+    assert water_heater._last_setpoint == saved_setpoint
+
+
+async def test_water_heater_legacy_saved_setpoint_ambiguous_forty_rejected(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A legacy state without unit metadata and the ambiguous value 40 is rejected."""
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
+
+    body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "HEATER": NULL_OBJNAM,
+            "HTMODE": "0",
+            "LOTMP": "47",
+            "LSTTMP": "68",
+        },
+    )
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
+
+    mock_last_state = MagicMock()
+    mock_last_state.attributes = {"LAST_SETPOINT": 40.0}  # no LAST_SETPOINT_METRIC
+
+    with patch.object(
+        water_heater, "async_get_last_state", AsyncMock(return_value=mock_last_state)
+    ):
+        await water_heater.async_added_to_hass()
+
+    # In range on this ENGLISH system, but unattributable -> rejected.
+    assert water_heater._last_setpoint is None
+
+
+async def test_water_heater_out_of_range_memory_is_forgotten(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A memory invalidated by a unit flip is dropped from persistence too."""
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
+
+    body = _gas_body(lotmp="98")
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
+    water_heater.hass = hass
+    assert water_heater._last_setpoint == 98.0
+
+    body.update({HEATER_ATTR: NULL_OBJNAM})
+    # The panel flips to METRIC at runtime; 98 is no longer a valid setpoint.
+    type(mock_coordinator.system_info).uses_metric = property(lambda self: True)
+
+    await water_heater.async_turn_on()
+
+    # No LOTMP write, and the stale memory is forgotten - it must not linger
+    # in the persisted attributes and resurrect after a second unit flip.
+    args = mock_coordinator.controller.request_changes.call_args[0]
+    assert LOTMP_ATTR not in args[1]
+    assert water_heater._last_setpoint is None
+    assert "LAST_SETPOINT" not in water_heater.extra_state_attributes
+
+
+async def test_water_heater_solar_capable_body_standard_turn_on_merges_restore(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    pool_object_heater2: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """off->on to a standard heater on a solar-capable body merges the restore.
+
+    This exercises the {HEATER, MODE: HEATER} branch of _operation_to_changes:
+    the LOTMP restore must join that dict in the same atomic write.
+    """
+    lookup = {"HTR01": pool_object_heater, "HTR02": pool_object_heater2}
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(side_effect=lookup.get)
+
+    body = _gas_body(lotmp="98")
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01", "HTR02"])
+    water_heater.hass = hass
+    assert water_heater._last_operation == "Gas Heater"
+
+    body.update({HEATER_ATTR: NULL_OBJNAM, LOTMP_ATTR: "47"})
+
+    await water_heater.async_turn_on()
+
+    mock_coordinator.controller.request_changes.assert_called_once_with(
+        "POOL1",
+        {
+            HEATER_ATTR: "HTR01",
+            MODE_ATTR: str(HeaterType.HEATER.value),
+            LOTMP_ATTR: "98",
+        },
+    )
+
+
+async def test_water_heater_set_temperature_while_off_wins_on_turn_on(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A setpoint set from HA while off beats the panel value on turn-on."""
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
+
+    body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "HEATER": NULL_OBJNAM,  # off, no memory yet
+            "HTMODE": "0",
+            "LOTMP": "47",
+            "LSTTMP": "68",
+        },
+    )
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
+    water_heater.hass = hass
+
+    # HA-initiated, so remembered even though the body is off.
+    await water_heater.async_set_temperature(**{ATTR_TEMPERATURE: 98})
+
+    await water_heater.async_turn_on()
+
+    mock_coordinator.controller.request_changes.assert_called_once_with(
+        "POOL1", {HEATER_ATTR: "HTR01", LOTMP_ATTR: "98"}
+    )
+
+
+async def test_water_heater_setpoint_provenance_survives_unit_flip(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A mid-session unit flip must not relabel the memory's unit provenance.
+
+    40 captured under ENGLISH must keep LAST_SETPOINT_METRIC=False in the
+    persisted attributes even after the panel flips to METRIC - a relabeled
+    marker would let a restart adopt 40 F as a valid 40 C (= 104 F).
+    """
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
+
+    body = _gas_body(lotmp="40")  # captured under ENGLISH
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
+
+    # Panel flips to METRIC mid-session; a state write happens (attrs render).
+    type(mock_coordinator.system_info).uses_metric = property(lambda self: True)
+    attrs = water_heater.extra_state_attributes
+    assert attrs["LAST_SETPOINT"] == 40.0
+    assert attrs["LAST_SETPOINT_METRIC"] is False  # capture-time, not current
+
+    # A restart restoring exactly these attributes on the METRIC system must
+    # reject the value: the saved mode does not match the current one.
+    fresh_body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "HEATER": NULL_OBJNAM,
+            "HTMODE": "0",
+            "LOTMP": "24",
+            "LSTTMP": "22",
+        },
+    )
+    fresh = PoolWaterHeater(mock_coordinator, fresh_body, ["HTR01"])
+    mock_last_state = MagicMock()
+    mock_last_state.attributes = {
+        "LAST_SETPOINT": attrs["LAST_SETPOINT"],
+        "LAST_SETPOINT_METRIC": attrs["LAST_SETPOINT_METRIC"],
+    }
+    with patch.object(
+        fresh, "async_get_last_state", AsyncMock(return_value=mock_last_state)
+    ):
+        await fresh.async_added_to_hass()
+
+    assert fresh._last_setpoint is None
+
+
+async def test_water_heater_unit_flip_clears_memory_at_use_time(
+    hass: HomeAssistant,
+    pool_object_heater: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """turn_on after a unit flip skips the restore and forgets the memory.
+
+    40 captured under ENGLISH is numerically within the METRIC range too, so
+    only the provenance check (not the range guard) can catch this.
+    """
+    mock_coordinator.model = MagicMock()
+    mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_object_heater)
+
+    body = _gas_body(lotmp="40")  # captured under ENGLISH
+    water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
+    water_heater.hass = hass
+
+    body.update({HEATER_ATTR: NULL_OBJNAM, LOTMP_ATTR: "24"})
+    # Panel flips to METRIC before the next turn-on.
+    type(mock_coordinator.system_info).uses_metric = property(lambda self: True)
+
+    await water_heater.async_turn_on()
+
+    args = mock_coordinator.controller.request_changes.call_args[0]
+    assert LOTMP_ATTR not in args[1]
+    # Memory and provenance are dropped together and no longer persisted.
+    assert water_heater._last_setpoint is None
+    assert water_heater._last_setpoint_metric is None
+    assert "LAST_SETPOINT" not in water_heater.extra_state_attributes
+    assert "LAST_SETPOINT_METRIC" not in water_heater.extra_state_attributes

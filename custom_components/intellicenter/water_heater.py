@@ -19,8 +19,10 @@ Every operation label resolves to a single atomic body write via
 plane and clears the opposite plane where safe. ``current_operation`` gives an
 assigned standard heater precedence over the HCOMBO ``MODE`` so the reported
 state stays correct even if one plane is momentarily stale after a switch. The
-last non-off operation is remembered (and restored across restarts) so turn-on
-returns the body to its previous mode.
+last non-off operation and setpoint are remembered (and restored across
+restarts) so turn-on returns the body to its previous mode and target
+temperature (some firmwares reset ``LOTMP`` while the heat source is Off —
+issue #118).
 """
 
 from __future__ import annotations
@@ -127,6 +129,8 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
     """Representation of a Pentair water heater."""
 
     LAST_OPERATION_ATTR = "LAST_OPERATION"
+    LAST_SETPOINT_ATTR = "LAST_SETPOINT"
+    LAST_SETPOINT_METRIC_ATTR = "LAST_SETPOINT_METRIC"
     _attr_icon = "mdi:thermometer"
 
     def __init__(
@@ -152,6 +156,18 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
         self._last_operation: str | None = self.current_operation
         if self._last_operation == STATE_OFF:
             self._last_operation = None
+        # Remember the last active setpoint so turn-on can write it back: some
+        # firmwares reset a body's LOTMP while its heat source is Off (issue
+        # #118). Seed from the model only when a heat mode is active; otherwise
+        # leave None so RestoreEntity may supply it in async_added_to_hass.
+        # The unit mode in effect at capture time rides along as provenance
+        # (see _remember_setpoint) - the pair is always set/cleared together.
+        self._last_setpoint: float | None = None
+        self._last_setpoint_metric: bool | None = None
+        if self._last_operation is not None:
+            seed_setpoint = self.target_temperature
+            if seed_setpoint is not None:
+                self._remember_setpoint(seed_setpoint)
 
     @property
     def _heater_list(self) -> list[str]:
@@ -282,6 +298,18 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
         if self._last_operation is not None:
             state_attributes[self.LAST_OPERATION_ATTR] = self._last_operation
 
+        # Exposed in the panel's native unit so a restart restores it verbatim
+        # (never the HA-converted `temperature` attribute, which would break on
+        # unit-preference mismatches). The unit mode saved alongside is the one
+        # captured WITH the value, never the panel's current mode - a mid-session
+        # unit flip must not relabel a 40 F memory as 40 C (= 104 F), which
+        # would let a restart adopt it and silently drive the heater to max.
+        if self._last_setpoint is not None and self._last_setpoint_metric is not None:
+            state_attributes[self.LAST_SETPOINT_ATTR] = self._last_setpoint
+            state_attributes[self.LAST_SETPOINT_METRIC_ATTR] = (
+                self._last_setpoint_metric
+            )
+
         if self._is_heater_active:
             htmode = self._pool_object[HTMODE_ATTR]
             state_attributes["heating_status"] = "heating" if htmode != "0" else "idle"
@@ -344,6 +372,9 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
             await self._async_execute_command(
                 self._controller.set_setpoint(self._pool_object.objnam, temp_value)
             )
+            # Only a setpoint the panel accepted becomes the turn-on restore
+            # value; a failed command raised above and leaves the memory alone.
+            self._remember_setpoint(float(temp_value))
 
     @property
     def current_operation(self) -> str:
@@ -416,17 +447,93 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
             )
         await self._async_apply_operation(operation_mode)
 
+    @property
+    def _panel_uses_metric(self) -> bool:
+        """Return whether the panel currently expresses setpoints in Celsius."""
+        system_info = self.coordinator.system_info
+        return bool(system_info is not None and system_info.uses_metric)
+
+    def _setpoint_in_limits(self, value: float) -> bool:
+        """Return whether a value is within the panel's current setpoint limits."""
+        low, high = body_temperature_limits(self.coordinator)
+        return low <= value <= high
+
+    def _remember_setpoint(self, value: float) -> None:
+        """Remember a setpoint together with the unit mode it was captured under.
+
+        The provenance flag is fixed at capture time - it must NOT be derived
+        from the panel's current mode later (e.g. when rendering state), or a
+        mid-session unit flip would relabel the value into the new mode.
+        """
+        self._last_setpoint = value
+        self._last_setpoint_metric = self._panel_uses_metric
+
+    def _forget_setpoint(self) -> None:
+        """Drop the setpoint memory and its unit provenance together."""
+        self._last_setpoint = None
+        self._last_setpoint_metric = None
+
+    def _setpoint_restore_change(self) -> dict[str, str] | None:
+        """Return the LOTMP write restoring the remembered setpoint, if needed.
+
+        Some firmwares reset a body's LOTMP while its heat source is Off (the
+        panel hides its setpoint UI in that state), so re-selecting a heat
+        source without restoring the setpoint leaves the body heating toward
+        the panel's reset value, e.g. 47 °F (issue #118). Returns None when
+        there is no memory, when the memory falls outside the current setpoint
+        limits (a unit-mode flip - discarded rather than clamped, since
+        clamping would pick a wrong extreme), or when the model already holds
+        the remembered value.
+        """
+        last = self._last_setpoint
+        if last is None:
+            return None
+        if self._last_setpoint_metric != self._panel_uses_metric:
+            # The panel's unit mode flipped since capture: the memory is
+            # meaningless in the new mode (even if numerically in range, e.g.
+            # a 40 F memory on a now-METRIC panel). Forget it so it also stops
+            # being persisted, and skip the restore.
+            self._forget_setpoint()
+            return None
+        if not self._setpoint_in_limits(last):
+            # Discard means discard: forget the value too, so it stops being
+            # persisted via LAST_SETPOINT and cannot resurrect after a second
+            # unit flip. Kept as the final guard behind the provenance check.
+            self._forget_setpoint()
+            return None
+        if self.target_temperature == last:
+            return None
+        # int() matches the async_set_temperature convention for LOTMP writes.
+        return {LOTMP_ATTR: str(int(last))}
+
     async def _async_apply_operation(self, operation: str) -> None:
         """Apply a validated operation through its matching control plane."""
+        # Restore the remembered setpoint only on an HA-initiated off->on
+        # transition (this method backs both async_turn_on and
+        # async_set_operation_mode); switching between two active modes keeps
+        # whatever setpoint the body already has.
+        restore: dict[str, str] | None = None
+        if operation != STATE_OFF and self.current_operation == str(STATE_OFF):
+            restore = self._setpoint_restore_change()
         solar_mode = _SOLAR_LABEL_TO_MODE.get(operation)
         if self._has_solar and solar_mode is not None:
             await self._async_execute_command(
                 self._controller.set_heat_mode(self._pool_object.objnam, solar_mode),
                 translation_key="command_failed",
             )
+            # Solar goes through the typed heat-mode helper, so the setpoint
+            # restore cannot ride along atomically and follows as its own write.
+            if restore is not None:
+                await self._async_execute_command(
+                    self._controller.request_changes(self._pool_object.objnam, restore),
+                    translation_key="command_failed",
+                )
             return
         changes = self._operation_to_changes(operation)
         if changes is not None:
+            if restore is not None:
+                # Merge so heat source and setpoint land in ONE atomic write.
+                changes |= restore
             await self._async_execute_command(
                 self._controller.request_changes(self._pool_object.objnam, changes),
                 translation_key="command_failed",
@@ -462,6 +569,22 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
 
         if updated and self.current_operation != STATE_OFF:
             self._last_operation = self.current_operation
+            # Capture the setpoint only from pushes that explicitly carry LOTMP
+            # while a heat mode is active. The LOTMP gate keeps an unrelated
+            # STATUS/HTMODE/... push from overwriting a just-issued
+            # set_temperature with the stale model value before its echo
+            # arrives; the non-off gate ignores the off-state LOTMP resets this
+            # memory guards against (issue #118). Deliberate tradeoffs: a
+            # genuine setpoint edit made at the panel while the heat source is
+            # Off is not remembered, and a firmware that split a
+            # panel-initiated turn-off into two notifications with the LOTMP
+            # reset arriving FIRST (heat source still non-off in the model)
+            # would still be captured - no clean client-side fix exists for
+            # that ordering.
+            if LOTMP_ATTR in updates.get(self._pool_object.objnam, {}):
+                setpoint = self.target_temperature
+                if setpoint is not None:
+                    self._remember_setpoint(setpoint)
 
         return updated
 
@@ -469,11 +592,14 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
         """Entity is added to Home Assistant."""
         await super().async_added_to_hass()
 
-        if self._last_operation is not None:
+        if self._last_operation is not None and self._last_setpoint is not None:
             return
 
         last_state = await self.async_get_last_state()
-        if last_state:
+        if not last_state:
+            return
+
+        if self._last_operation is None:
             saved = last_state.attributes.get(self.LAST_OPERATION_ATTR)
             # Only restore a label that is still a valid (non-off) operation for
             # this body's current configuration.
@@ -483,3 +609,34 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
                 and saved in self.operation_list
             ):
                 self._last_operation = saved
+
+        if self._last_setpoint is None:
+            saved_setpoint = last_state.attributes.get(self.LAST_SETPOINT_ATTR)
+            if saved_setpoint is None:
+                return
+            try:
+                setpoint = float(saved_setpoint)
+            except (TypeError, ValueError):
+                return
+            # Stored in the panel's native unit; the unit mode it was saved
+            # under must match the current one - a value saved on an ENGLISH
+            # system is meaningless after a METRIC flip. A corrupt (non-bool)
+            # marker is rejected too. A legacy state without unit metadata is
+            # accepted only when the value is unambiguous: the ENGLISH
+            # (40-104 °F) and METRIC (5-40 °C) ranges meet at exactly 40, and
+            # restoring 40 °F as 40 °C (= 104 °F) would silently drive the
+            # heater to max. The range check below remains as a second line of
+            # defense.
+            saved_metric = last_state.attributes.get(self.LAST_SETPOINT_METRIC_ATTR)
+            if saved_metric is None:
+                if setpoint == 40.0:
+                    return
+            elif (
+                not isinstance(saved_metric, bool)
+                or saved_metric != self._panel_uses_metric
+            ):
+                return
+            if self._setpoint_in_limits(setpoint):
+                # _remember_setpoint stamps the current mode as provenance,
+                # which the checks above just proved is the saved value's mode.
+                self._remember_setpoint(setpoint)

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.10.1] - 2026-08-30
+
 ### Fixed
 
 - **Entities from the pre-fork integrations were not adopted** - Replacing the jlvaillant or dwradcliffe integration with this one left every entity behind. Those integrations build their `unique_id` as `<entry_id><objnam>` with no separator while this one joins the two with an underscore, and because both ship the same `intellicenter` domain and config-flow `VERSION = 1`, Home Assistant keeps the existing config entry and never runs a migration - so no entity's unique_id matched. The old registry entries were left as unavailable and every entity returned as a `..._2` duplicate, silently breaking the automations, dashboard cards and history that referenced them. Legacy unique_ids are now rewritten in the entity registry during setup, so entities keep their `entity_id`, name, area and customizations.

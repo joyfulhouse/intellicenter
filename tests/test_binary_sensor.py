@@ -32,6 +32,7 @@ from custom_components.intellicenter.binary_sensor import (
     FirmwareUpdateBinarySensor,
     HeaterBinarySensor,
     PoolBinarySensor,
+    PumpBinarySensor,
     ScheduleBinarySensor,
     SystemModeBinarySensor,
     _build_entities,
@@ -137,6 +138,27 @@ def pool_object_pump_sensor() -> PoolObject:
             "SUBTYP": "VS",
             "SNAME": "Pool Pump",
             "STATUS": "10",
+        },
+    )
+
+
+@pytest.fixture
+def pool_object_vsf_pump() -> PoolObject:
+    """Return a PoolObject for a VSF pump that publishes RPM/PWR/GPM telemetry.
+
+    STATUS is "10" (the pump is enabled) while every telemetry reading is zero -
+    the idle-VSF case from issue #112, where a STATUS-keyed sensor reads on.
+    """
+    return PoolObject(
+        "PMP02",
+        {
+            "OBJTYP": PUMP_TYPE,
+            "SUBTYP": "VSF",
+            "SNAME": "Spa Jets",
+            "STATUS": "10",
+            "RPM": "0",
+            "PWR": "0",
+            "GPM": "0",
         },
     )
 
@@ -378,14 +400,9 @@ async def test_pump_sensor_running(
     pool_object_pump_sensor: PoolObject,
     mock_coordinator: MagicMock,
 ) -> None:
-    """Test pump sensor when running."""
+    """A single-speed pump with no telemetry falls back to STATUS."""
 
-    sensor = PoolBinarySensor(
-        mock_coordinator,
-        pool_object_pump_sensor,
-        value_for_on="10",  # Pump running value
-        device_class=BinarySensorDeviceClass.RUNNING,
-    )
+    sensor = PumpBinarySensor(mock_coordinator, pool_object_pump_sensor)
 
     assert sensor.is_on is True
     assert sensor._attr_device_class == BinarySensorDeviceClass.RUNNING
@@ -396,19 +413,100 @@ async def test_pump_sensor_stopped(
     pool_object_pump_sensor: PoolObject,
     mock_coordinator: MagicMock,
 ) -> None:
-    """Test pump sensor when stopped."""
+    """A single-speed pump reads off when STATUS leaves the running value."""
 
-    # Set pump to stopped
     pool_object_pump_sensor.update({STATUS_ATTR: "4"})
 
-    sensor = PoolBinarySensor(
+    sensor = PumpBinarySensor(mock_coordinator, pool_object_pump_sensor)
+
+    assert sensor.is_on is False
+
+
+async def test_pump_sensor_idle_despite_status_on(
+    hass: HomeAssistant,
+    pool_object_vsf_pump: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Zero telemetry means off even while STATUS still reads "10" (issue #112)."""
+
+    sensor = PumpBinarySensor(mock_coordinator, pool_object_vsf_pump)
+
+    assert sensor.is_on is False
+
+
+@pytest.mark.parametrize(
+    ("telemetry", "expected"),
+    [
+        ({"RPM": "3068", "PWR": "1300", "GPM": "53"}, True),
+        ({"RPM": "3068", "PWR": "0", "GPM": "0"}, True),
+        ({"RPM": "0", "PWR": "1300", "GPM": "0"}, True),
+        ({"RPM": "0", "PWR": "0", "GPM": "53"}, True),
+        ({"RPM": "0", "PWR": "0", "GPM": "0"}, False),
+    ],
+)
+async def test_pump_sensor_any_telemetry_above_zero_means_running(
+    hass: HomeAssistant,
+    pool_object_vsf_pump: PoolObject,
+    mock_coordinator: MagicMock,
+    telemetry: dict[str, str],
+    expected: bool,
+) -> None:
+    """Any of RPM, PWR or GPM above zero reports the pump as running."""
+
+    pool_object_vsf_pump.update(telemetry)
+
+    sensor = PumpBinarySensor(mock_coordinator, pool_object_vsf_pump)
+
+    assert sensor.is_on is expected
+
+
+async def test_pump_sensor_ignores_unparseable_telemetry(
+    hass: HomeAssistant,
+    pool_object_vsf_pump: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Empty telemetry is skipped; the remaining readings still decide."""
+
+    pool_object_vsf_pump.update({"RPM": "", "PWR": "1300", "GPM": ""})
+
+    sensor = PumpBinarySensor(mock_coordinator, pool_object_vsf_pump)
+
+    assert sensor.is_on is True
+
+
+async def test_pump_sensor_updates_on_telemetry(
+    hass: HomeAssistant,
+    pool_object_vsf_pump: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """Telemetry-only pushes update the entity; the panel never pushes STATUS."""
+
+    sensor = PumpBinarySensor(mock_coordinator, pool_object_vsf_pump)
+
+    assert sensor.isUpdated({"PMP02": {"RPM": "3069"}}) is True
+    assert sensor.isUpdated({"PMP02": {"PWR": "1306"}}) is True
+    assert sensor.isUpdated({"PMP02": {"GPM": "53"}}) is True
+    assert sensor.isUpdated({"PMP02": {STATUS_ATTR: "4"}}) is True
+    assert sensor.isUpdated({"PMP02": {"SNAME": "Renamed"}}) is False
+    assert sensor.isUpdated({"OTHER": {"RPM": "3069"}}) is False
+
+
+async def test_pump_sensor_unique_id_unchanged(
+    hass: HomeAssistant,
+    pool_object_vsf_pump: PoolObject,
+    mock_coordinator: MagicMock,
+) -> None:
+    """The entity keys off STATUS_ATTR, so existing pump entities carry over."""
+
+    sensor = PumpBinarySensor(mock_coordinator, pool_object_vsf_pump)
+    legacy = PoolBinarySensor(
         mock_coordinator,
-        pool_object_pump_sensor,
+        pool_object_vsf_pump,
         value_for_on="10",
         device_class=BinarySensorDeviceClass.RUNNING,
     )
 
-    assert sensor.is_on is False
+    assert sensor.unique_id == legacy.unique_id
 
 
 async def test_schedule_sensor_active(

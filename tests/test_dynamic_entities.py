@@ -947,14 +947,19 @@ async def test_setup_pool_entities_readds_entities_after_removal(
 
     added: list[Any] = []
     await async_setup_entry(hass, entry, added.extend)
-    chem1 = pool_model["CHEM1"]
-    assert chem1 is not None
+    assert pool_model["CHEM1"] is not None
     assert any(e._pool_object.objnam == "CHEM1" for e in added)
 
+    # Mirror production: the library prunes the object from the model BEFORE
+    # dispatching the removal, and the object re-enters the model before the
+    # new-objects dispatch announces it.
+    pool_model.remove_object("CHEM1")
     state["removed_listener"]({"CHEM1"})
 
+    readded = pool_model.add_object("CHEM1", dict(CHEM2_PARAMS))
+    assert readded is not None
     added.clear()
-    state["listener"]([chem1])
+    state["listener"]([readded])
 
     assert any(e._pool_object.objnam == "CHEM1" for e in added)
 
@@ -975,6 +980,11 @@ async def test_setup_pool_entities_removal_leaves_other_entities_alone(
     added: list[Any] = []
     await async_setup_entry(hass, entry, added.extend)
 
+    # The library prunes the object from the model BEFORE the removal is
+    # dispatched (production invariant); mirror that here, since the
+    # new-objects listener rebuilds over the full model and would otherwise
+    # legitimately recreate entities for an object still present in it.
+    pool_model.remove_object("CHEM1")
     state["removed_listener"]({"CHEM1"})
 
     # Re-dispatching a surviving object still dedups (its entities were kept).

@@ -285,6 +285,8 @@ def async_setup_pool_entities(
     build_entities: Callable[
         [IntelliCenterCoordinator, Iterable[PoolObject]], list[Any]
     ],
+    *,
+    retire_dependents: bool = False,
 ) -> None:
     """Create entities now and whenever new pool objects appear at runtime.
 
@@ -292,7 +294,11 @@ def async_setup_pool_entities(
     model. This helper runs that builder once for the objects present at setup,
     then registers a coordinator listener so the same builder runs for any
     equipment that is added later (issue #42) - for example a second IntelliChem
-    controller coming online - without requiring a Home Assistant restart.
+    controller coming online - without requiring a Home Assistant restart. New
+    equipment triggers a rebuild over the FULL model rather than just the new
+    objects, so entities whose creation predicate references *another* object
+    (a body's water heater, an IntelliChlor's per-body output number) come back
+    when their dependency returns, whatever the dependency relationship is.
 
     Entities are de-duplicated by ``unique_id`` so an object can never produce a
     duplicate entity, even though the coordinator already reports each new object
@@ -301,9 +307,12 @@ def async_setup_pool_entities(
 
     The reverse direction is handled too: equipment deleted at the panel is
     pruned from the model by pyintellicenter's reconnect reconciliation and
-    reported through the coordinator's removed-objects listeners; the removed
-    object's entities are deleted from the entity registry (and the dedup map),
-    so re-added equipment gets fresh entities instead of being swallowed.
+    reported through the coordinator's removed-objects listeners. The removed
+    object's own entities are always retired (deleted from the entity registry
+    and the dedup map, so re-added equipment gets fresh entities instead of
+    being swallowed). Platforms that opt in via ``retire_dependents``
+    additionally retire entities whose creation predicate no longer holds
+    after the removal (issue #124) - see ``_remove`` for the mechanics.
 
     Args:
         entry: The config entry whose ``runtime_data`` is the coordinator.
@@ -311,6 +320,15 @@ def async_setup_pool_entities(
         build_entities: Builds the entity objects for a set of candidate pool
             objects. Receives the coordinator (for cross-object lookups) and the
             objects to consider; returns the list of entities to add.
+        retire_dependents: When True, a removal dispatch also re-runs the
+            builder over the full model and retires tracked entities the
+            builder no longer produces (issue #124). Opting in requires every
+            predicate in the platform's builder to be *stable* for
+            already-built entities - own-object existence, configuration
+            attributes, or cross-object references - never telemetry-value
+            truthiness. A builder like sensor.py's ``if obj[PWR_ATTR]:`` must
+            NOT opt in: a live pump can legitimately report an empty value,
+            and a rebuild at that moment would falsely retire its sensors.
     """
     coordinator = entry.runtime_data
     created_entities: dict[str, Any] = {}
@@ -331,22 +349,21 @@ def async_setup_pool_entities(
 
     @callback
     def _remove(removed_objnams: set[str]) -> None:
-        # Scope: removes the entities OF the removed objects. Entities that
-        # merely *depend* on them (a body's water_heater/climate whose last
-        # heater was deleted) are not retired - they keep rendering from their
-        # construction-time seed until the integration is reloaded. Removals
-        # only dispatch during reconnect reconciliation, so an entity add
-        # in flight at that moment (built but not yet registered) is a
-        # theoretical gap accepted here: such an entity is dropped from the
-        # dedup map but cannot be deleted from a registry it isn't in yet, and
-        # the same equipment returning before the platform finishes the
-        # pending teardown could have its replacement rejected as a duplicate.
-        # Both require a second reconnect cycle inside the removal's own event
-        # loop turn, which cannot happen in practice.
+        # Retires the entities OF the removed objects (pass 1, every platform)
+        # and - for platforms that opted in - entities that merely *depend* on
+        # them, like a body's water_heater whose last heater was deleted
+        # (pass 2, issue #124). Removals only dispatch during reconnect
+        # reconciliation, so an entity add in flight at that moment (built but
+        # not yet registered) is a theoretical gap accepted here: such an
+        # entity is dropped from the dedup map but cannot be deleted from a
+        # registry it isn't in yet, and the same equipment returning before
+        # the platform finishes the pending teardown could have its
+        # replacement rejected as a duplicate. Both require a second reconnect
+        # cycle inside the removal's own event loop turn, which cannot happen
+        # in practice.
         registry = er.async_get(coordinator.hass)
-        for uid, entity in list(created_entities.items()):
-            if entity._pool_object.objnam not in removed_objnams:
-                continue
+
+        def _retire(uid: str, entity: Any) -> None:
             # Drop the dedup record first so the equipment coming back later
             # is built fresh rather than swallowed by the unique_id filter.
             del created_entities[uid]
@@ -363,12 +380,64 @@ def async_setup_pool_entities(
                     f"intellicenter_remove_{uid}",
                 )
 
+        # Pass 1 (every platform): retire entities whose own object was pruned.
+        for uid, entity in list(created_entities.items()):
+            if entity._pool_object.objnam in removed_objnams:
+                _retire(uid, entity)
+
+        # Pass 2 (opt-in): re-run the builder over the post-removal model and
+        # retire tracked entities it no longer produces - the entities whose
+        # creation predicate referenced the removed objects (issue #124). Only
+        # platforms whose builder predicates are stable may opt in (see the
+        # ``retire_dependents`` contract in the docstring). The builder run is
+        # isolated so a builder bug degrades to the pre-#124 behavior (ghost
+        # dependents) instead of blocking the pass-1 removals or the fan-out.
+        # The _retire loop below deliberately sits OUTSIDE that try/except
+        # (asymmetric on purpose: retirement itself failing is a registry-level
+        # fault, not a builder bug, and is contained by the coordinator's
+        # per-listener catch rather than silently skipped here).
+        if retire_dependents:
+            try:
+                expected_uids = {
+                    e.unique_id
+                    for e in build_entities(coordinator, list(coordinator.model))
+                }
+            except Exception:
+                _LOGGER.exception(
+                    "Error rebuilding entities after a removal; "
+                    "skipping dependent-entity retirement"
+                )
+            else:
+                for uid, entity in list(created_entities.items()):
+                    if uid not in expected_uids:
+                        _retire(uid, entity)
+
+        # Pass 3 (every platform): let the survivors recompute state derived
+        # from other objects in the shared model - e.g. a light group drops its
+        # color-effect capability when a member circuit was removed. The base
+        # implementation is a no-op, so this carries no retirement risk.
+        for entity in created_entities.values():
+            entity.async_refresh_model_context()
+
+    @callback
+    def _add_from_full_model(_candidates: Iterable[PoolObject]) -> None:
+        # New-equipment dispatch deliberately ignores the candidate batch and
+        # rebuilds over the FULL model: an entity whose creation predicate
+        # references another object (an IntelliChlor's per-body output number
+        # gated on a CHEM.BODY reference) must be recreated when its dependency
+        # returns, even though the builder would never see the dependent among
+        # the new objects (issue #124). The dedup map makes this idempotent -
+        # already-built entities just take the cheap refresh path in ``_add``.
+        _add(list(coordinator.model))
+
     # Initial population from the objects discovered at setup.
     _add(list(coordinator.model))
 
     # Dynamic population for objects added after startup, and removal of
     # entities whose equipment was deleted at the panel (ghost equipment).
-    entry.async_on_unload(coordinator.async_add_new_objects_listener(_add))
+    entry.async_on_unload(
+        coordinator.async_add_new_objects_listener(_add_from_full_model)
+    )
     entry.async_on_unload(coordinator.async_add_removed_objects_listener(_remove))
 
 
@@ -765,7 +834,11 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
                 # panel): this entity is concurrently being removed by the
                 # platform's removed-objects listener. Skip the re-render so a
                 # doomed entity can't write one last ghost state in the same
-                # fan-out that announced its removal.
+                # fan-out that announced its removal. A pass-2 retiree (a
+                # *dependent* whose own object still exists, issue #124)
+                # intentionally does NOT hit this guard: it takes one transient
+                # post-registry-removal state write, which HA cleans up in the
+                # same loop turn as the entity's removal completes.
                 return
             # Connection event (the coordinator cleared its diff): re-render every
             # entity so availability changes take effect, and drop any optimistic

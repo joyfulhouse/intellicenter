@@ -94,7 +94,13 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Load Pentair select entities based on a config entry."""
-    async_setup_pool_entities(entry, async_add_entities, _build_entities)
+    # retire_dependents: the builder gates on the parent pump's existence and
+    # its MIN/MAX/MINF/MAXF capability limits - stable configuration - so the
+    # mode select is retired when its parent pump is deleted at the panel
+    # (issue #124).
+    async_setup_pool_entities(
+        entry, async_add_entities, _build_entities, retire_dependents=True
+    )
 
 
 class PumpModeSelect(PoolEntity, SelectEntity):

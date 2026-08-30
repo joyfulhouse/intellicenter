@@ -119,7 +119,16 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Load pool water heater entities based on a config entry."""
-    async_setup_pool_entities(entry, async_add_entities, _build_entities)
+    # retire_dependents: every builder predicate (body existence, the heater's
+    # BODY wiring) is stable configuration, so a body's water heater is retired
+    # when its last heater is deleted at the panel (issue #124). Known caveat:
+    # a heater deleted AND replaced within one reconnect retires + recreates
+    # the entity (losing registry customizations) because the replacement's
+    # BODY attribute only backfills after the removal dispatch - rare, and
+    # strictly better than a permanent ghost.
+    async_setup_pool_entities(
+        entry, async_add_entities, _build_entities, retire_dependents=True
+    )
 
 
 # -------------------------------------------------------------------------------------

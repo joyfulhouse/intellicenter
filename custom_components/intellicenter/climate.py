@@ -89,6 +89,18 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up climate entities for bodies with cooling support."""
+    # Deliberately NOT opted into retire_dependents (issue #124): the builder's
+    # eligibility check, body_supports_cooling(), accepts a heater on stable
+    # SUBTYP=="ULTRA" OR on COOL=="ON" - and COOL's semantics are ambiguous
+    # between firmware revisions. This integration itself reads it as live
+    # cooling *action* (is_body_cooling feeds hvac_action) while
+    # pyintellicenter's attribute comment calls it "Cooling mode"; if a panel
+    # toggles COOL at runtime, a climate entity created via the COOL fallback
+    # would drop out of the builder while COOL is OFF and any unrelated removal
+    # dispatch would falsely retire a live entity. That fails the
+    # retire_dependents stability contract, and a wrong guess deletes user
+    # entities - so the accepted tradeoff is a benign climate ghost after the
+    # cooling heater is deleted (a reload retires it).
     async_setup_pool_entities(entry, async_add_entities, _build_entities)
 
 

@@ -472,7 +472,14 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Load pool number entities based on a config entry."""
-    async_setup_pool_entities(entry, async_add_entities, _build_entities)
+    # retire_dependents: every builder predicate is own-object or stable
+    # configuration (attribute presence, body existence, the parent pump's
+    # capability limits) - so a PMPCIRC's speed/flow numbers are retired when
+    # the parent pump is deleted, and an IntelliChlor per-body output number
+    # when its body is deleted (issue #124).
+    async_setup_pool_entities(
+        entry, async_add_entities, _build_entities, retire_dependents=True
+    )
 
 
 # -------------------------------------------------------------------------------------

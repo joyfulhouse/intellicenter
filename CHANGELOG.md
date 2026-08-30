@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Entities from the pre-fork integrations were not adopted** - Replacing the jlvaillant or dwradcliffe integration with this one left every entity behind. Those integrations build their `unique_id` as `<entry_id><objnam>` with no separator while this one joins the two with an underscore, and because both ship the same `intellicenter` domain and config-flow `VERSION = 1`, Home Assistant keeps the existing config entry and never runs a migration - so no entity's unique_id matched. The old registry entries were left as unavailable and every entity returned as a `..._2` duplicate, silently breaking the automations, dashboard cards and history that referenced them. Legacy unique_ids are now rewritten in the entity registry during setup, so entities keep their `entity_id`, name, area and customizations.
+
 ## [3.10.0] - 2026-08-30
 
 Stable release promoting 3.10.0b3, after a clean six-day soak on production Home Assistant (integration loaded, zero warnings/errors, all entities healthy). No code changes since 3.10.0b3 — see the 3.10.0b3 section below and the 3.10.0b1/b2 pre-release notes for everything new since 3.9.1: the 2026-07 feature batch (schedules, egg timers, all-circuit switches, dimmer brightness, MagicStream services, chemistry/heat/diagnostics/pump entities), the cover availability fix, Color Sync, and the pyintellicenter 0.2.2 adoption.

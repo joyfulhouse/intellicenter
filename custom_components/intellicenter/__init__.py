@@ -124,10 +124,61 @@ def _is_transient_connection_error(err: Exception) -> bool:
     return isinstance(err, OSError) and err.errno in _TRANSIENT_OS_ERRNOS
 
 
+@callback
+def _async_migrate_legacy_unique_ids(
+    hass: HomeAssistant, entry: IntelliCenterConfigEntry
+) -> None:
+    """Adopt entities created by the pre-fork integrations.
+
+    The jlvaillant/dwradcliffe integrations built their unique_id by
+    concatenating the entry id and the objnam with no separator
+    (``f"{entry_id}{objnam}"``); this integration joins them with an underscore.
+    Both ship the same ``intellicenter`` domain and the same config-flow
+    ``VERSION = 1``, so a user replacing those integrations with this one keeps
+    their config entry, HA never calls ``async_migrate_entry``, and every
+    entity's unique_id silently fails to match. The old registry entries are
+    left behind as unavailable and the entities come back as ``.._2``
+    duplicates, breaking every automation, dashboard card and history graph
+    that referenced them.
+
+    Rewriting the unique_id in place keeps the original entity_id, name,
+    area and settings. Entries already carrying the separator are skipped, as
+    are rewrites that would collide with an existing entry (which would mean
+    both formats are somehow present - the newer one wins and the stale entry
+    is left for the user to remove).
+    """
+    registry = er.async_get(hass)
+    prefix = entry.entry_id
+    for registry_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
+        unique_id = registry_entry.unique_id
+        if not unique_id.startswith(prefix) or unique_id.startswith(f"{prefix}_"):
+            continue
+        new_unique_id = f"{prefix}_{unique_id[len(prefix) :]}"
+        if registry.async_get_entity_id(
+            registry_entry.domain, registry_entry.platform, new_unique_id
+        ):
+            _LOGGER.debug(
+                "Not migrating %s: %s already exists",
+                registry_entry.entity_id,
+                new_unique_id,
+            )
+            continue
+        _LOGGER.info(
+            "Migrating %s to the current unique_id format", registry_entry.entity_id
+        )
+        registry.async_update_entity(
+            registry_entry.entity_id, new_unique_id=new_unique_id
+        )
+
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: IntelliCenterConfigEntry
 ) -> bool:
     """Set up IntelliCenter integration from a config entry."""
+    # Adopt any entities left by the pre-fork integrations before the platforms
+    # build theirs, so they are matched by unique_id instead of duplicated.
+    _async_migrate_legacy_unique_ids(hass, entry)
+
     # Get configuration options with defaults
     keepalive_interval = entry.options.get(
         CONF_KEEPALIVE_INTERVAL, DEFAULT_KEEPALIVE_INTERVAL

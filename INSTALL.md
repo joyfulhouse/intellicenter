@@ -36,6 +36,20 @@ Or use this one-click link:
    `config/custom_components/intellicenter/`.
 3. **Restart Home Assistant.**
 
+## Migrating from the jlvaillant or dwradcliffe integration
+
+If you are replacing
+[jlvaillant/intellicenter](https://github.com/jlvaillant/intellicenter) or
+[dwradcliffe/intellicenter](https://github.com/dwradcliffe/intellicenter),
+install this integration over the old one and restart. Your existing config
+entry is reused and your entities are adopted automatically: entity IDs, names,
+areas and customizations are preserved, so automations and dashboards keep
+working.
+
+Do not delete the old config entry first — removing it discards the entity
+registry entries this integration adopts, and everything comes back with fresh
+entity IDs.
+
 ## Adding the Integration
 
 Your IntelliCenter is usually discovered automatically via Zeroconf/mDNS:

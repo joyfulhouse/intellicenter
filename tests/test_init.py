@@ -8,13 +8,16 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import entity_registry as er
 from pyintellicenter import ICCommandError, ICConnectionError, ICTimeoutError
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.intellicenter import (
     PLATFORMS,
     OnOffControlMixin,
     PoolEntity,
+    _async_migrate_legacy_unique_ids,
     async_setup,
     async_setup_entry,
     async_unload_entry,
@@ -651,3 +654,125 @@ class TestPyIntellicenter020Adoption:
         assert removed_batches == [{"C0002"}]
         assert "C0002" not in coordinator._known_objnams
         assert coordinator._pending_redispatch == set()
+
+
+# ---------------------------------------------------------------------------
+# Legacy unique_id adoption
+# ---------------------------------------------------------------------------
+
+LEGACY_ENTRY_ID = "legacy_entry_id"
+
+
+def _legacy_entry(hass: HomeAssistant, entry_id: str = LEGACY_ENTRY_ID) -> ConfigEntry:
+    """Return a registered config entry for the unique_id migration tests.
+
+    The entity registry refuses to link an entity to a config entry hass does
+    not know about, so the entry has to be a real one added to hass.
+    """
+    entry = MockConfigEntry(
+        domain="intellicenter",
+        entry_id=entry_id,
+        data={CONF_HOST: "192.168.1.100"},
+    )
+    entry.add_to_hass(hass)
+    return entry
+
+
+async def test_migrate_legacy_unique_id_adopts_entity(hass: HomeAssistant) -> None:
+    """A pre-fork unique_id is rewritten in place, keeping the entity_id."""
+    registry = er.async_get(hass)
+    entry = _legacy_entry(hass)
+    registry_entry = registry.async_get_or_create(
+        "binary_sensor",
+        "intellicenter",
+        f"{LEGACY_ENTRY_ID}PMP01",
+        config_entry=entry,
+        suggested_object_id="filter",
+    )
+
+    _async_migrate_legacy_unique_ids(hass, entry)
+
+    migrated = registry.async_get(registry_entry.entity_id)
+    assert migrated is not None
+    assert migrated.entity_id == "binary_sensor.filter"
+    assert migrated.unique_id == f"{LEGACY_ENTRY_ID}_PMP01"
+
+
+async def test_migrate_legacy_unique_id_preserves_attribute_suffix(
+    hass: HomeAssistant,
+) -> None:
+    """The attribute suffix on multi-attribute entities survives the rewrite."""
+    registry = er.async_get(hass)
+    entry = _legacy_entry(hass)
+    registry_entry = registry.async_get_or_create(
+        "sensor",
+        "intellicenter",
+        f"{LEGACY_ENTRY_ID}PMP01RPM",
+        config_entry=entry,
+    )
+
+    _async_migrate_legacy_unique_ids(hass, entry)
+
+    migrated = registry.async_get(registry_entry.entity_id)
+    assert migrated is not None
+    assert migrated.unique_id == f"{LEGACY_ENTRY_ID}_PMP01RPM"
+
+
+async def test_migrate_leaves_current_format_untouched(hass: HomeAssistant) -> None:
+    """An entity already on the current format is not rewritten."""
+    registry = er.async_get(hass)
+    entry = _legacy_entry(hass)
+    registry_entry = registry.async_get_or_create(
+        "binary_sensor",
+        "intellicenter",
+        f"{LEGACY_ENTRY_ID}_PMP01",
+        config_entry=entry,
+    )
+
+    _async_migrate_legacy_unique_ids(hass, entry)
+
+    migrated = registry.async_get(registry_entry.entity_id)
+    assert migrated is not None
+    assert migrated.unique_id == f"{LEGACY_ENTRY_ID}_PMP01"
+
+
+async def test_migrate_skips_on_collision(hass: HomeAssistant) -> None:
+    """A rewrite that would collide is skipped, leaving both entries intact."""
+    registry = er.async_get(hass)
+    entry = _legacy_entry(hass)
+    legacy = registry.async_get_or_create(
+        "binary_sensor",
+        "intellicenter",
+        f"{LEGACY_ENTRY_ID}PMP01",
+        config_entry=entry,
+        suggested_object_id="filter_legacy",
+    )
+    current = registry.async_get_or_create(
+        "binary_sensor",
+        "intellicenter",
+        f"{LEGACY_ENTRY_ID}_PMP01",
+        config_entry=entry,
+        suggested_object_id="filter_current",
+    )
+
+    _async_migrate_legacy_unique_ids(hass, entry)
+
+    assert registry.async_get(legacy.entity_id).unique_id == f"{LEGACY_ENTRY_ID}PMP01"
+    assert registry.async_get(current.entity_id).unique_id == f"{LEGACY_ENTRY_ID}_PMP01"
+
+
+async def test_migrate_ignores_other_config_entries(hass: HomeAssistant) -> None:
+    """Entities belonging to a different config entry are left alone."""
+    registry = er.async_get(hass)
+    entry = _legacy_entry(hass)
+    other_entry = _legacy_entry(hass, entry_id="other_entry_id")
+    other = registry.async_get_or_create(
+        "binary_sensor",
+        "intellicenter",
+        "other_entry_idPMP01",
+        config_entry=other_entry,
+    )
+
+    _async_migrate_legacy_unique_ids(hass, entry)
+
+    assert registry.async_get(other.entity_id).unique_id == "other_entry_idPMP01"

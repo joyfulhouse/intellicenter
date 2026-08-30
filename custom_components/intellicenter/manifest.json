@@ -13,7 +13,7 @@
   "requirements": [
     "pyintellicenter>=0.2.2"
   ],
-  "version": "3.10.1",
+  "version": "3.10.2",
   "zeroconf": [
     {
       "type": "_http._tcp.local.",

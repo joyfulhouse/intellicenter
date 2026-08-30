@@ -7,9 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.10.2] - 2026-08-30
+
 ### Fixed
 
-- **Deprecated ppm constant warning** - Home Assistant 2026.7 deprecated `CONCENTRATION_PARTS_PER_MILLION` (removal in 2027.8), which the IntelliChem/IntelliChlor ppm sensors and numbers imported, logging a deprecation warning at startup on current cores. The unit now resolves to `UnitOfRatio.PARTS_PER_MILLION` on 2026.7+ with a fallback to the legacy constant on older cores, so the supported Home Assistant floor is unchanged. The development/test environment was updated from Home Assistant 2026.5.4 to 2026.8.3 to match.
+- **Deprecated ppm constant warning** (#123) - Home Assistant 2026.7 deprecated `CONCENTRATION_PARTS_PER_MILLION` (removal in 2027.8), which the IntelliChem/IntelliChlor ppm sensors and numbers imported, logging a deprecation warning at startup on current cores. The unit now resolves to `UnitOfRatio.PARTS_PER_MILLION` on 2026.7+ with a fallback to the legacy constant on older cores, so the supported Home Assistant floor is unchanged. The development/test environment was updated from Home Assistant 2026.5.4 to 2026.8.3 to match.
 
 ## [3.10.1] - 2026-08-30
 

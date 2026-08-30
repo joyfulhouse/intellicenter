@@ -17,7 +17,13 @@ dependencies = [
 ]
 
 [tool.ruff]
-target-version = "py314"
+# Shipped code must import on the oldest supported Home Assistant
+# (homeassistant>=2025.11.3 -> Python 3.13), so lint/format must not emit
+# 3.14-only syntax: under py314, ruff >=0.15 rewrites `except (A, B):` to
+# PEP 758 `except A, B:`, a SyntaxError on 3.13. requires-python above
+# intentionally stays 3.14.2 for CI tooling. Revisit when the HA floor
+# moves to a release that requires Python 3.14.
+target-version = "py313"
 line-length = 88
 
 [tool.ruff.lint]
@@ -83,11 +89,10 @@ dev = [
     "pytest-homeassistant-custom-component>=0.13.333",
     # Lint/type/security tools pinned via the lock so CI (uv sync --frozen) and
     # local runs use identical versions instead of whatever is on PATH.
-    # ruff is held <0.15 and mypy <2 to match the repo's current format/type
-    # baseline: ruff 0.15 reformats unrelated files and mypy 2.x rejects HA's
-    # Python 3.14 syntax. Adopting those is a separate repo-wide change.
-    "ruff>=0.14.5,<0.15",
-    "mypy>=1.18.2,<2",
+    # Upper bounds keep future formatter/type-semantics majors a deliberate
+    # adoption (bump them in a dedicated toolchain PR, see #125).
+    "ruff>=0.16.5,<0.17",
+    "mypy>=2.3.1,<3",
     "bandit>=1.8.6",
 ]
 

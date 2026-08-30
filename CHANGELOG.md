@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.10.0] - 2026-08-30
+
+Stable release promoting 3.10.0b3, after a clean six-day soak on production Home Assistant (integration loaded, zero warnings/errors, all entities healthy). No code changes since 3.10.0b3 — see the 3.10.0b3 section below and the 3.10.0b1/b2 pre-release notes for everything new since 3.9.1: the 2026-07 feature batch (schedules, egg timers, all-circuit switches, dimmer brightness, MagicStream services, chemistry/heat/diagnostics/pump entities), the cover availability fix, Color Sync, and the pyintellicenter 0.2.2 adoption.
+
 ## [3.10.0b3] - 2026-08-23
 
 ### Added

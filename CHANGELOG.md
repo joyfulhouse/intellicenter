@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.11.0] - 2026-08-30
+
 ### Changed
 
 - **Toolchain: ruff 0.16 and mypy 2.x adopted** (#125) - The lint/type toolchain pins were held back (`ruff<0.15`, `mypy<2`) because ruff 0.15's formatter rewrote multi-exception handlers to Python 3.14-only PEP 758 syntax and mypy 2.x was believed to reject Home Assistant's syntax. The real blocker was the formatter target: with an explicit `target-version = "py313"` (matching the oldest supported Home Assistant's Python), ruff 0.16.5 leaves all shipped code untouched and 3.13-safe, and mypy 2.3.1 passes the strict configuration with zero errors. Pins, lock, and pre-commit hooks updated; the only mechanical reformat landed in one test file and documentation code fences. No functional changes.

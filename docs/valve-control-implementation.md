@@ -335,7 +335,15 @@ Modify `async_setup_entry` function, add to `attributes_map`:
 
 ```python
 attributes_map = {
-    BODY_TYPE: {SNAME_ATTR, HEATER_ATTR, HTMODE_ATTR, LOTMP_ATTR, LSTTMP_ATTR, STATUS_ATTR, VOL_ATTR},
+    BODY_TYPE: {
+        SNAME_ATTR,
+        HEATER_ATTR,
+        HTMODE_ATTR,
+        LOTMP_ATTR,
+        LSTTMP_ATTR,
+        STATUS_ATTR,
+        VOL_ATTR,
+    },
     CIRCUIT_TYPE: {SNAME_ATTR, STATUS_ATTR, USE_ATTR, SUBTYP_ATTR, FEATR_ATTR},
     CIRCGRP_TYPE: {CIRCUIT_ATTR},
     CHEM_TYPE: {},
@@ -461,9 +469,7 @@ class PoolValve(PoolEntity, SelectEntity):
             _LOGGER.error(f"Invalid valve position requested: {option}")
             return
 
-        _LOGGER.debug(
-            f"Setting valve {self._poolObject.objnam} to position {option}"
-        )
+        _LOGGER.debug(f"Setting valve {self._poolObject.objnam} to position {option}")
         self.requestChanges({ASSIGN_ATTR: option})
 ```
 

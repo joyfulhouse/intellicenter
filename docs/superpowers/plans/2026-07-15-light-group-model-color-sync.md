@@ -165,7 +165,12 @@ def add_real_group(model: PoolModel) -> None:
     )
     model.add_object(
         "ROW_BAD",
-        {"OBJTYP": "CIRCGRP", "PARENT": "GROUP", "CIRCUIT": "MISSING", "LISTORD": "bad"},
+        {
+            "OBJTYP": "CIRCGRP",
+            "PARENT": "GROUP",
+            "CIRCUIT": "MISSING",
+            "LISTORD": "bad",
+        },
     )
     model.add_object(
         "ROW_A",
@@ -175,14 +180,14 @@ def add_real_group(model: PoolModel) -> None:
     model.add_object("CHILD_B", {"OBJTYP": "CIRCUIT", "SUBTYP": "GLOW"})
 
 
-def test_real_group_enumerates_parent_not_members(controller: ICModelController) -> None:
+def test_real_group_enumerates_parent_not_members(
+    controller: ICModelController,
+) -> None:
     add_real_group(controller.model)
     controller.model.add_object(
         "PLAIN_PARENT", {"OBJTYP": "CIRCUIT", "SUBTYP": "CIRCGRP"}
     )
-    controller.model.add_object(
-        "ORPHAN", {"OBJTYP": "CIRCGRP", "CIRCUIT": "CHILD_A"}
-    )
+    controller.model.add_object("ORPHAN", {"OBJTYP": "CIRCGRP", "CIRCUIT": "CHILD_A"})
 
     assert [obj.objnam for obj in controller.get_circuit_groups()] == [
         "GROUP",
@@ -220,9 +225,7 @@ def test_legacy_standalone_row_resolves_directly_but_is_never_enumerated(
 ) -> None:
     controller.model.add_object("A", {"OBJTYP": "CIRCUIT", "SUBTYP": "GLOW"})
     controller.model.add_object("B", {"OBJTYP": "CIRCUIT", "SUBTYP": "LIGHT"})
-    controller.model.add_object(
-        "LEGACY", {"OBJTYP": "CIRCGRP", "CIRCUIT": "A B"}
-    )
+    controller.model.add_object("LEGACY", {"OBJTYP": "CIRCGRP", "CIRCUIT": "A B"})
 
     assert [obj.objnam for obj in controller.get_circuits_in_group("LEGACY")] == [
         "A",
@@ -551,15 +554,19 @@ _mutation_owner: asyncio.Task[Any] | None
 _light_group_mutation_pending: bool
 _light_group_mutation_lease: object | None
 
+
 def _mutation_lifecycle(self) -> AbstractAsyncContextManager[None]:
     raise NotImplementedError
+
 
 def _light_group_mutation_lifecycle(self) -> AbstractAsyncContextManager[object]:
     raise NotImplementedError
 
+
 @property
 def transport(self) -> TransportType:
     raise NotImplementedError
+
 
 async def _send_cmd_on_connection_unlocked(
     self,

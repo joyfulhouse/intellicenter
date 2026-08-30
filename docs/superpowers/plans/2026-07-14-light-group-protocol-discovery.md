@@ -119,29 +119,33 @@ def test_sanitize_frame_preserves_group_tokens_but_removes_private_data() -> Non
     frame = {
         "messageID": "9",
         "response": "200",
-        "objectList": [{
-            "objnam": "GRP02",
-            "params": {
-                "OBJTYP": "CIRCUIT",
-                "SUBTYP": "LITSHO",
-                "SNAME": "private-group-name",
-                "ACT": "SYNC",
-                "STATUS": "ON",
-            },
-        }],
+        "objectList": [
+            {
+                "objnam": "GRP02",
+                "params": {
+                    "OBJTYP": "CIRCUIT",
+                    "SUBTYP": "LITSHO",
+                    "SNAME": "private-group-name",
+                    "ACT": "SYNC",
+                    "STATUS": "ON",
+                },
+            }
+        ],
     }
 
     assert sanitize_frame(frame, {}) == {
         "response": "200",
-        "objectList": [{
-            "objnam": "OBJECT_001",
-            "params": {
-                "OBJTYP": "CIRCUIT",
-                "SUBTYP": "LITSHO",
-                "ACT": "SYNC",
-                "STATUS": "ON",
-            },
-        }],
+        "objectList": [
+            {
+                "objnam": "OBJECT_001",
+                "params": {
+                    "OBJTYP": "CIRCUIT",
+                    "SUBTYP": "LITSHO",
+                    "ACT": "SYNC",
+                    "STATUS": "ON",
+                },
+            }
+        ],
     }
 
 
@@ -159,19 +163,24 @@ def test_complete_group_orders_rows_and_resolves_every_child() -> None:
     ]
 
 
-@pytest.mark.parametrize("entries", [
-    [entry("GRP02", OBJTYP="CIRCUIT", SUBTYP="LITSHO")],
+@pytest.mark.parametrize(
+    "entries",
     [
-        entry("GRP02", OBJTYP="CIRCUIT", SUBTYP="LITSHO"),
-        entry("ROW01", OBJTYP="CIRCGRP", PARENT="GRP02", CIRCUIT="MISSING"),
+        [entry("GRP02", OBJTYP="CIRCUIT", SUBTYP="LITSHO")],
+        [
+            entry("GRP02", OBJTYP="CIRCUIT", SUBTYP="LITSHO"),
+            entry("ROW01", OBJTYP="CIRCGRP", PARENT="GRP02", CIRCUIT="MISSING"),
+        ],
+        [
+            entry("GRP02", OBJTYP="CIRCUIT", SUBTYP="LITSHO"),
+            entry("ROW01", OBJTYP="CIRCGRP", PARENT="GRP02", CIRCUIT="PUMP01"),
+            entry("PUMP01", OBJTYP="PUMP", SUBTYP="VSF"),
+        ],
     ],
-    [
-        entry("GRP02", OBJTYP="CIRCUIT", SUBTYP="LITSHO"),
-        entry("ROW01", OBJTYP="CIRCGRP", PARENT="GRP02", CIRCUIT="PUMP01"),
-        entry("PUMP01", OBJTYP="PUMP", SUBTYP="VSF"),
-    ],
-])
-def test_incomplete_empty_or_mixed_group_is_not_a_target(entries: list[dict[str, Any]]) -> None:
+)
+def test_incomplete_empty_or_mixed_group_is_not_a_target(
+    entries: list[dict[str, Any]],
+) -> None:
     assert build_complete_light_groups(entries) == []
 
 
@@ -196,21 +205,56 @@ Expected: collection fails because the observer module does not exist.
 Use these query keys:
 
 ```python
-PRIVATE_KEYS = frozenset({
-    "ADDRESS", "CITY", "COUNTRY", "EMAIL", "EMAIL2", "HNAME", "LOCX",
-    "LOCY", "NAME", "PASSWRD", "PHONE", "PHONE2", "PROPNAME", "SNAME",
-    "SOURCE", "STATE", "ZIP", "messageID",
-})
+PRIVATE_KEYS = frozenset(
+    {
+        "ADDRESS",
+        "CITY",
+        "COUNTRY",
+        "EMAIL",
+        "EMAIL2",
+        "HNAME",
+        "LOCX",
+        "LOCY",
+        "NAME",
+        "PASSWRD",
+        "PHONE",
+        "PHONE2",
+        "PROPNAME",
+        "SNAME",
+        "SOURCE",
+        "STATE",
+        "ZIP",
+        "messageID",
+    }
+)
 REFERENCE_KEYS = frozenset({"objnam", "BODY", "CHILD", "CIRCUIT", "PARENT"})
 READ_KEYS_BY_TYPE = {
     "SYSTEM": ("OBJTYP", "SUBTYP", "VER", "SERVICE"),
     "CIRCUIT": (
-        "OBJTYP", "SUBTYP", "PARENT", "STATUS", "ACT", "USE", "SYNC",
-        "SWIM", "SET", "LISTORD", "LIMIT", "READY",
+        "OBJTYP",
+        "SUBTYP",
+        "PARENT",
+        "STATUS",
+        "ACT",
+        "USE",
+        "SYNC",
+        "SWIM",
+        "SET",
+        "LISTORD",
+        "LIMIT",
+        "READY",
     ),
     "CIRCGRP": (
-        "OBJTYP", "SUBTYP", "PARENT", "CIRCUIT", "LISTORD", "USE", "DLY",
-        "ACT", "STATUS", "READY",
+        "OBJTYP",
+        "SUBTYP",
+        "PARENT",
+        "CIRCUIT",
+        "LISTORD",
+        "USE",
+        "DLY",
+        "ACT",
+        "STATUS",
+        "READY",
     ),
 }
 ```

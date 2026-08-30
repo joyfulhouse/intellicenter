@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Toolchain: ruff 0.16 and mypy 2.x adopted** (#125) - The lint/type toolchain pins were held back (`ruff<0.15`, `mypy<2`) because ruff 0.15's formatter rewrote multi-exception handlers to Python 3.14-only PEP 758 syntax and mypy 2.x was believed to reject Home Assistant's syntax. The real blocker was the formatter target: with an explicit `target-version = "py313"` (matching the oldest supported Home Assistant's Python), ruff 0.16.5 leaves all shipped code untouched and 3.13-safe, and mypy 2.3.1 passes the strict configuration with zero errors. Pins, lock, and pre-commit hooks updated; the only mechanical reformat landed in one test file and documentation code fences. No functional changes.
+
 ### Fixed
 
 - **Heater turn-on came back at the panel's reset setpoint (e.g. 47°)** (#118) - Turning a heater on from Home Assistant only wrote the heat source (`HEATER`/`MODE`) and never the setpoint, and some firmwares reset a body's `LOTMP` while its heat source is Off (the panel hides its setpoint UI in that state) - so the body came back heating toward the panel's reset value instead of the previous target. The water heater now remembers the last active setpoint - mirroring the existing last-operation memory, persisted across restarts in the panel's native unit - and writes it back on every Home Assistant off→on transition: merged into the same atomic change set for standard and HCOMBO heat sources, and as a follow-up write for solar modes. Setpoint pushes that arrive while the heat source is off are deliberately ignored, since those are exactly the panel-side resets being guarded against; a remembered value that falls outside the panel's current setpoint limits (a metric/English flip) is discarded rather than clamped. Thanks to @snakeeyes5 for the report.

@@ -137,17 +137,19 @@ def test_sanitize_frame_aliases_identifiers_and_removes_private_fields() -> None
     frame = {
         "messageID": "17",
         "response": "200",
-        "objectList": [{
-            "objnam": "_5451",
-            "params": {
-                "OBJTYP": "SYSTEM",
-                "SNAME": "private-id",
-                "PROPNAME": "private-property",
-                "PASSWRD": "1234",
-                "DLY": "DLY",
-                "SERVICE": "AUTO",
-            },
-        }],
+        "objectList": [
+            {
+                "objnam": "_5451",
+                "params": {
+                    "OBJTYP": "SYSTEM",
+                    "SNAME": "private-id",
+                    "PROPNAME": "private-property",
+                    "PASSWRD": "1234",
+                    "DLY": "DLY",
+                    "SERVICE": "AUTO",
+                },
+            }
+        ],
     }
 
     aliases: dict[str, str] = {}
@@ -155,14 +157,16 @@ def test_sanitize_frame_aliases_identifiers_and_removes_private_fields() -> None
 
     assert sanitized == {
         "response": "200",
-        "objectList": [{
-            "objnam": "OBJECT_001",
-            "params": {
-                "OBJTYP": "SYSTEM",
-                "DLY": "DLY",
-                "SERVICE": "AUTO",
-            },
-        }],
+        "objectList": [
+            {
+                "objnam": "OBJECT_001",
+                "params": {
+                    "OBJTYP": "SYSTEM",
+                    "DLY": "DLY",
+                    "SERVICE": "AUTO",
+                },
+            }
+        ],
     }
 
 
@@ -194,40 +198,128 @@ Expected: collection fails because `scripts.capture_delay_protocol` does not exi
 The script must define these constants exactly; private keys are removed rather than masked so their presence cannot reveal installation shape:
 
 ```python
-PRIVATE_KEYS = frozenset({
-    "ADDRESS", "CITY", "COUNTRY", "EMAIL", "EMAIL2", "HNAME", "LOCX",
-    "LOCY", "NAME", "PASSWRD", "PHONE", "PHONE2", "PROPNAME", "SNAME",
-    "SOURCE", "STATE", "ZIP", "messageID",
-})
+PRIVATE_KEYS = frozenset(
+    {
+        "ADDRESS",
+        "CITY",
+        "COUNTRY",
+        "EMAIL",
+        "EMAIL2",
+        "HNAME",
+        "LOCX",
+        "LOCY",
+        "NAME",
+        "PASSWRD",
+        "PHONE",
+        "PHONE2",
+        "PROPNAME",
+        "SNAME",
+        "SOURCE",
+        "STATE",
+        "ZIP",
+        "messageID",
+    }
+)
 REFERENCE_KEYS = frozenset({"objnam", "BODY", "CHILD", "CIRCUIT", "HEATER", "PARENT"})
 READ_KEYS_BY_TYPE = {
     "SYSTEM": (
-        "OBJTYP", "SUBTYP", "VER", "SERVICE", "READY", "STATUS", "MODE",
-        "HEATING", "VALVE", "ACT", "ACT3", "ACT4", "VACTIM", "VACFLO",
+        "OBJTYP",
+        "SUBTYP",
+        "VER",
+        "SERVICE",
+        "READY",
+        "STATUS",
+        "MODE",
+        "HEATING",
+        "VALVE",
+        "ACT",
+        "ACT3",
+        "ACT4",
+        "VACTIM",
+        "VACFLO",
     ),
     "BODY": (
-        "OBJTYP", "SUBTYP", "STATUS", "MODE", "HTMODE", "HTSRC", "HEATER",
-        "LOTMP", "HITMP", "SETTMP", "ACT1", "ACT2", "ACT3", "ACT4",
-        "BOOST", "MANHT", "READY", "TEMP", "LSTTMP",
+        "OBJTYP",
+        "SUBTYP",
+        "STATUS",
+        "MODE",
+        "HTMODE",
+        "HTSRC",
+        "HEATER",
+        "LOTMP",
+        "HITMP",
+        "SETTMP",
+        "ACT1",
+        "ACT2",
+        "ACT3",
+        "ACT4",
+        "BOOST",
+        "MANHT",
+        "READY",
+        "TEMP",
+        "LSTTMP",
     ),
     "CIRCUIT": (
-        "OBJTYP", "SUBTYP", "STATUS", "BODY", "FEATR", "FREEZE", "DLY",
-        "READY", "TIME", "TIMOUT", "DNTSTP", "USE", "ACT", "PARENT",
+        "OBJTYP",
+        "SUBTYP",
+        "STATUS",
+        "BODY",
+        "FEATR",
+        "FREEZE",
+        "DLY",
+        "READY",
+        "TIME",
+        "TIMOUT",
+        "DNTSTP",
+        "USE",
+        "ACT",
+        "PARENT",
         "CIRCUIT",
     ),
     "CIRCGRP": (
-        "OBJTYP", "SUBTYP", "STATUS", "DLY", "READY", "USE", "ACT",
-        "PARENT", "CIRCUIT",
+        "OBJTYP",
+        "SUBTYP",
+        "STATUS",
+        "DLY",
+        "READY",
+        "USE",
+        "ACT",
+        "PARENT",
+        "CIRCUIT",
     ),
     "HEATER": (
-        "OBJTYP", "SUBTYP", "STATUS", "BODY", "DLY", "HEATING", "HTMODE",
-        "MODE", "START", "STOP", "TIME", "TIMOUT", "READY",
+        "OBJTYP",
+        "SUBTYP",
+        "STATUS",
+        "BODY",
+        "DLY",
+        "HEATING",
+        "HTMODE",
+        "MODE",
+        "START",
+        "STOP",
+        "TIME",
+        "TIMOUT",
+        "READY",
     ),
     "VALVE": (
-        "OBJTYP", "SUBTYP", "ASSIGN", "CIRCUIT", "DLY", "READY", "STATUS",
+        "OBJTYP",
+        "SUBTYP",
+        "ASSIGN",
+        "CIRCUIT",
+        "DLY",
+        "READY",
+        "STATUS",
     ),
     "PUMP": (
-        "OBJTYP", "SUBTYP", "STATUS", "BODY", "RPM", "GPM", "PWR", "READY",
+        "OBJTYP",
+        "SUBTYP",
+        "STATUS",
+        "BODY",
+        "RPM",
+        "GPM",
+        "PWR",
+        "READY",
     ),
 }
 ```

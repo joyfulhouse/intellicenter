@@ -57,6 +57,7 @@ from homeassistant.components.select import SelectEntity
 
 VALVE_POSITIONS = ["NONE", "INTAKE", "RETURN"]
 
+
 class PoolValve(PoolEntity, SelectEntity):
     """Representation of a Pentair pool valve."""
 
@@ -67,7 +68,7 @@ class PoolValve(PoolEntity, SelectEntity):
             poolObject,
             attribute_key="ASSIGN",
             extraStateAttributes={"DLY"},
-            icon="mdi:valve"
+            icon="mdi:valve",
         )
         self._attr_options = VALVE_POSITIONS
 
@@ -138,7 +139,7 @@ ASSIGN_ATTR = "ASSIGN"
 
 Export in `__init__.py`:
 ```python
-ASSIGN_ATTR,
+(ASSIGN_ATTR,)
 ```
 
 ### 3. Track VALVE objects in PoolModel
@@ -218,6 +219,7 @@ No changes needed - select domain will be auto-discovered.
 import pytest
 from custom_components.intellicenter.select import PoolValve
 
+
 async def test_valve_current_position(hass, pool_object_valve):
     """Test reading valve position."""
     mock_controller = MagicMock()
@@ -225,6 +227,7 @@ async def test_valve_current_position(hass, pool_object_valve):
 
     assert valve.current_option == "INTAKE"
     assert valve.options == ["NONE", "INTAKE", "RETURN"]
+
 
 async def test_valve_select_option(hass, pool_object_valve):
     """Test changing valve position."""

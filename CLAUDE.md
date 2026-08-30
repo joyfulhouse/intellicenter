@@ -148,14 +148,17 @@ Tests should mock the TCP connection to IntelliCenter rather than requiring phys
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.intellicenter.const import DOMAIN
 
+
 async def test_config_flow_user_step(hass):
     """Test user-initiated config flow."""
     # Mock BaseController.start() to return SystemInfo
     # Test UI form display, validation, entry creation
 
+
 async def test_config_flow_zeroconf(hass):
     """Test Zeroconf discovery flow."""
     # Mock discovery_info, test auto-discovery logic
+
 
 # Example platform test structure
 async def test_light_entity_creation(hass):
@@ -163,6 +166,7 @@ async def test_light_entity_creation(hass):
     # Create MockConfigEntry
     # Mock ModelController with test PoolObjects
     # Verify entities created with correct attributes
+
 
 async def test_light_turn_on(hass):
     """Test turning on a pool light."""

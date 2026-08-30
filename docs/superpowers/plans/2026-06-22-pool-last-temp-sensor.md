@@ -144,9 +144,9 @@ from pyintellicenter import (
 and add `LSTTMP_ATTR` in alphabetical order (between `GPM_ATTR` and `MAX_ATTR`):
 
 ```python
-    GPM_ATTR,
-    LSTTMP_ATTR,
-    MAX_ATTR,
+(GPM_ATTR,)
+(LSTTMP_ATTR,)
+(MAX_ATTR,)
 ```
 
 - [ ] **Step 5: Add the `BODY_TYPE` branch in `_build_entities`**

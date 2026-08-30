@@ -288,9 +288,7 @@ class PoolEntity(Entity):
     async def async_added_to_hass(self) -> None:
         """Subscribe to updates."""
         self.async_on_remove(
-            async_dispatcher_connect(
-                self.hass, DOMAIN_UPDATE, self._update_callback
-            )
+            async_dispatcher_connect(self.hass, DOMAIN_UPDATE, self._update_callback)
         )
 ```
 
@@ -499,14 +497,13 @@ async def test_light_turn_on(hass, mock_handler):
     await setup_integration(hass, mock_handler)
 
     await hass.services.async_call(
-        "light", "turn_on",
+        "light",
+        "turn_on",
         {"entity_id": "light.pool_light"},
         blocking=True,
     )
 
-    mock_handler.request_changes.assert_called_once_with(
-        "C0001", {"STATUS": "ON"}
-    )
+    mock_handler.request_changes.assert_called_once_with("C0001", {"STATUS": "ON"})
 ```
 
 ---
@@ -533,10 +530,7 @@ Attribute tracking requests are batched to avoid overwhelming IntelliCenter:
 MAX_ATTRS_PER_REQUEST = 50
 
 for batch in chunked(attributes, MAX_ATTRS_PER_REQUEST):
-    await controller.send_request({
-        "command": "RequestParamList",
-        "objectList": batch
-    })
+    await controller.send_request({"command": "RequestParamList", "objectList": batch})
 ```
 
 ### Efficient State Updates

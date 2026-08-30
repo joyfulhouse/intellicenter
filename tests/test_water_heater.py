@@ -390,9 +390,9 @@ async def test_water_heater_turn_on_remembers_last_heater(
     """Test turning on uses last heater if available."""
     mock_coordinator.model = MagicMock()
     mock_coordinator.model.__getitem__ = MagicMock(
-        side_effect=lambda x: pool_object_heater2
-        if x == "HTR02"
-        else pool_object_heater
+        side_effect=lambda x: (
+            pool_object_heater2 if x == "HTR02" else pool_object_heater
+        )
     )
 
     body = PoolObject(
@@ -464,9 +464,9 @@ async def test_water_heater_operation_list(
     """Test operation mode list."""
     mock_coordinator.model = MagicMock()
     mock_coordinator.model.__getitem__ = MagicMock(
-        side_effect=lambda x: pool_object_heater2
-        if x == "HTR02"
-        else pool_object_heater
+        side_effect=lambda x: (
+            pool_object_heater2 if x == "HTR02" else pool_object_heater
+        )
     )
 
     water_heater = PoolWaterHeater(

@@ -53,10 +53,10 @@ The IntelliCenter Home Assistant integration demonstrates **strong architectural
 self._flow_control_lock = asyncio.Lock()
 
 # Lines 262-279: Non-atomic operations
-if self._out_pending == 0:           # Check
-    self._writeToTransport(request)   # Write
+if self._out_pending == 0:  # Check
+    self._writeToTransport(request)  # Write
 # ... (other coroutine could interrupt here)
-self._out_pending += 1               # Increment
+self._out_pending += 1  # Increment
 ```
 
 **Scenario:**
@@ -99,6 +99,7 @@ self._lineBuffer: str = ""  # No size limit
 **Recommended Fix:**
 ```python
 MAX_BUFFER_SIZE = 1_000_000  # 1MB limit
+
 
 def data_received(self, data: bytes) -> None:
     # ... existing decode logic ...
@@ -230,7 +231,9 @@ if future is None:
 ```python
 # Same pattern in light.py, switch.py, sensor.py, etc.
 async def async_setup_entry(hass, entry, async_add_entities):
-    controller: ModelController = hass.data[DOMAIN][entry.entry_id]["handler"].controller
+    controller: ModelController = hass.data[DOMAIN][entry.entry_id][
+        "handler"
+    ].controller
     entities = []
     for obj in controller.model.objectList:
         if obj.isALight:  # platform-specific condition
@@ -272,9 +275,7 @@ def isUpdated(self, updates: dict[str, dict[str, Any]]) -> bool:
 ```python
 class PoolEntity(Entity):
     def _check_attributes_updated(
-        self,
-        updates: dict[str, dict[str, Any]],
-        *attributes: str
+        self, updates: dict[str, dict[str, Any]], *attributes: str
     ) -> bool:
         """Check if any of the specified attributes were updated."""
         my_updates = updates.get(self._poolObject.objnam, {})
@@ -290,6 +291,7 @@ class PoolEntity(Entity):
 ```python
 async def async_turn_on(self, **kwargs: Any) -> None:
     self.requestChanges({STATUS_ATTR: self._poolObject.onStatus})
+
 
 async def async_turn_off(self, **kwargs: Any) -> None:
     self.requestChanges({STATUS_ATTR: self._poolObject.offStatus})
@@ -347,7 +349,7 @@ for objnam, changes in updates.items():
     async_dispatcher_send(
         self.hass,
         f"{UPDATE_SIGNAL}_{objnam}",  # Object-specific signal
-        changes
+        changes,
     )
 ```
 
@@ -361,6 +363,7 @@ for objnam, changes in updates.items():
 
 ```python
 import orjson
+
 packet = orjson.dumps(message_dict)  # Returns bytes
 ```
 
@@ -379,8 +382,7 @@ packet = orjson.dumps(message_dict)  # Returns bytes
 if waitForResponse:
     future = asyncio.Future()
     asyncio.get_event_loop().call_later(
-        RESPONSE_TIMEOUT,
-        lambda: future.done() or future.cancel()
+        RESPONSE_TIMEOUT, lambda: future.done() or future.cancel()
     )
 ```
 

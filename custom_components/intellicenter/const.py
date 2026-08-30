@@ -4,6 +4,18 @@ from __future__ import annotations
 
 from typing import Literal
 
+# UnitOfRatio only exists on Home Assistant >= 2026.7, while the legacy
+# CONCENTRATION_PARTS_PER_MILLION constant is deprecated there (removal in
+# 2027.8) but is all that older supported cores provide.
+try:
+    from homeassistant.const import UnitOfRatio
+
+    CONCENTRATION_PPM = UnitOfRatio.PARTS_PER_MILLION
+except ImportError:  # Home Assistant < 2026.7
+    from homeassistant.const import CONCENTRATION_PARTS_PER_MILLION
+
+    CONCENTRATION_PPM = CONCENTRATION_PARTS_PER_MILLION
+
 # Integration domain
 DOMAIN = "intellicenter"
 

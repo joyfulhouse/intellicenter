@@ -23,7 +23,6 @@ from homeassistant.components.number import (
     NumberMode,
 )
 from homeassistant.const import (
-    CONCENTRATION_PARTS_PER_MILLION,
     PERCENTAGE,
     EntityCategory,
     UnitOfTime,
@@ -70,6 +69,7 @@ from . import (
 from .const import (
     CHEM_CONTROLLER_SUBTYPE,
     CHLORINATOR_SUBTYPE,
+    CONCENTRATION_PPM,
     CONST_GPM,
     CONST_RPM,
     DOMAIN,
@@ -242,7 +242,7 @@ def _build_entities(
                             attribute_key=ALK_ATTR,
                             name="+ Alkalinity",
                             icon="mdi:flask-outline",
-                            unit_of_measurement=CONCENTRATION_PARTS_PER_MILLION,
+                            unit_of_measurement=CONCENTRATION_PPM,
                             mode=NumberMode.BOX,
                             entity_category=EntityCategory.CONFIG,
                             integer_only=True,
@@ -260,7 +260,7 @@ def _build_entities(
                             attribute_key=CALC_ATTR,
                             name="+ Calcium Hardness",
                             icon="mdi:flask-outline",
-                            unit_of_measurement=CONCENTRATION_PARTS_PER_MILLION,
+                            unit_of_measurement=CONCENTRATION_PPM,
                             mode=NumberMode.BOX,
                             entity_category=EntityCategory.CONFIG,
                             integer_only=True,
@@ -278,7 +278,7 @@ def _build_entities(
                             attribute_key=CYACID_ATTR,
                             name="+ Cyanuric Acid",
                             icon="mdi:flask-outline",
-                            unit_of_measurement=CONCENTRATION_PARTS_PER_MILLION,
+                            unit_of_measurement=CONCENTRATION_PPM,
                             mode=NumberMode.BOX,
                             entity_category=EntityCategory.CONFIG,
                             integer_only=True,

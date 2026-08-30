@@ -76,7 +76,7 @@ norecursedirs = [
 
 [dependency-groups]
 dev = [
-    "homeassistant==2026.5.4",
+    "homeassistant==2026.8.3",
     "pytest>=8.4.2",
     "pytest-asyncio>=1.2.0",
     "pytest-cov>=7.1.0",

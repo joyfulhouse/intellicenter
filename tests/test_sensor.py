@@ -4,7 +4,6 @@ from unittest.mock import MagicMock
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.const import (
-    CONCENTRATION_PARTS_PER_MILLION,
     EntityCategory,
     UnitOfPower,
     UnitOfTemperature,
@@ -39,6 +38,7 @@ import pytest
 
 from custom_components.intellicenter.const import (
     CALIB_ATTR,
+    CONCENTRATION_PPM,
     CONST_GPM,
     CONST_RPM,
     PORT_ATTR,
@@ -634,13 +634,13 @@ async def test_intellichlor_salt_sensor(
         mock_coordinator,
         pool_object_intellichlor,
         device_class=None,
-        unit_of_measurement=CONCENTRATION_PARTS_PER_MILLION,
+        unit_of_measurement=CONCENTRATION_PPM,
         attribute_key=SALT_ATTR,
         name="+ (Salt)",
     )
 
     assert sensor.native_value == 3200
-    assert sensor.native_unit_of_measurement == CONCENTRATION_PARTS_PER_MILLION
+    assert sensor.native_unit_of_measurement == CONCENTRATION_PPM
 
 
 async def test_sensor_native_value_none(

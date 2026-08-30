@@ -23,7 +23,6 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import (
-    CONCENTRATION_PARTS_PER_MILLION,
     EntityCategory,
     UnitOfPower,
 )
@@ -71,6 +70,7 @@ from .const import (
     CALIB_ATTR,
     CHEM_CONTROLLER_SUBTYPE,
     CHLORINATOR_SUBTYPE,
+    CONCENTRATION_PPM,
     CONST_GPM,
     CONST_RPM,
     PORT_ATTR,
@@ -309,7 +309,7 @@ def _build_entities(
                             coordinator,
                             obj,
                             device_class=None,
-                            unit_of_measurement=CONCENTRATION_PARTS_PER_MILLION,
+                            unit_of_measurement=CONCENTRATION_PPM,
                             attribute_key=SALT_ATTR,
                             name="+ (Salt)",
                             icon="mdi:shaker-outline",

@@ -420,6 +420,12 @@ class HeaterBinarySensor(PoolEntity, BinarySensorEntity):
         body_attr = self._pool_object[BODY_ATTR]
         return set(body_attr.split(" ")) if body_attr else set()
 
+    def coordinator_update_dependencies(self) -> set[str]:
+        """Route updates from every body this heater can serve."""
+        return self._bodies | {
+            body.objnam for body in self.coordinator.model.get_by_type(BODY_TYPE)
+        }
+
     @property
     def is_on(self) -> bool:
         """Return true if the heater is actively heating."""
@@ -495,6 +501,11 @@ class ScheduleBinarySensor(PoolEntity, BinarySensorEntity):
         """Return the name as 'Schedule (Object Name)'."""
         sname = self._pool_object.sname or "Unknown"
         return f"Schedule ({sname})"
+
+    def coordinator_update_dependencies(self) -> set[str]:
+        """Route changes from the circuit named in diagnostic attributes."""
+        circuit = self._pool_object[CIRCUIT_ATTR]
+        return {circuit} if circuit else set()
 
     @property
     def is_on(self) -> bool | None:

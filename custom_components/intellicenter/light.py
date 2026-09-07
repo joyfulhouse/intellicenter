@@ -224,6 +224,19 @@ class PoolLight(PoolEntity, OnOffControlMixin, LightEntity):
         )
         return self._set_light_effects(color_effects)
 
+    def coordinator_update_dependencies(self) -> set[str]:
+        """Route light-group membership, children, and system changes here."""
+        if not self._pool_object.is_a_light_show:
+            return set()
+        dependencies = self._system_update_dependencies()
+        for member in self._controller.get_circuit_group_members(
+            self._pool_object.objnam
+        ):
+            dependencies.add(member.objnam)
+            if circuit := member[CIRCUIT_ATTR]:
+                dependencies.add(circuit)
+        return dependencies
+
     @callback
     def async_refresh_model_context(self) -> None:
         """Refresh cross-object group capability without replacing the entity."""

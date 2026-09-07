@@ -543,6 +543,12 @@ class PoolNumber(PoolEntity, NumberEntity):
             return self.pentairTemperatureSettings()
         return self._attr_native_unit_of_measurement
 
+    def coordinator_update_dependencies(self) -> set[str]:
+        """Route shared panel-unit changes to temperature controls."""
+        if self.device_class == NumberDeviceClass.TEMPERATURE:
+            return self._system_update_dependencies()
+        return set()
+
     @property
     def native_min_value(self) -> float:
         """Return the minimum value, panel-unit aware for temperatures."""
@@ -726,6 +732,14 @@ class PumpSpeedNumber(PoolEntity, NumberEntity):
         self._rpm_max = rpm_max
         self._gpm_min = gpm_min
         self._gpm_max = gpm_max
+
+    def coordinator_update_dependencies(self) -> set[str]:
+        """Route parent-pump capability and associated-circuit changes here."""
+        return {
+            objnam
+            for attribute in (PARENT_ATTR, CIRCUIT_ATTR)
+            if (objnam := self._pool_object[attribute])
+        }
 
     @property
     def _current_mode(self) -> str:

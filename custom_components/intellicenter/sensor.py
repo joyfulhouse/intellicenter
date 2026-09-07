@@ -425,6 +425,12 @@ class PoolSensor(PoolEntity, SensorEntity):
             return self.pentairTemperatureSettings()
         return self._attr_native_unit_of_measurement
 
+    def coordinator_update_dependencies(self) -> set[str]:
+        """Route shared panel-unit changes to temperature sensors."""
+        if self._attr_device_class == SensorDeviceClass.TEMPERATURE:
+            return self._system_update_dependencies()
+        return set()
+
 
 class SaturationIndexSensor(PoolSensor):
     """Controller-computed Langelier Saturation Index for IntelliChem."""

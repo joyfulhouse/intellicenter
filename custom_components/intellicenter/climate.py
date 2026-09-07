@@ -147,6 +147,10 @@ class PoolClimate(PoolEntity, ClimateEntity):
         live = heaters_for_body(self.coordinator, self._pool_object.objnam)
         return live if live else self._seed_heater_list
 
+    def coordinator_update_dependencies(self) -> set[str]:
+        """Route heater action/composition and shared unit updates here."""
+        return set(self._heater_list) | self._system_update_dependencies()
+
     @property
     def unique_id(self) -> str:
         """Return a unique ID."""

@@ -33,6 +33,7 @@ from pyintellicenter import (
     STATUS_ATTR,
     STATUS_OFF,
     STATUS_ON,
+    SYSTEM_TYPE,
     ICConnectionError,
     ICError,
     ICModelController,
@@ -49,7 +50,7 @@ from .const import (
     DEFAULT_TRANSPORT,
     DOMAIN,
 )
-from .coordinator import IntelliCenterCoordinator
+from .coordinator import IntelliCenterCoordinator, ObjectUpdateContext
 from .firmware import async_check_firmware
 
 _LOGGER = logging.getLogger(__name__)
@@ -631,6 +632,11 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
         if icon:
             self._attr_icon = icon
 
+        # CoordinatorEntity passes this context back when the entity is added.
+        # Keeping the resolver bound to the entity lets structural events
+        # rebuild cross-object edges from the current model.
+        self.coordinator_context = ObjectUpdateContext(self.coordinator_update_objnams)
+
         _LOGGER.debug("Mapping %s", pool_object)
 
     @property
@@ -811,6 +817,21 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
         """Return true if the entity is updated by the updates from IntelliCenter."""
         return self._attribute_key in updates.get(self._pool_object.objnam, {})
 
+    def coordinator_update_dependencies(self) -> set[str]:
+        """Return other pool objects whose state affects this entity."""
+        return set()
+
+    def coordinator_update_objnams(self) -> set[str]:
+        """Return every pool object routed to this entity's callback."""
+        return {
+            self._pool_object.objnam,
+            *self.coordinator_update_dependencies(),
+        }
+
+    def _system_update_dependencies(self) -> set[str]:
+        """Return system objects that carry shared native-unit state."""
+        return {obj.objnam for obj in self.coordinator.model.get_by_type(SYSTEM_TYPE)}
+
     @callback
     def async_refresh_model_context(self) -> None:
         """Refresh state derived from other objects in the shared model."""
@@ -821,7 +842,10 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
         updates = self.coordinator.data or {}
 
         # Check if this entity needs to update
-        if updates and self.isUpdated(updates):
+        if updates and (
+            self.isUpdated(updates)
+            or bool(self.coordinator_update_dependencies() & updates.keys())
+        ):
             # Update the pool object reference if it changed
             updated_obj = self.coordinator.model[self._pool_object.objnam]
             if updated_obj:

@@ -152,7 +152,12 @@ class PumpModeSelect(PoolEntity, SelectEntity):
             _LOGGER.warning("Invalid pump mode option: %s", option)
             return
 
-        self.request_changes({SELECT_ATTR: option})
+        await self._async_execute_command(
+            self._controller.request_changes(
+                self._pool_object.objnam, {SELECT_ATTR: option}
+            ),
+            translation_key="command_failed",
+        )
 
         # Request fresh SPEED value after mode change
         # This triggers an update that will be pushed to PumpSpeedNumber

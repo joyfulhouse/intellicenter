@@ -607,7 +607,12 @@ class PoolNumber(PoolEntity, NumberEntity):
             )
         else:
             # Fallback for other number entities (e.g., HITMP)
-            self.request_changes({self._attribute_key: str(int(value))})
+            await self._async_execute_command(
+                controller.request_changes(
+                    objnam, {self._attribute_key: str(int(value))}
+                ),
+                translation_key="command_failed",
+            )
 
 
 class SuperChlorinateDurationNumber(PoolNumber):
@@ -771,7 +776,12 @@ class PumpSpeedNumber(PoolEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the speed value via SPEED attribute."""
-        self.request_changes({SPEED_ATTR: str(int(value))})
+        await self._async_execute_command(
+            self._controller.request_changes(
+                self._pool_object.objnam, {SPEED_ATTR: str(int(value))}
+            ),
+            translation_key="command_failed",
+        )
 
     def isUpdated(self, updates: dict[str, dict[str, Any]]) -> bool:
         """Return true if SPEED or SELECT changed.

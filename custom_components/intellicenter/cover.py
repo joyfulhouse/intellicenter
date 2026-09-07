@@ -163,13 +163,25 @@ class PoolCover(PoolEntity, CoverEntity):
         """Open the cover."""
         _, normal_on = self._require_actuation_support()
         # To open the cover, set its position opposite of NORMAL.
-        self.request_changes({POSIT_ATTR: STATUS_OFF if normal_on else STATUS_ON})
+        await self._async_execute_command(
+            self._controller.request_changes(
+                self._pool_object.objnam,
+                {POSIT_ATTR: STATUS_OFF if normal_on else STATUS_ON},
+            ),
+            translation_key="command_failed",
+        )
 
     async def async_close_cover(self, **kwargs: Any) -> None:
         """Close the cover."""
         _, normal_on = self._require_actuation_support()
         # To close the cover, set its position to the same value as NORMAL.
-        self.request_changes({POSIT_ATTR: STATUS_ON if normal_on else STATUS_OFF})
+        await self._async_execute_command(
+            self._controller.request_changes(
+                self._pool_object.objnam,
+                {POSIT_ATTR: STATUS_ON if normal_on else STATUS_OFF},
+            ),
+            translation_key="command_failed",
+        )
 
     def isUpdated(self, updates: dict[str, dict[str, str]]) -> bool:
         """Return true if the entity is updated by the updates from Intellicenter."""

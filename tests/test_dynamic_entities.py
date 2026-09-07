@@ -826,7 +826,7 @@ class TestCoordinatorObjectRemoval:
     ) -> None:
         """A removal entry notifies listeners and prunes coordinator state."""
         coordinator = _make_coordinator(hass, pool_model)
-        coordinator._pending_redispatch = {"CHEM1"}
+        coordinator._pending_redispatch = {"CHEM1": set()}
 
         removed_batches: list[set[str]] = []
         coordinator.async_add_removed_objects_listener(removed_batches.append)
@@ -836,7 +836,7 @@ class TestCoordinatorObjectRemoval:
 
         assert removed_batches == [{"CHEM1"}]
         assert "CHEM1" not in coordinator._known_objnams
-        assert coordinator._pending_redispatch == set()
+        assert coordinator._pending_redispatch == {}
         assert coordinator.data == {}
 
     async def test_removed_listener_unregister(

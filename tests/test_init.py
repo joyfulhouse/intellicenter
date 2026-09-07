@@ -643,7 +643,7 @@ class TestPyIntellicenter020Adoption:
         coordinator = _make_started_coordinator(hass)
         coordinator._started = True
         coordinator._known_objnams = {"C0001", "C0002"}
-        coordinator._pending_redispatch = {"C0002"}
+        coordinator._pending_redispatch = {"C0002": set()}
         removed_batches: list[set[str]] = []
         coordinator.async_add_removed_objects_listener(removed_batches.append)
 
@@ -653,7 +653,7 @@ class TestPyIntellicenter020Adoption:
         assert coordinator.data == {"C0001": {"STATUS": "OFF"}}
         assert removed_batches == [{"C0002"}]
         assert "C0002" not in coordinator._known_objnams
-        assert coordinator._pending_redispatch == set()
+        assert coordinator._pending_redispatch == {}
 
 
 # ---------------------------------------------------------------------------

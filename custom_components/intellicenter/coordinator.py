@@ -347,14 +347,10 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         self._started = False
         self._new_objects_listeners: list[NewObjectsListener] = []
         self._removed_objects_listeners: list[RemovedObjectsListener] = []
-        # Objects dispatched to the platforms while potentially incomplete: a
-        # runtime-added object is first seen with only the params its NotifyList
-        # carried; the controller backfills the remaining tracked attributes via
-        # RequestParamList in a LATER update. Each objnam here gets re-dispatched
-        # once, when its next attribute update (the backfill) arrives, so
-        # builders gated on attributes missing at first dispatch (e.g. pump
-        # PWR/RPM/GPM sensors) get a second chance.
-        self._pending_redispatch: set[str] = set()
+        # Runtime-added objects may reach platforms before RequestParamList has
+        # backfilled their tracked attributes. Preserve each object's discovery
+        # keys so repeated value updates can be distinguished from key growth.
+        self._pending_redispatch: dict[str, set[str]] = {}
 
     @property
     def controller(self) -> ICModelController:
@@ -555,8 +551,10 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         # creation is additionally guarded by unique_id de-duplication in the
         # platforms. Dependents are already known, so they need no recording.
         self._known_objnams.update(new_objnams)
-        # Mark for a one-shot re-dispatch when the attribute backfill arrives.
-        self._pending_redispatch.update(new_objnams)
+        # Mark for a one-shot re-dispatch when the object's attribute keys grow.
+        self._pending_redispatch.update(
+            (obj.objnam, set(obj.attribute_keys)) for obj in new_objects
+        )
 
         dependents_note = ""
         if dependents:
@@ -587,23 +585,36 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         return new_objnams
 
     @callback
-    def _async_redispatch_backfilled(self, updated_objnams: set[str]) -> None:
+    def _async_redispatch_backfilled(
+        self, changes: Mapping[str, dict[str, Any]]
+    ) -> None:
         """Re-dispatch newly-added objects once their attribute backfill arrives.
 
         A runtime-added object reaches the platforms before the controller has
         fetched its full tracked-attribute set, so builders that gate on those
-        attributes (pump PWR/RPM/GPM sensors, parent-pump limits) skip it. The
-        first subsequent update for such an object is its backfill: dispatch it
-        (and any dependents whose parent it is) one more time. ``unique_id``
-        de-duplication in the platforms makes this harmless for entities that
-        were already built.
+        attributes (pump PWR/RPM/GPM sensors, parent-pump limits) skip it. A
+        subsequent update is a backfill only when its payload introduces a new
+        tracked attribute key; ordinary value changes such as STATUS must not
+        consume the retry. Dispatch the object (and any dependents whose parent
+        it is) once that key growth occurs. ``unique_id`` de-duplication in the
+        platforms makes this harmless for entities that were already built.
         """
         if not self._pending_redispatch:
             return
-        ready_objnams = self._pending_redispatch & updated_objnams
+        ready_objnams: set[str] = set()
+        for objnam, attributes in changes.items():
+            discovery_keys = self._pending_redispatch.get(objnam)
+            obj = self._model[objnam]
+            if discovery_keys is None or obj is None:
+                continue
+            tracked_keys = DEFAULT_ATTRIBUTES_MAP.get(obj.objtype, set())
+            arrived_keys = set(attributes) & set(obj.attribute_keys) & tracked_keys
+            if arrived_keys - discovery_keys:
+                ready_objnams.add(objnam)
         if not ready_objnams:
             return
-        self._pending_redispatch -= ready_objnams
+        for objnam in ready_objnams:
+            del self._pending_redispatch[objnam]
 
         ready = [
             obj for objnam in ready_objnams if (obj := self._model[objnam]) is not None
@@ -677,8 +688,13 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         # re-fetches every object on start), so reconcile before fanning out.
         just_added = self._async_detect_new_objects()
         # The update that introduced an object is not its backfill; only later
-        # updates for that object complete it.
-        self._async_redispatch_backfilled(set(changes) - just_added)
+        # payloads that grow the object's tracked attribute keys complete it.
+        subsequent_changes = {
+            objnam: attrs
+            for objnam, attrs in changes.items()
+            if objnam not in just_added
+        }
+        self._async_redispatch_backfilled(subsequent_changes)
         # A removal-only update leaves ``data`` empty: the fan-out then takes
         # the connection-event path in the entities, re-rendering everything -
         # which is exactly what survivors that referenced the removed objects
@@ -707,7 +723,8 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         skip the rest.
         """
         self._known_objnams -= removed
-        self._pending_redispatch -= removed
+        for objnam in removed:
+            self._pending_redispatch.pop(objnam, None)
         _LOGGER.info(
             "Pool object(s) removed from the panel: %s", ", ".join(sorted(removed))
         )

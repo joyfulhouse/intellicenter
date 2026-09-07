@@ -347,9 +347,8 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         self._started = False
         self._new_objects_listeners: list[NewObjectsListener] = []
         self._removed_objects_listeners: list[RemovedObjectsListener] = []
-        # Runtime-added objects may reach platforms before RequestParamList has
-        # backfilled their tracked attributes. Preserve each object's discovery
-        # keys so repeated value updates can be distinguished from key growth.
+        # Runtime-added objects may receive tracked attributes across multiple
+        # updates. Remember seen keys so each later key growth can be dispatched.
         self._pending_redispatch: dict[str, set[str]] = {}
 
     @property
@@ -551,9 +550,14 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         # creation is additionally guarded by unique_id de-duplication in the
         # platforms. Dependents are already known, so they need no recording.
         self._known_objnams.update(new_objnams)
-        # Mark for a one-shot re-dispatch when the object's attribute keys grow.
+        # Track seen attributes so later key growth can re-run entity builders.
         self._pending_redispatch.update(
-            (obj.objnam, set(obj.attribute_keys)) for obj in new_objects
+            (
+                obj.objnam,
+                set(obj.attribute_keys)
+                & DEFAULT_ATTRIBUTES_MAP.get(obj.objtype, set()),
+            )
+            for obj in new_objects
         )
 
         dependents_note = ""
@@ -593,28 +597,27 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         A runtime-added object reaches the platforms before the controller has
         fetched its full tracked-attribute set, so builders that gate on those
         attributes (pump PWR/RPM/GPM sensors, parent-pump limits) skip it. A
-        subsequent update is a backfill only when its payload introduces a new
+        subsequent update is relevant only when its payload introduces a new
         tracked attribute key; ordinary value changes such as STATUS must not
-        consume the retry. Dispatch the object (and any dependents whose parent
-        it is) once that key growth occurs. ``unique_id`` de-duplication in the
-        platforms makes this harmless for entities that were already built.
+        rebuild entities. Dispatch the object (and any dependents whose parent
+        it is) on each key growth. ``unique_id`` de-duplication in the platforms
+        makes this harmless for entities that were already built.
         """
         if not self._pending_redispatch:
             return
         ready_objnams: set[str] = set()
         for objnam, attributes in changes.items():
-            discovery_keys = self._pending_redispatch.get(objnam)
+            seen_keys = self._pending_redispatch.get(objnam)
             obj = self._model[objnam]
-            if discovery_keys is None or obj is None:
+            if seen_keys is None or obj is None:
                 continue
             tracked_keys = DEFAULT_ATTRIBUTES_MAP.get(obj.objtype, set())
             arrived_keys = attributes.keys() & obj.attribute_keys & tracked_keys
-            if arrived_keys - discovery_keys:
+            if arrived_keys - seen_keys:
+                seen_keys.update(arrived_keys)
                 ready_objnams.add(objnam)
         if not ready_objnams:
             return
-        for objnam in ready_objnams:
-            del self._pending_redispatch[objnam]
 
         ready = [
             obj for objnam in ready_objnams if (obj := self._model[objnam]) is not None

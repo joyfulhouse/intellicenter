@@ -761,8 +761,7 @@ async def test_pump_sensors_built_after_attribute_backfill(
     controller has fetched its tracked attributes, so the power/RPM sensor
     builders (gated on those attributes) skipped it - and nothing ever
     reconsidered the pump, leaving the sensors missing until a reload. The
-    coordinator now re-dispatches an object once its first post-add update
-    (the backfill) lands.
+    coordinator now re-dispatches an object as tracked attribute keys arrive.
     """
     from custom_components.intellicenter.sensor import async_setup_entry
 
@@ -799,9 +798,9 @@ async def test_pump_sensors_built_after_attribute_backfill(
     keys = {e._attribute_key for e in added_for(PUMP3_OBJNAM)}
     assert "PWR" in keys, "power sensor missing after backfill re-dispatch"
     assert "RPM" in keys, "rpm sensor missing after backfill re-dispatch"
-    assert PUMP3_OBJNAM not in coordinator._pending_redispatch
+    assert {"PWR", "RPM", "MIN", "MAX"} <= coordinator._pending_redispatch[PUMP3_OBJNAM]
 
-    # The re-dispatch is one-shot: further updates add nothing new.
+    # Further value-only updates add nothing new.
     added.clear()
     coordinator.async_set_updated_data({PUMP3_OBJNAM: {"RPM": "2600"}})
     assert added_for(PUMP3_OBJNAM) == []

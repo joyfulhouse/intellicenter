@@ -277,19 +277,10 @@ class PoolClimate(PoolEntity, ClimateEntity):
 
     async def _async_select_heater(self, heater: str) -> None:
         """Select a heater and surface panel command failures."""
-        await self._async_execute_command(
-            self._controller.request_changes(
-                self._pool_object.objnam, {HEATER_ATTR: heater}
-            ),
-            translation_key="command_failed",
-        )
+        await self._async_execute_changes({HEATER_ATTR: heater})
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
-        """Set new target temperatures.
-
-        Library and connection failures surface as HomeAssistantError so the
-        service call reports a clean error instead of silently logging.
-        """
+        """Set new target temperatures."""
         low_temp = kwargs.get(ATTR_TARGET_TEMP_LOW)
         high_temp = kwargs.get(ATTR_TARGET_TEMP_HIGH)
 

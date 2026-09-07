@@ -798,6 +798,13 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
                 f"IntelliCenter command for '{self.name}' failed: {err}"
             ) from err
 
+    async def _async_execute_changes(self, changes: dict[str, Any]) -> None:
+        """Await changes to this entity's pool object."""
+        await self._async_execute_command(
+            self._controller.request_changes(self._pool_object.objnam, changes),
+            translation_key="command_failed",
+        )
+
     def _check_attributes_updated(
         self, updates: dict[str, dict[str, Any]], *attributes: str
     ) -> bool:
@@ -913,17 +920,8 @@ class OnOffControlMixin(_MixinBase):
 
     if TYPE_CHECKING:
 
-        @property
-        def _controller(self) -> ICModelController:
-            """Return the controller - provided by PoolEntity."""
-            ...
-
-        async def _async_execute_command(
-            self,
-            command: Awaitable[Any],
-            translation_key: str | None = None,
-        ) -> Any:
-            """Execute a controller command - provided by PoolEntity."""
+        async def _async_execute_changes(self, changes: dict[str, Any]) -> None:
+            """Execute pool object changes - provided by PoolEntity."""
             ...
 
         def _clear_optimistic_state(self) -> None:
@@ -954,12 +952,7 @@ class OnOffControlMixin(_MixinBase):
         self._optimistic_state = optimistic
         self.async_write_ha_state()
         try:
-            await self._async_execute_command(
-                self._controller.request_changes(
-                    self._pool_object.objnam, {self._attribute_key: state}
-                ),
-                translation_key="command_failed",
-            )
+            await self._async_execute_changes({self._attribute_key: state})
         except HomeAssistantError:
             self._clear_optimistic_state()
             self.async_write_ha_state()

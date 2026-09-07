@@ -163,24 +163,16 @@ class PoolCover(PoolEntity, CoverEntity):
         """Open the cover."""
         _, normal_on = self._require_actuation_support()
         # To open the cover, set its position opposite of NORMAL.
-        await self._async_execute_command(
-            self._controller.request_changes(
-                self._pool_object.objnam,
-                {POSIT_ATTR: STATUS_OFF if normal_on else STATUS_ON},
-            ),
-            translation_key="command_failed",
+        await self._async_execute_changes(
+            {POSIT_ATTR: STATUS_OFF if normal_on else STATUS_ON}
         )
 
     async def async_close_cover(self, **kwargs: Any) -> None:
         """Close the cover."""
         _, normal_on = self._require_actuation_support()
         # To close the cover, set its position to the same value as NORMAL.
-        await self._async_execute_command(
-            self._controller.request_changes(
-                self._pool_object.objnam,
-                {POSIT_ATTR: STATUS_ON if normal_on else STATUS_OFF},
-            ),
-            translation_key="command_failed",
+        await self._async_execute_changes(
+            {POSIT_ATTR: STATUS_ON if normal_on else STATUS_OFF}
         )
 
     def isUpdated(self, updates: dict[str, dict[str, str]]) -> bool:

@@ -562,12 +562,7 @@ async def test_circuit_failed_command_reverts_optimistic_state(
     mock_coordinator: MagicMock,
     mock_write_ha_state: MagicMock,
 ) -> None:
-    """Regression: a failed command must raise and drop optimistic state.
-
-    The old background write swallowed every exception while the optimistic
-    state could only be cleared by a push echo - which never arrives when the
-    command failed - so the UI showed the wrong on/off state indefinitely.
-    """
+    """A failed command raises and drops optimistic state."""
     from pyintellicenter import ICConnectionError
 
     mock_coordinator.controller.request_changes.side_effect = ICConnectionError(

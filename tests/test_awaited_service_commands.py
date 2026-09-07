@@ -101,7 +101,6 @@ async def test_switch_failure_reaches_caller_and_reverts_optimistic_state(
 
     with pytest.raises(HomeAssistantError) as raised:
         await switch.async_turn_on()
-        await hass.async_block_till_done()
 
     assert raised.value.translation_domain == "intellicenter"
     assert raised.value.translation_key == "command_failed"

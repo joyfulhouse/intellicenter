@@ -951,9 +951,11 @@ class OnOffControlMixin(_MixinBase):
         # Optimistic update for immediate UI feedback
         self._optimistic_state = optimistic
         self.async_write_ha_state()
+        committed = False
         try:
             await self._async_execute_changes({self._attribute_key: state})
-        except HomeAssistantError:
-            self._clear_optimistic_state()
-            self.async_write_ha_state()
-            raise
+            committed = True
+        finally:
+            if not committed:
+                self._clear_optimistic_state()
+                self.async_write_ha_state()

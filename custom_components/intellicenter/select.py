@@ -21,6 +21,7 @@ from pyintellicenter import (
     PARENT_ATTR,
     PMPCIRC_TYPE,
     SELECT_ATTR,
+    ICError,
     PoolObject,
 )
 
@@ -156,7 +157,14 @@ class PumpModeSelect(PoolEntity, SelectEntity):
 
         # Request fresh SPEED value after mode change
         # This triggers an update that will be pushed to PumpSpeedNumber
-        await self._controller.refresh_pump_circuit_speed(self._pool_object.objnam)
+        try:
+            await self._controller.refresh_pump_circuit_speed(self._pool_object.objnam)
+        except ICError as err:
+            _LOGGER.debug(
+                "Pump mode changed for %s, but refreshing its speed failed: %s",
+                self._pool_object.objnam,
+                err,
+            )
 
     def isUpdated(self, updates: dict[str, dict[str, Any]]) -> bool:
         """Return true if the entity is updated by the updates from IntelliCenter."""

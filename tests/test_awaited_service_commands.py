@@ -143,6 +143,41 @@ async def test_switch_acknowledgement_completes_then_push_reconciles(
     assert mock_write_ha_state.call_count == 2
 
 
+async def test_switch_cancellation_reverts_optimistic_state(
+    hass: HomeAssistant,
+    pool_object_switch: PoolObject,
+    mock_coordinator: MagicMock,
+    mock_write_ha_state: MagicMock,
+) -> None:
+    """Cancellation restores real state when a queued command never completes."""
+    started = asyncio.Event()
+    dispatch_allowed = asyncio.Event()
+    completed_wire_dispatches = 0
+
+    async def wait_for_dispatch(*_args: Any) -> None:
+        nonlocal completed_wire_dispatches
+        started.set()
+        await dispatch_allowed.wait()
+        completed_wire_dispatches += 1
+
+    mock_coordinator.controller.request_changes.side_effect = wait_for_dispatch
+    switch = PoolCircuit(mock_coordinator, pool_object_switch)
+    switch.hass = hass
+
+    service_task = asyncio.create_task(switch.async_turn_on())
+    await asyncio.wait_for(started.wait(), timeout=0.5)
+    assert switch.is_on is True
+
+    service_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await service_task
+
+    assert completed_wire_dispatches == 0
+    assert switch._optimistic_state is None
+    assert switch.is_on is False
+    assert mock_write_ha_state.call_count == 2
+
+
 def _make_platform_service(
     platform: str,
     hass: HomeAssistant,
@@ -256,3 +291,40 @@ async def test_platform_service_waits_for_panel_acknowledgement(
         mock_coordinator.controller.refresh_pump_circuit_speed.assert_awaited_once_with(
             "PMPCIRC01"
         )
+
+
+async def test_select_refresh_timeout_after_write_does_not_fail_service(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+) -> None:
+    """A display-only refresh timeout cannot fail an acknowledged mode write."""
+    mock_coordinator.controller.refresh_pump_circuit_speed = AsyncMock(
+        side_effect=ICTimeoutError("speed refresh timed out")
+    )
+
+    await _make_platform_service("select", hass, mock_coordinator)
+
+    mock_coordinator.controller.request_changes.assert_awaited_once_with(
+        "PMPCIRC01", {SELECT_ATTR: "RPM"}
+    )
+    mock_coordinator.controller.refresh_pump_circuit_speed.assert_awaited_once_with(
+        "PMPCIRC01"
+    )
+
+
+@pytest.mark.parametrize("platform", ["cover", "climate", "number"])
+async def test_platform_failure_is_translated(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+    platform: str,
+) -> None:
+    """Representative platform writes translate library connection failures."""
+    mock_coordinator.controller.request_changes.side_effect = ICConnectionError(
+        "panel disconnected"
+    )
+
+    with pytest.raises(HomeAssistantError) as raised:
+        await _make_platform_service(platform, hass, mock_coordinator)
+
+    assert raised.value.translation_domain == "intellicenter"
+    assert raised.value.translation_key == "command_failed"

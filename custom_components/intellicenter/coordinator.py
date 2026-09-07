@@ -608,7 +608,7 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
             if discovery_keys is None or obj is None:
                 continue
             tracked_keys = DEFAULT_ATTRIBUTES_MAP.get(obj.objtype, set())
-            arrived_keys = set(attributes) & set(obj.attribute_keys) & tracked_keys
+            arrived_keys = attributes.keys() & obj.attribute_keys & tracked_keys
             if arrived_keys - discovery_keys:
                 ready_objnams.add(objnam)
         if not ready_objnams:
@@ -685,16 +685,10 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
 
         self.data = changes
         # New equipment can enter the model on a reconnect (the controller
-        # re-fetches every object on start), so reconcile before fanning out.
-        just_added = self._async_detect_new_objects()
-        # The update that introduced an object is not its backfill; only later
-        # payloads that grow the object's tracked attribute keys complete it.
-        subsequent_changes = {
-            objnam: attrs
-            for objnam, attrs in changes.items()
-            if objnam not in just_added
-        }
-        self._async_redispatch_backfilled(subsequent_changes)
+        # re-fetches every object on start), so snapshot its keys before checking
+        # whether this payload grew them.
+        self._async_detect_new_objects()
+        self._async_redispatch_backfilled(changes)
         # A removal-only update leaves ``data`` empty: the fan-out then takes
         # the connection-event path in the entities, re-rendering everything -
         # which is exactly what survivors that referenced the removed objects

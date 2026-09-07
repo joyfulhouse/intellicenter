@@ -282,7 +282,6 @@ async def test_async_unload_entry_successful_retry_stops_once(
 
     assert retry_result is True
     mock_coordinator.async_stop.assert_awaited_once()
-    assert mock_coordinator.async_stop.await_count == 1
 
 
 async def test_async_unload_entry_no_runtime_data(hass: HomeAssistant) -> None:

@@ -312,10 +312,6 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
             # No update_interval - we use push updates
         )
 
-        # CoordinatorEntity still registers through async_add_listener(), but
-        # ObjectUpdateContext listeners are additionally indexed by objnam.
-        # Context-free listeners retain the coordinator's historical behavior
-        # and receive every update.
         self._object_update_listeners: dict[str, dict[CALLBACK_TYPE, None]] = {}
         self._object_update_contexts: dict[CALLBACK_TYPE, ObjectUpdateContext] = {}
         self._broadcast_update_listeners: dict[CALLBACK_TYPE, None] = {}
@@ -779,13 +775,14 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
             self._async_remove_objects(removed)
 
         self.data = changes
+        changed_objnams = set(changes)
         # Ordinary notifications name every changed object, so additions can be
         # detected without traversing the full model. Reconnect completion below
         # retains the authoritative full-model reconciliation.
-        just_added = self._async_detect_new_objects(set(changes))
+        just_added = self._async_detect_new_objects(changed_objnams)
         # The update that introduced an object is not its backfill; only later
         # updates for that object complete it.
-        backfilled = self._async_redispatch_backfilled(set(changes) - just_added)
+        backfilled = self._async_redispatch_backfilled(changed_objnams - just_added)
         dependency_edges_changed = any(
             _DEPENDENCY_EDGE_ATTRIBUTES & attrs.keys() for attrs in changes.values()
         )
@@ -813,7 +810,7 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
             self._async_refresh_object_listener_index()
             self.async_update_listeners()
         else:
-            self._async_update_object_listeners(set(changes))
+            self._async_update_object_listeners(changed_objnams)
 
     @callback
     def _async_remove_objects(self, removed: set[str]) -> None:

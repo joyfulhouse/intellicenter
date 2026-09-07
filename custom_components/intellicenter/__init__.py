@@ -632,9 +632,6 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
         if icon:
             self._attr_icon = icon
 
-        # CoordinatorEntity passes this context back when the entity is added.
-        # Keeping the resolver bound to the entity lets structural events
-        # rebuild cross-object edges from the current model.
         self.coordinator_context = ObjectUpdateContext(self.coordinator_update_objnams)
 
         _LOGGER.debug("Mapping %s", pool_object)

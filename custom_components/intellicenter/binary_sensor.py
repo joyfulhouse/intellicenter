@@ -455,9 +455,7 @@ class HeaterBinarySensor(PoolEntity, BinarySensorEntity):
         """
         # Check if any body's heating-related attributes changed. Include the
         # heater's live BODY list as a fallback for objects not yet in the model.
-        body_objnams = self._bodies | {
-            body.objnam for body in self.coordinator.model.get_by_type(BODY_TYPE)
-        }
+        body_objnams = self.coordinator_update_dependencies()
         for objnam in body_objnams & updates.keys():
             if {STATUS_ATTR, HEATER_ATTR, HTMODE_ATTR} & updates[objnam].keys():
                 return True

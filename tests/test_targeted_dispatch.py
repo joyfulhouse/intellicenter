@@ -504,6 +504,107 @@ async def test_dependency_edge_change_broadcasts_and_reindexes(
     ] == [0, 1, 0]
 
 
+async def test_structural_batch_preserves_water_heater_memory(
+    hass: HomeAssistant,
+) -> None:
+    """A structural batch still lets the water heater capture its live update."""
+    coordinator = _make_coordinator(hass)
+    body = coordinator.model.add_object(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SUBTYP": "POOL",
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "HEATER": "00000",
+            "HTMODE": "0",
+            "LOTMP": "72",
+            "LSTTMP": "78",
+        },
+    )
+    heater = coordinator.model.add_object(
+        "HTR01",
+        {
+            "OBJTYP": HEATER_TYPE,
+            "SUBTYP": "GAS",
+            "SNAME": "Gas Heater",
+            "BODY": "POOL1",
+            "LISTORD": "1",
+        },
+    )
+    assert body is not None and heater is not None
+    entity = _CountingWaterHeater(coordinator, body, ["HTR01"])
+    _mark_started(coordinator)
+    await _register(hass, entity)
+    added = coordinator.model.add_object(
+        "C_NEW",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "GENERIC",
+            "SNAME": "New Circuit",
+            "STATUS": "OFF",
+        },
+    )
+    assert added is not None
+
+    body.update({"HEATER": "HTR01", "HTMODE": "1", "LOTMP": "88"})
+    coordinator.async_set_updated_data(
+        {
+            "POOL1": {"HEATER": "HTR01", "HTMODE": "1", "LOTMP": "88"},
+            "C_NEW": {"STATUS": "OFF"},
+        }
+    )
+
+    assert entity._last_operation == "Gas Heater"
+    assert entity._last_setpoint == 88.0
+    assert entity.state_writes == 1
+
+
+async def test_structural_refresh_preserves_optimistic_state(
+    hass: HomeAssistant,
+) -> None:
+    """Only a connection event clears optimistic state during a broadcast."""
+    coordinator = _make_coordinator(hass)
+    owner = coordinator.model.add_object(
+        "OWNER",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "GENERIC",
+            "SNAME": "Owner",
+            "STATUS": "OFF",
+        },
+    )
+    assert owner is not None
+    entity = _CountingPoolEntity(coordinator, owner)
+    _mark_started(coordinator)
+    await _register(hass, entity)
+    added = coordinator.model.add_object(
+        "C_NEW",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "GENERIC",
+            "SNAME": "New Circuit",
+            "STATUS": "OFF",
+        },
+    )
+    assert added is not None
+
+    entity._optimistic_state = True
+    coordinator.async_set_updated_data({"C_NEW": {"STATUS": "OFF"}})
+    assert entity._optimistic_state is True
+    assert entity.state_writes == 1
+
+    coordinator.model.remove_object("C_NEW")
+    entity._optimistic_state = False
+    coordinator.async_set_updated_data({"C_NEW": None})
+    assert entity._optimistic_state is False
+    assert entity.state_writes == 2
+
+    coordinator.async_set_connection_state(False)
+    assert entity._optimistic_state is None
+    assert entity.state_writes == 3
+
+
 async def test_backfill_update_broadcasts_to_every_entity(
     hass: HomeAssistant,
 ) -> None:

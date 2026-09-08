@@ -320,6 +320,7 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         self._broadcast_update_listeners: dict[CALLBACK_TYPE, None] = {}
         self._failed_object_update_listeners: dict[CALLBACK_TYPE, None] = {}
         self._logged_object_update_failures: set[CALLBACK_TYPE] = set()
+        self._structural_refresh = False
 
         self.config_entry = entry
         self._host = host
@@ -802,20 +803,10 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         dependency_edges_changed = any(
             _DEPENDENCY_EDGE_ATTRIBUTES & attrs.keys() for attrs in changes.values()
         )
-        # A removal-only update leaves ``data`` empty: the fan-out then takes
-        # the connection-event path in the entities, re-rendering everything -
-        # which is exactly what survivors that referenced the removed objects
-        # (a body's heater list, a group's members) need. The platforms have
-        # already handled the structural side above via the removal listeners:
-        # ``async_setup_pool_entities`` retires the removed objects' own
-        # entities plus (on opted-in platforms) dependents whose creation
-        # predicate no longer holds, and refreshes every survivor's
-        # cross-object context (issue #124). This re-render relies on a
-        # library invariant: pyintellicenter dispatches reconnect-reconciliation
-        # removals and the attribute backfill as SEPARATE _notify_updated calls,
-        # so removals always arrive alone. If a future version coalesced them,
-        # survivors not named in the mixed diff would miss this re-render (the
-        # subsequent on_reconnected full re-render still corrects availability).
+        # Structural changes can affect entities not named in the diff, so
+        # rebuild the dependency index and force a full refresh. Keep the real
+        # diff visible so entity-specific update side effects still run; only
+        # ordinary attribute-only pushes use the targeted listener index.
         if (
             removed
             or just_added
@@ -824,11 +815,11 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
             or not changes
         ):
             self._async_refresh_object_listener_index()
-            self.data = {}
+            self._structural_refresh = True
             try:
                 self.async_update_listeners()
             finally:
-                self.data = changes
+                self._structural_refresh = False
         else:
             self._async_update_object_listeners(changed_objnams)
 

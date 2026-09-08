@@ -863,6 +863,15 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
         """Handle updated data from the coordinator."""
         updates = self.coordinator.data or {}
 
+        if getattr(self.coordinator, "_structural_refresh", False):
+            updated_obj = self.coordinator.model[self._pool_object.objnam]
+            if updated_obj is None:
+                return
+            self._pool_object = updated_obj
+            self.isUpdated(updates)
+            self.async_write_ha_state()
+            return
+
         if not updates:
             if self.coordinator.model[self._pool_object.objnam] is None:
                 # The object is gone from the model (equipment deleted at the

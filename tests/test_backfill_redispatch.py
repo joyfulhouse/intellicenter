@@ -153,6 +153,24 @@ async def test_later_gpm_key_builds_sensor_after_partial_backfill(
     assert {"GPM", "PWR", "RPM"} <= coordinator._pending_redispatch[PUMP_OBJNAM]
 
 
+async def test_falsy_initial_power_redispatches_when_truthy(
+    hass: HomeAssistant,
+) -> None:
+    """A pump power sensor is built when its initially empty value becomes usable."""
+    coordinator = _make_coordinator(hass)
+    added = await _setup_sensor_platform(hass, coordinator)
+    initial = {**SPARSE_PUMP, "PWR": ""}
+    pump = coordinator.model.add_object(PUMP_OBJNAM, initial)
+    assert pump is not None
+
+    coordinator.async_set_updated_data({PUMP_OBJNAM: initial})
+    assert _telemetry_keys(added) == []
+
+    _apply_update(coordinator, pump, {"PWR": "850"})
+
+    assert _telemetry_keys(added) == ["PWR"]
+
+
 async def test_non_telemetry_key_does_not_consume_later_sensor_retries(
     hass: HomeAssistant,
 ) -> None:

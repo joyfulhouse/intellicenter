@@ -629,6 +629,7 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
         self._pool_object = pool_object
         self._attribute_key = attribute_key
         self._custom_name = name
+        self._simplify_name_counts: dict[tuple[str, str | None], int] = {}
         self._extra_state_attrs: set[str] = (
             set(extra_state_attributes) if extra_state_attributes else set()
         )
@@ -685,24 +686,21 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
         IntelliCenter names devices like "IntelliChem 1" even when there's
         only one. This method strips the trailing " 1" in such cases.
         """
-        # Check if name ends with " 1"
         match = re.match(r"^(.+) 1$", name)
         if not match:
             return name
 
         base_name = match.group(1)
-        obj_type = self._pool_object.objtype
-        obj_subtype = self._pool_object.subtype
+        object_kind = (self._pool_object.objtype, self._pool_object.subtype)
 
-        # Count how many objects of the same type/subtype exist
-        count = sum(
-            1
-            for obj in self.coordinator.model
-            if obj.objtype == obj_type and obj.subtype == obj_subtype
-        )
+        if object_kind not in self._simplify_name_counts:
+            self._simplify_name_counts[object_kind] = sum(
+                1
+                for obj in self.coordinator.model
+                if (obj.objtype, obj.subtype) == object_kind
+            )
 
-        # Only strip " 1" if there's exactly one instance
-        if count == 1:
+        if self._simplify_name_counts[object_kind] == 1:
             return base_name
 
         return name
@@ -818,6 +816,7 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
     def _invalidate_coordinator_update_dependencies(self) -> None:
         """Clear cached cross-object dependencies after structural changes."""
         self._coordinator_update_dependencies = None
+        self._simplify_name_counts.clear()
 
     def coordinator_update_objnams(self) -> set[str]:
         """Return every pool object routed to this entity's callback."""

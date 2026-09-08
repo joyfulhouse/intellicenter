@@ -141,7 +141,9 @@ class ObjectUpdateContext:
 
 # These configuration attributes change the dependency graph itself. They are
 # rare structural updates, so rebuild every entity edge and broadcast them.
-_DEPENDENCY_EDGE_ATTRIBUTES = frozenset({BODY_ATTR, CIRCUIT_ATTR, PARENT_ATTR})
+_DEPENDENCY_EDGE_ATTRIBUTES = frozenset(
+    {BODY_ATTR, CIRCUIT_ATTR, PARENT_ATTR, SUBTYP_ATTR}
+)
 
 # PoolObject pops these attributes into dedicated slots, so they never appear
 # in attribute_keys even when supplied by the panel.

@@ -302,21 +302,11 @@ class PoolLight(PoolEntity, OnOffControlMixin, LightEntity):
                 _SUPPORTED_DIMMER_LEVELS,
                 key=lambda level: abs(level - percentage),
             )
-            self._optimistic_state = True
-            self.async_write_ha_state()
-            committed = False
-            try:
-                await self._async_execute_changes(
-                    {
-                        LIMIT_ATTR: str(limit),
-                        STATUS_ATTR: self._pool_object.on_status,
-                    }
-                )
-                committed = True
-            finally:
-                if not committed:
-                    self._clear_optimistic_state()
-                    self.async_write_ha_state()
+            await self._async_set_on_off_state(
+                True,
+                self._pool_object.on_status,
+                {LIMIT_ATTR: str(limit)},
+            )
             return
 
         # On/off (with optimistic UI feedback) comes from OnOffControlMixin.

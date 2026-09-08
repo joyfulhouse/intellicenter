@@ -14,6 +14,7 @@ from pyintellicenter import (
     LIGHT_EFFECTS,
     STATUS_ATTR,
     USE_ATTR,
+    ICConnectionError,
     ICError,
     ICLightGroupError,
     PoolModel,
@@ -955,8 +956,6 @@ async def test_dimmer_brightness_failure_is_awaited_and_reverts_optimism(
     mock_write_ha_state: MagicMock,
 ) -> None:
     """A failed brightness command raises and restores authoritative state."""
-    from pyintellicenter import ICConnectionError
-
     dimmer = PoolObject(
         "DIMMER1",
         {

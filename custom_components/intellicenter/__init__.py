@@ -1002,14 +1002,22 @@ class OnOffControlMixin(_MixinBase):
         """Turn the entity off."""
         await self._async_set_on_off_state(False, self._pool_object.off_status)
 
-    async def _async_set_on_off_state(self, optimistic: bool, state: str) -> None:
+    async def _async_set_on_off_state(
+        self,
+        optimistic: bool,
+        state: str,
+        additional_changes: dict[str, Any] | None = None,
+    ) -> None:
         """Render an optimistic state while awaiting the panel command."""
+        changes = {self._attribute_key: state}
+        if additional_changes is not None:
+            changes.update(additional_changes)
         # Optimistic update for immediate UI feedback
         self._optimistic_state = optimistic
         self.async_write_ha_state()
         committed = False
         try:
-            await self._async_execute_changes({self._attribute_key: state})
+            await self._async_execute_changes(changes)
             committed = True
         finally:
             if not committed:

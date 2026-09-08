@@ -167,6 +167,41 @@ async def test_litsho_subtype_change_rebuilds_dependency_map(
     mock_coordinator._async_refresh_object_listener_index.assert_called_once_with()
 
 
+async def test_litsho_subtype_change_removes_group_dependencies(
+    mock_coordinator: MagicMock,
+) -> None:
+    """Changing from LITSHO rebuilds the map without group dependencies."""
+    model = _make_light_group_model(
+        ("GLOW1", "GLOW2"),
+        {
+            "GLOW1": (CIRCUIT_TYPE, "GLOW"),
+            "GLOW2": (CIRCUIT_TYPE, "GLOW"),
+        },
+    )
+    parent = model["GROUP"]
+    assert parent is not None
+    mock_coordinator.model = model
+    entity = PoolLight(mock_coordinator, parent)
+    member_lookups = mock_coordinator.controller.get_circuit_group_members
+    member_lookups.reset_mock()
+
+    assert set(entity._resolved_coordinator_update_dependencies()) == {
+        "GROUP_ROW_1",
+        "GROUP_ROW_2",
+        "GLOW1",
+        "GLOW2",
+    }
+    assert member_lookups.call_count == 1
+    mock_coordinator._async_refresh_object_listener_index.reset_mock()
+
+    parent.update({SUBTYP_ATTR: "LIGHT"})
+    entity.isUpdated({"GROUP": {SUBTYP_ATTR: "LIGHT"}})
+
+    assert entity._resolved_coordinator_update_dependencies() == {}
+    assert member_lookups.call_count == 1
+    mock_coordinator._async_refresh_object_listener_index.assert_called_once_with()
+
+
 async def test_light_setup_creates_entities(
     hass: HomeAssistant,
     pool_model: PoolModel,

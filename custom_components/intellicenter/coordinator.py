@@ -140,7 +140,9 @@ class ObjectUpdateContext:
 
 # These configuration attributes change the dependency graph itself. They are
 # rare structural updates, so rebuild every entity edge and broadcast them.
-_DEPENDENCY_EDGE_ATTRIBUTES = frozenset({BODY_ATTR, CIRCUIT_ATTR, PARENT_ATTR})
+_DEPENDENCY_EDGE_ATTRIBUTES = frozenset(
+    {BODY_ATTR, CIRCUIT_ATTR, PARENT_ATTR, SUBTYP_ATTR}
+)
 
 
 # Default attribute tracking map - defines which attributes to monitor per object type

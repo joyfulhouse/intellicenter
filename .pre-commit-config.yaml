@@ -14,8 +14,9 @@ repos:
       - id: codespell
         args:
           - --ignore-words-list=hass,timout
-          - --skip=./.*,*.csv,*.json,docs/superpowers/plans/*
+          - --skip="./.*,*.csv,*.json"
           - --quiet-level=2
+        exclude: ^docs/superpowers/plans/
         exclude_types: [csv, json]
   - repo: https://github.com/PyCQA/bandit
     rev: 1.9.4

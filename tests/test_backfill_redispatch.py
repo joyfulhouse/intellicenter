@@ -293,6 +293,47 @@ async def test_initial_setup_skips_complete_truthy_object_bookkeeping(
     assert PUMP_OBJNAM not in coordinator._pending_truthy_redispatch
 
 
+async def test_runtime_seeding_tracks_only_deferred_objects_until_removal(
+    hass: HomeAssistant,
+) -> None:
+    """Runtime bookkeeping skips complete objects and retains missing keys."""
+    coordinator = _make_coordinator(hass)
+    non_slotted_tracked = DEFAULT_ATTRIBUTES_MAP[PUMP_TYPE] - {"OBJTYP", "SUBTYP"}
+    complete_params = {
+        "OBJTYP": PUMP_TYPE,
+        "SUBTYP": "VSF",
+        **dict.fromkeys(non_slotted_tracked, "1"),
+    }
+    complete_objnam = "PUMP_COMPLETE"
+    assert coordinator.model.add_object(complete_objnam, complete_params) is not None
+
+    coordinator.async_set_updated_data({complete_objnam: complete_params})
+
+    assert complete_objnam not in coordinator._pending_redispatch
+    assert complete_objnam not in coordinator._pending_truthy_redispatch
+
+    deferred_params = complete_params.copy()
+    deferred_params.pop("PWR")
+    deferred_objnam = "PUMP_DEFERRED"
+    deferred = coordinator.model.add_object(deferred_objnam, deferred_params)
+    assert deferred is not None
+    coordinator.async_set_updated_data({deferred_objnam: deferred_params})
+
+    assert deferred_objnam in coordinator._pending_redispatch
+    assert deferred_objnam in coordinator._pending_truthy_redispatch
+    changed = deferred.update({"STATUS": "2"})
+    assert changed
+    coordinator.async_set_updated_data({deferred_objnam: changed})
+    assert deferred_objnam in coordinator._pending_redispatch
+    assert deferred_objnam in coordinator._pending_truthy_redispatch
+
+    coordinator.model.remove_object(deferred_objnam)
+    coordinator.async_set_updated_data({deferred_objnam: None})
+
+    assert deferred_objnam not in coordinator._pending_redispatch
+    assert deferred_objnam not in coordinator._pending_truthy_redispatch
+
+
 async def test_initial_setup_prunes_resolved_bookkeeping(
     hass: HomeAssistant,
 ) -> None:

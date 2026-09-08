@@ -821,7 +821,7 @@ async def test_runtime_add_remove_and_reconnect_reconciliation(
 async def test_incomplete_runtime_object_redispatches_on_backfill(
     hass: HomeAssistant,
 ) -> None:
-    """Changed-ID detection keeps #134's one-shot incomplete-object redispatch."""
+    """Changed-ID detection keeps #134's tracked-key backfill redispatch."""
     coordinator = _make_coordinator(hass)
     _mark_started(coordinator)
     dispatched: list[list[str]] = []
@@ -841,7 +841,7 @@ async def test_incomplete_runtime_object_redispatches_on_backfill(
     assert pump is not None
     coordinator.async_set_updated_data({"PUMP3": {"STATUS": "10"}})
     assert dispatched == [["PUMP3"]]
-    assert coordinator._pending_redispatch == {"PUMP3"}
+    assert set(coordinator._pending_redispatch) == {"PUMP3"}
 
     pending = coordinator.model.add_object(
         "SENSE_PENDING",
@@ -859,4 +859,4 @@ async def test_incomplete_runtime_object_redispatches_on_backfill(
     )
 
     assert dispatched == [["PUMP3"], ["PUMP3"]]
-    assert coordinator._pending_redispatch == set()
+    assert {"PWR", "RPM", "MIN", "MAX"} <= coordinator._pending_redispatch["PUMP3"]

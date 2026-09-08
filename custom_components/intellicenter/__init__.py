@@ -250,13 +250,19 @@ async def async_unload_entry(
     # Unload platforms
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
+    if not unload_ok:
+        _LOGGER.warning(
+            "Failed to unload IntelliCenter integration: %s", entry.entry_id
+        )
+        return False
+
     # Stop the coordinator
     if entry.runtime_data:
         await entry.runtime_data.async_stop()
 
     _LOGGER.info("Unloaded IntelliCenter integration: %s", entry.entry_id)
 
-    return bool(unload_ok)
+    return True
 
 
 async def async_reload_entry(
@@ -805,6 +811,13 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
                 f"IntelliCenter command for '{self.name}' failed: {err}"
             ) from err
 
+    async def _async_execute_changes(self, changes: dict[str, Any]) -> None:
+        """Await changes to this entity's pool object."""
+        await self._async_execute_command(
+            self._controller.request_changes(self._pool_object.objnam, changes),
+            translation_key="command_failed",
+        )
+
     def _check_attributes_updated(
         self, updates: dict[str, dict[str, Any]], *attributes: str
     ) -> bool:
@@ -968,7 +981,7 @@ class OnOffControlMixin(_MixinBase):
 
     Classes using this mixin must also inherit from PoolEntity, which owns the
     optimistic-state attribute and its clearing hooks (on real updates,
-    connection events, and failed fire-and-forget commands).
+    connection events, and failed commands).
     """
 
     _pool_object: PoolObject
@@ -977,12 +990,12 @@ class OnOffControlMixin(_MixinBase):
 
     if TYPE_CHECKING:
 
-        def request_changes(self, changes: dict[str, Any]) -> None:
-            """Request changes - provided by PoolEntity."""
+        async def _async_execute_changes(self, changes: dict[str, Any]) -> None:
+            """Execute pool object changes - provided by PoolEntity."""
             ...
 
-        def isUpdated(self, updates: dict[str, dict[str, Any]]) -> bool:
-            """Check if entity was updated - provided by PoolEntity."""
+        def _clear_optimistic_state(self) -> None:
+            """Clear optimistic state - provided by PoolEntity."""
             ...
 
     @property
@@ -997,14 +1010,22 @@ class OnOffControlMixin(_MixinBase):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""
-        # Optimistic update for immediate UI feedback
-        self._optimistic_state = True
-        self.async_write_ha_state()
-        self.request_changes({self._attribute_key: self._pool_object.on_status})
+        await self._async_set_on_off_state(True, self._pool_object.on_status)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the entity off."""
+        await self._async_set_on_off_state(False, self._pool_object.off_status)
+
+    async def _async_set_on_off_state(self, optimistic: bool, state: str) -> None:
+        """Render an optimistic state while awaiting the panel command."""
         # Optimistic update for immediate UI feedback
-        self._optimistic_state = False
+        self._optimistic_state = optimistic
         self.async_write_ha_state()
-        self.request_changes({self._attribute_key: self._pool_object.off_status})
+        committed = False
+        try:
+            await self._async_execute_changes({self._attribute_key: state})
+            committed = True
+        finally:
+            if not committed:
+                self._clear_optimistic_state()
+                self.async_write_ha_state()

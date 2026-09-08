@@ -2,6 +2,7 @@
 
 import asyncio
 import errno
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.config_entries import ConfigEntry
@@ -220,14 +221,50 @@ async def test_async_unload_entry(hass: HomeAssistant) -> None:
         assert result is True
 
 
-async def test_async_unload_entry_platforms_fail(hass: HomeAssistant) -> None:
-    """Test unload returns False when platforms fail to unload."""
+async def test_async_unload_entry_platforms_fail(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A failed platform unload keeps the coordinator and its listeners running."""
     entry = MagicMock(spec=ConfigEntry)
     entry.entry_id = "test_entry_id"
     entry.title = "Test Pool System"
     entry.data = {CONF_HOST: "192.168.1.100"}
 
-    # Set up mock coordinator in runtime_data
+    coordinator = IntelliCenterCoordinator(hass, entry, host="192.168.1.100")
+    coordinator._handler._is_connected = True
+    update_listener = MagicMock()
+    coordinator.async_add_listener(update_listener)
+    entry.runtime_data = coordinator
+    caplog.set_level(logging.INFO, logger="custom_components.intellicenter")
+
+    with (
+        patch.object(
+            hass.config_entries,
+            "async_unload_platforms",
+            new_callable=lambda: AsyncMock(return_value=False),
+        ),
+        patch.object(
+            coordinator, "async_stop", wraps=coordinator.async_stop
+        ) as mock_stop,
+    ):
+        result = await async_unload_entry(hass, entry)
+
+    assert result is False
+    mock_stop.assert_not_awaited()
+    assert coordinator.connected is True
+
+    coordinator.async_set_updated_data({"C0001": {"STATUS": "OFF"}})
+    update_listener.assert_called_once()
+    assert "Failed to unload IntelliCenter integration: test_entry_id" in caplog.text
+    assert "Unloaded IntelliCenter integration" not in caplog.text
+
+
+async def test_async_unload_entry_successful_retry_stops_once(
+    hass: HomeAssistant,
+) -> None:
+    """A successful retry awaits one stop after a failed unload leaves it running."""
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = "test_entry_id"
     mock_coordinator = MagicMock(spec=IntelliCenterCoordinator)
     mock_coordinator.async_stop = AsyncMock()
     entry.runtime_data = mock_coordinator
@@ -235,17 +272,16 @@ async def test_async_unload_entry_platforms_fail(hass: HomeAssistant) -> None:
     with patch.object(
         hass.config_entries,
         "async_unload_platforms",
-        new_callable=lambda: AsyncMock(
-            return_value=False
-        ),  # Simulate platform unload failure
+        new_callable=lambda: AsyncMock(side_effect=[False, True]),
     ):
-        result = await async_unload_entry(hass, entry)
+        first_result = await async_unload_entry(hass, entry)
+        assert first_result is False
+        mock_coordinator.async_stop.assert_not_awaited()
 
-        # Coordinator should still be stopped even if platforms fail
-        mock_coordinator.async_stop.assert_called_once()
+        retry_result = await async_unload_entry(hass, entry)
 
-        # Returns False when platforms fail to unload
-        assert result is False
+    assert retry_result is True
+    mock_coordinator.async_stop.assert_awaited_once()
 
 
 async def test_async_unload_entry_no_runtime_data(hass: HomeAssistant) -> None:
@@ -643,7 +679,7 @@ class TestPyIntellicenter020Adoption:
         coordinator = _make_started_coordinator(hass)
         coordinator._started = True
         coordinator._known_objnams = {"C0001", "C0002"}
-        coordinator._pending_redispatch = {"C0002"}
+        coordinator._pending_redispatch = {"C0002": set()}
         removed_batches: list[set[str]] = []
         coordinator.async_add_removed_objects_listener(removed_batches.append)
 
@@ -653,7 +689,7 @@ class TestPyIntellicenter020Adoption:
         assert coordinator.data == {"C0001": {"STATUS": "OFF"}}
         assert removed_batches == [{"C0002"}]
         assert "C0002" not in coordinator._known_objnams
-        assert coordinator._pending_redispatch == set()
+        assert coordinator._pending_redispatch == {}
 
 
 # ---------------------------------------------------------------------------

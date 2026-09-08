@@ -424,6 +424,7 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
             self._failed_object_update_listeners[update_callback] = None
             return
         self._failed_object_update_listeners.pop(update_callback, None)
+        self._logged_object_update_failures.discard(update_callback)
         for objnam in objnams:
             self._object_update_listeners.setdefault(objnam, {})[update_callback] = None
 

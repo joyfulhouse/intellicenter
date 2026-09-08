@@ -881,7 +881,11 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
             if updated_obj is None:
                 return
             self._pool_object = updated_obj
-            if self.isUpdated(updates):
+            own_attribute_updated = self._check_attributes_updated(
+                updates, self._attribute_key
+            )
+            self.isUpdated(updates)
+            if own_attribute_updated:
                 self._clear_optimistic_state()
             self.async_write_ha_state()
             return

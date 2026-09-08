@@ -731,6 +731,11 @@ class PumpSpeedNumber(PoolEntity, NumberEntity):
         self._gpm_min = gpm_min
         self._gpm_max = gpm_max
 
+    def coordinator_update_dependencies(self) -> dict[str, set[str] | None]:
+        """Route live parent-pump limit changes to the speed value."""
+        parent = self._pool_object[PARENT_ATTR]
+        return {parent: {MIN_ATTR, MAX_ATTR, MINF_ATTR, MAXF_ATTR}} if parent else {}
+
     @property
     def _current_mode(self) -> str:
         """Get current mode from SELECT attribute.

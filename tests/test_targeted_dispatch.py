@@ -10,8 +10,10 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from pyintellicenter import (
     BODY_TYPE,
+    CIRCGRP_TYPE,
     CIRCUIT_TYPE,
     HEATER_TYPE,
+    LIGHT_EFFECTS,
     PMPCIRC_TYPE,
     PUMP_TYPE,
     SENSE_TYPE,
@@ -23,6 +25,7 @@ import pytest
 from custom_components.intellicenter import PoolEntity
 from custom_components.intellicenter.climate import PoolClimate
 from custom_components.intellicenter.coordinator import IntelliCenterCoordinator
+from custom_components.intellicenter.light import PoolLight
 from custom_components.intellicenter.number import PumpSpeedNumber
 from custom_components.intellicenter.select import PumpModeSelect
 from custom_components.intellicenter.sensor import async_setup_entry as setup_sensors
@@ -116,6 +119,28 @@ class _CountingWaterHeater(PoolWaterHeater):
         self.state_writes += 1
 
 
+class _CountingLight(PoolLight):
+    """Light entity that counts coordinator callbacks and state writes."""
+
+    def __init__(
+        self,
+        coordinator: IntelliCenterCoordinator,
+        pool_object: PoolObject,
+    ) -> None:
+        self.update_invocations = 0
+        self.state_writes = 0
+        super().__init__(coordinator, pool_object)
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.update_invocations += 1
+        super()._handle_coordinator_update()
+
+    @callback
+    def async_write_ha_state(self) -> None:
+        self.state_writes += 1
+
+
 class _AttributeDependencyEntity(_CountingPoolEntity):
     """Entity with one attribute-scoped cross-object dependency."""
 
@@ -192,19 +217,32 @@ async def test_selective_dispatch_scaling(
 
     pump.update({"RPM": "2600"})
     model_iterations = 0
+    model_type_lookups = 0
     original_iter = PoolModel.__iter__
+    original_get_by_type = PoolModel.get_by_type
 
     def _count_model_iterations(model: PoolModel):
         nonlocal model_iterations
         model_iterations += 1
         return original_iter(model)
 
-    with patch.object(PoolModel, "__iter__", _count_model_iterations):
+    def _count_model_type_lookups(
+        model: PoolModel, obj_type: str, subtype: str | None = None
+    ) -> list[PoolObject]:
+        nonlocal model_type_lookups
+        model_type_lookups += 1
+        return original_get_by_type(model, obj_type, subtype)
+
+    with (
+        patch.object(PoolModel, "__iter__", _count_model_iterations),
+        patch.object(PoolModel, "get_by_type", _count_model_type_lookups),
+    ):
         coordinator.async_set_updated_data({"PUMP1": {"RPM": "2600"}})
 
     assert interested.update_invocations == 1
     assert sum(entity.update_invocations for entity in unrelated) == 0
     assert model_iterations == 0
+    assert model_type_lookups == 0
 
 
 async def test_dependency_attributes_are_filtered_from_cached_map(
@@ -270,7 +308,9 @@ async def test_dependency_attributes_are_filtered_from_cached_map(
     await _register(hass, entity)
 
     assert entity.dependency_calls == 1
-    assert speed.coordinator_update_dependencies() == {}
+    assert speed.coordinator_update_dependencies() == {
+        "PUMP1": {"MIN", "MAX", "MINF", "MAXF"}
+    }
     assert mode.coordinator_update_dependencies() == {}
 
     coordinator.async_set_updated_data({"DEP": {"STATUS": "ON"}})
@@ -282,6 +322,69 @@ async def test_dependency_attributes_are_filtered_from_cached_map(
     assert entity.update_invocations == 2
     assert entity.state_writes == 1
     assert entity.dependency_calls == 1
+
+
+async def test_pump_limit_updates_refresh_speed_number(
+    hass: HomeAssistant,
+) -> None:
+    """Parent limits refresh pump speed without routing unrelated telemetry."""
+    coordinator = _make_coordinator(hass)
+    pump = coordinator.model.add_object(
+        "PUMP1",
+        {
+            "OBJTYP": PUMP_TYPE,
+            "SUBTYP": "VSF",
+            "SNAME": "Pump",
+            "MIN": "450",
+            "MAX": "3450",
+            "MINF": "15",
+            "MAXF": "140",
+        },
+    )
+    pump_circuit = coordinator.model.add_object(
+        "PMPCIRC1",
+        {
+            "OBJTYP": PMPCIRC_TYPE,
+            "PARENT": "PUMP1",
+            "CIRCUIT": "C0001",
+            "SELECT": "RPM",
+            "SPEED": "2000",
+        },
+    )
+    assert pump is not None and pump_circuit is not None
+    entity = PumpSpeedNumber(
+        coordinator,
+        pump_circuit,
+        pump_name="Pump",
+        circuit_name="Circuit",
+        rpm_min=450,
+        rpm_max=3450,
+        gpm_min=15,
+        gpm_max=140,
+    )
+    _mark_started(coordinator)
+
+    with (
+        patch.object(
+            entity,
+            "_handle_coordinator_update",
+            wraps=entity._handle_coordinator_update,
+        ) as handle_update,
+        patch.object(entity, "async_write_ha_state") as write_state,
+    ):
+        await _register(hass, entity)
+        assert entity.native_value == 2000
+
+        pump.update({"MIN": "2100"})
+        coordinator.async_set_updated_data({"PUMP1": {"MIN": "2100"}})
+        assert handle_update.call_count == 1
+        write_state.assert_called_once_with()
+        assert entity.native_value is None
+
+        pump.update({"STATUS": "10"})
+        coordinator.async_set_updated_data({"PUMP1": {"STATUS": "10"}})
+        assert handle_update.call_count == 2
+        write_state.assert_called_once_with()
 
 
 async def test_heater_cool_routes_only_to_dependent_climate(
@@ -622,6 +725,80 @@ async def test_structural_refresh_preserves_optimistic_state(
     coordinator.async_set_connection_state(False)
     assert entity._optimistic_state is None
     assert entity.state_writes == 4
+
+
+async def test_light_group_structural_refresh_clears_only_own_echo(
+    hass: HomeAssistant,
+) -> None:
+    """Group capability changes preserve optimism until its STATUS echo arrives."""
+    coordinator = _make_coordinator(hass)
+    group = coordinator.model.add_object(
+        "GROUP",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "LITSHO",
+            "SNAME": "Color Group",
+            "STATUS": "OFF",
+            "USE": "WHITER",
+        },
+    )
+    for objnam in ("GLOW1", "GLOW2"):
+        child = coordinator.model.add_object(
+            objnam,
+            {
+                "OBJTYP": CIRCUIT_TYPE,
+                "SUBTYP": "GLOW",
+                "SNAME": objnam,
+                "STATUS": "OFF",
+                "USE": "WHITER",
+            },
+        )
+        assert child is not None
+    row1 = coordinator.model.add_object(
+        "GROUP_ROW_1",
+        {
+            "OBJTYP": CIRCGRP_TYPE,
+            "PARENT": "GROUP",
+            "CIRCUIT": "GLOW1",
+            "LISTORD": "1",
+        },
+    )
+    row2 = coordinator.model.add_object(
+        "GROUP_ROW_2",
+        {
+            "OBJTYP": CIRCGRP_TYPE,
+            "PARENT": "GROUP",
+            "CIRCUIT": "MISSING",
+            "LISTORD": "2",
+        },
+    )
+    assert group is not None and row1 is not None and row2 is not None
+    entity = _CountingLight(coordinator, group)
+    _mark_started(coordinator)
+    await _register(hass, entity)
+    assert entity.effect_list is None
+
+    row2.update({"CIRCUIT": "GLOW2"})
+    entity._optimistic_state = True
+    coordinator.async_set_updated_data({"GROUP_ROW_2": {"CIRCUIT": "GLOW2"}})
+    assert entity.effect_list == list(LIGHT_EFFECTS.values())
+    assert entity._optimistic_state is True
+
+    added = coordinator.model.add_object(
+        "C_NEW",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "GENERIC",
+            "SNAME": "New Circuit",
+            "STATUS": "OFF",
+        },
+    )
+    assert added is not None
+    group.update({"STATUS": "ON"})
+    coordinator.async_set_updated_data(
+        {"GROUP": {"STATUS": "ON"}, "C_NEW": {"STATUS": "OFF"}}
+    )
+    assert entity._optimistic_state is None
 
 
 async def test_backfill_update_broadcasts_to_every_entity(

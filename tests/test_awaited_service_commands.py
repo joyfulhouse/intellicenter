@@ -40,6 +40,7 @@ class _HeaterModel(dict[str, PoolObject]):
     """Provide PoolModel enumeration while retaining real dict lookups."""
 
     def get_by_type(self, _obj_type: str) -> list[PoolObject]:
+        """Report no live heaters so PoolClimate uses its construction-time seed."""
         return []
 
 
@@ -247,6 +248,7 @@ def _make_platform_service(
                 HEATER_ATTR: "",
             },
         )
+        mock_coordinator.model = _HeaterModel({})
         entity = PoolClimate(mock_coordinator, pool_object, ["HTR01"])
         entity.hass = hass
         return entity.async_set_hvac_mode(HVACMode.HEAT)

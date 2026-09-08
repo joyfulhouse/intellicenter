@@ -55,6 +55,21 @@ async def _setup_sensor_platform(
     return added
 
 
+async def _start_with_initial_pump(
+    hass: HomeAssistant, telemetry: Mapping[str, str]
+) -> tuple[IntelliCenterCoordinator, PoolObject, list[Any]]:
+    """Start a coordinator whose first connect discovers an existing pump."""
+    coordinator = _make_coordinator(hass)
+    coordinator._started = False
+    initial = {**SPARSE_PUMP, **telemetry}
+    pump = coordinator.model.add_object(PUMP_OBJNAM, initial)
+    assert pump is not None
+    with patch.object(coordinator._handler, "start"):
+        await coordinator.async_start()
+    added = await _setup_sensor_platform(hass, coordinator)
+    return coordinator, pump, added
+
+
 def _discover_sparse_pump(coordinator: IntelliCenterCoordinator) -> PoolObject:
     """Apply the sparse notification that introduces a runtime pump."""
     pump = coordinator.model.add_object(PUMP_OBJNAM, dict(SPARSE_PUMP))
@@ -169,6 +184,141 @@ async def test_falsy_initial_power_redispatches_when_truthy(
     _apply_update(coordinator, pump, {"PWR": "850"})
 
     assert _telemetry_keys(added) == ["PWR"]
+
+
+async def test_initial_setup_falsy_power_redispatches_when_truthy(
+    hass: HomeAssistant,
+) -> None:
+    """An initially deferred pump sensor is built without reloading the entry."""
+    coordinator, pump, added = await _start_with_initial_pump(hass, {"PWR": ""})
+
+    assert _telemetry_keys(added) == []
+
+    _apply_update(coordinator, pump, {"PWR": "250"})
+
+    assert _telemetry_keys(added) == ["PWR"]
+
+
+@pytest.mark.parametrize(
+    (
+        "initial_telemetry",
+        "updates",
+        "expected_initial",
+        "expected_after_updates",
+        "expected_builder_calls",
+    ),
+    [
+        pytest.param(
+            {"PWR": "250"},
+            [{"PWR": "275"}],
+            ["PWR"],
+            [["PWR"]],
+            [1],
+            id="truthy-at-setup-does-not-rebuild-on-churn",
+        ),
+        pytest.param(
+            {"PWR": ""},
+            [{"PWR": "250"}],
+            [],
+            [["PWR"]],
+            [2],
+            id="falsy-at-setup-builds-on-truthy-transition",
+        ),
+        pytest.param(
+            {"PWR": "", "RPM": ""},
+            [{"PWR": "250"}, {"RPM": "2400"}],
+            [],
+            [["PWR"], ["PWR", "RPM"]],
+            [2, 3],
+            id="second-tracked-key-rebuilds-after-first-resolves",
+        ),
+        pytest.param(
+            {"PWR": ""},
+            [{"PWR": "250"}, {"PWR": "275"}],
+            [],
+            [["PWR"], ["PWR"]],
+            [2, 2],
+            id="usable-key-does-not-rebuild-on-later-churn",
+        ),
+    ],
+)
+async def test_initial_setup_redispatch_transitions(
+    hass: HomeAssistant,
+    initial_telemetry: Mapping[str, str],
+    updates: list[Mapping[str, str]],
+    expected_initial: list[str],
+    expected_after_updates: list[list[str]],
+    expected_builder_calls: list[int],
+) -> None:
+    """Initial objects rebuild only when a tracked attribute becomes usable."""
+    with patch(
+        "custom_components.intellicenter.sensor._build_entities",
+        wraps=_build_entities,
+    ) as builder:
+        coordinator, pump, added = await _start_with_initial_pump(
+            hass, initial_telemetry
+        )
+        assert _telemetry_keys(added) == expected_initial
+        assert builder.call_count == 1
+
+        for attributes, expected_keys, expected_calls in zip(
+            updates,
+            expected_after_updates,
+            expected_builder_calls,
+            strict=True,
+        ):
+            _apply_update(coordinator, pump, attributes)
+            assert _telemetry_keys(added) == expected_keys
+            assert builder.call_count == expected_calls
+
+
+async def test_initial_setup_skips_complete_truthy_object_bookkeeping(
+    hass: HomeAssistant,
+) -> None:
+    """A complete usable initial object does not occupy deferred state."""
+    coordinator = _make_coordinator(hass)
+    coordinator._started = False
+    non_slotted_tracked = DEFAULT_ATTRIBUTES_MAP[PUMP_TYPE] - {"OBJTYP", "SUBTYP"}
+    initial = {
+        "OBJTYP": PUMP_TYPE,
+        "SUBTYP": "VSF",
+        **dict.fromkeys(non_slotted_tracked, "1"),
+    }
+    assert coordinator.model.add_object(PUMP_OBJNAM, initial) is not None
+
+    with patch.object(coordinator._handler, "start"):
+        await coordinator.async_start()
+
+    assert PUMP_OBJNAM not in coordinator._pending_redispatch
+    assert PUMP_OBJNAM not in coordinator._pending_truthy_redispatch
+
+
+async def test_initial_setup_prunes_resolved_bookkeeping(
+    hass: HomeAssistant,
+) -> None:
+    """The last deferred tracked value removes the object's pending state."""
+    coordinator = _make_coordinator(hass)
+    coordinator._started = False
+    non_slotted_tracked = DEFAULT_ATTRIBUTES_MAP[PUMP_TYPE] - {"OBJTYP", "SUBTYP"}
+    initial = {
+        "OBJTYP": PUMP_TYPE,
+        "SUBTYP": "VSF",
+        **dict.fromkeys(non_slotted_tracked, "1"),
+        "PWR": "",
+    }
+    obj = coordinator.model.add_object(PUMP_OBJNAM, initial)
+    assert obj is not None
+
+    with patch.object(coordinator._handler, "start"):
+        await coordinator.async_start()
+    assert PUMP_OBJNAM in coordinator._pending_redispatch
+
+    changed = obj.update({"PWR": "250"})
+    assert changed
+    coordinator.async_set_updated_data({PUMP_OBJNAM: changed})
+
+    assert PUMP_OBJNAM not in coordinator._pending_redispatch
+    assert PUMP_OBJNAM not in coordinator._pending_truthy_redispatch
 
 
 async def test_non_telemetry_key_does_not_consume_later_sensor_retries(

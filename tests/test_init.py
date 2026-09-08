@@ -202,7 +202,13 @@ async def test_async_unload_entry(hass: HomeAssistant) -> None:
 
     # Set up mock coordinator in runtime_data
     mock_coordinator = MagicMock(spec=IntelliCenterCoordinator)
-    mock_coordinator.async_stop = AsyncMock()
+    stop_completed = asyncio.Event()
+
+    async def stop_after_yield() -> None:
+        await asyncio.sleep(0)
+        stop_completed.set()
+
+    mock_coordinator.async_stop = AsyncMock(side_effect=stop_after_yield)
     entry.runtime_data = mock_coordinator
 
     with patch.object(
@@ -217,6 +223,7 @@ async def test_async_unload_entry(hass: HomeAssistant) -> None:
 
         # Verify coordinator was stopped
         mock_coordinator.async_stop.assert_awaited_once()
+        assert stop_completed.is_set()
 
         assert result is True
 

@@ -277,8 +277,20 @@ async def test_litsho_dependencies_follow_reconnect_snapshot(
         remove_listener()
 
 
+@pytest.mark.parametrize(
+    ("peer_subtype", "updated_peer_subtype", "initial_name", "updated_name"),
+    [
+        ("GLOW", "GLOWT", "GloBrite 1", "GloBrite"),
+        ("GLOWT", "GLOW", "GloBrite", "GloBrite 1"),
+    ],
+    ids=("peer-leaves-kind", "peer-enters-kind"),
+)
 async def test_peer_light_subtype_push_invalidates_name_count_cache(
     hass: HomeAssistant,
+    peer_subtype: str,
+    updated_peer_subtype: str,
+    initial_name: str,
+    updated_name: str,
 ) -> None:
     """Peer subtype changes refresh cached names without steady-state scans."""
     entry = MagicMock(spec=ConfigEntry)
@@ -299,7 +311,7 @@ async def test_peer_light_subtype_push_invalidates_name_count_cache(
         "GLOW2",
         {
             "OBJTYP": CIRCUIT_TYPE,
-            "SUBTYP": "GLOW",
+            "SUBTYP": peer_subtype,
             "SNAME": "GloBrite 2",
             "STATUS": "OFF",
             "USE": "WHITER",
@@ -327,26 +339,22 @@ async def test_peer_light_subtype_push_invalidates_name_count_cache(
         patch.object(first_entity, "async_write_ha_state"),
         patch.object(peer_entity, "async_write_ha_state"),
     ):
-        assert first_entity.name == "GloBrite 1"
-        assert first_entity.name == "GloBrite 1"
+        assert first_entity.name == initial_name
+        assert first_entity.name == initial_name
         assert model_iterations == 1
 
-        peer.update({SUBTYP_ATTR: "GLOWT"})
-        coordinator.async_set_updated_data({"GLOW2": {SUBTYP_ATTR: "GLOWT"}})
-        assert first_entity.name == "GloBrite"
-        assert first_entity.name == "GloBrite"
+        peer.update({SUBTYP_ATTR: updated_peer_subtype})
+        coordinator.async_set_updated_data(
+            {"GLOW2": {SUBTYP_ATTR: updated_peer_subtype}}
+        )
+        assert first_entity.name == updated_name
+        assert first_entity.name == updated_name
         assert model_iterations == 2
 
         first.update({STATUS_ATTR: "ON"})
         coordinator.async_set_updated_data({"GLOW1": {STATUS_ATTR: "ON"}})
-        assert first_entity.name == "GloBrite"
+        assert first_entity.name == updated_name
         assert model_iterations == 2
-
-        peer.update({SUBTYP_ATTR: "GLOW"})
-        coordinator.async_set_updated_data({"GLOW2": {SUBTYP_ATTR: "GLOW"}})
-        assert first_entity.name == "GloBrite 1"
-        assert first_entity.name == "GloBrite 1"
-        assert model_iterations == 3
 
     remove_first()
     remove_peer()

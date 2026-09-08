@@ -10,6 +10,7 @@ from homeassistant.const import CONF_HOST, EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.restore_state import RestoreEntity
 from pyintellicenter import (
     CHEM_TYPE,
     ICCommandError,
@@ -32,6 +33,10 @@ from custom_components.intellicenter import (
 from custom_components.intellicenter.coordinator import IntelliCenterCoordinator
 
 pytestmark = pytest.mark.asyncio
+
+
+class _RestorePoolEntity(PoolEntity, RestoreEntity):
+    """Pool entity using the RestoreEntity add-to-Hass path."""
 
 
 async def test_async_setup(hass: HomeAssistant) -> None:
@@ -105,6 +110,59 @@ async def test_entity_name_cache_tracks_structural_composition_changes(
         assert model_iterations == iterations_before_name + 1
 
     remove_listener()
+
+
+async def test_entity_name_cache_primed_before_listener_registration(
+    hass: HomeAssistant,
+) -> None:
+    """A structural push before listener registration cannot strand name counts."""
+    coordinator = _make_started_coordinator(hass)
+    chem = coordinator.model.add_object(
+        "CHEM1",
+        {"OBJTYP": CHEM_TYPE, "SUBTYP": "ICHEM", "SNAME": "IntelliChem 1"},
+    )
+    assert chem is not None
+    coordinator._known_objnams = {obj.objnam for obj in coordinator.model}
+    coordinator._started = True
+    entity = _RestorePoolEntity(coordinator, chem)
+    entity.hass = hass
+    restore_started = asyncio.Event()
+    finish_restore = asyncio.Event()
+
+    async def restore_after_structural_push(self: RestoreEntity) -> None:
+        restore_started.set()
+        await finish_restore.wait()
+
+    assert entity.name == "IntelliChem"
+    with patch.object(
+        RestoreEntity, "async_added_to_hass", restore_after_structural_push
+    ):
+        add_task = hass.async_create_task(entity.async_added_to_hass())
+        await restore_started.wait()
+
+        second = coordinator.model.add_object(
+            "CHEM2",
+            {
+                "OBJTYP": CHEM_TYPE,
+                "SUBTYP": "ICHEM",
+                "SNAME": "IntelliChem 2",
+            },
+        )
+        assert second is not None
+        coordinator.async_set_updated_data(
+            {
+                "CHEM2": {
+                    "OBJTYP": CHEM_TYPE,
+                    "SUBTYP": "ICHEM",
+                    "SNAME": "IntelliChem 2",
+                }
+            }
+        )
+
+        finish_restore.set()
+        await add_task
+
+    assert entity.name == "IntelliChem 1"
 
 
 async def test_async_setup_entry_success(
@@ -277,6 +335,8 @@ async def test_async_unload_entry(hass: HomeAssistant) -> None:
     mock_coordinator = MagicMock(spec=IntelliCenterCoordinator)
     stop_completed = asyncio.Event()
 
+    # await asyncio.sleep(0) defeats HA's eager task start, making the ordering
+    # assertion discriminating.
     async def stop_after_yield() -> None:
         await asyncio.sleep(0)
         stop_completed.set()

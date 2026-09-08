@@ -25,7 +25,7 @@ from homeassistant.components.climate.const import (
     HVACAction,
     HVACMode,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyintellicenter import (
@@ -139,18 +139,28 @@ class PoolClimate(PoolEntity, ClimateEntity):
         # (issue #57). The list captured at construction is retained only as a
         # fallback for when the live model cannot be enumerated.
         self._seed_heater_list = heater_list
+        self._heater_list_cache: list[str] | None = None
         self._attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT_COOL]
 
     @property
     def _heater_list(self) -> list[str]:
         """Return the heaters wired to this body, derived from the live model.
 
-        Recomputed on each access so the entity's preset list tracks heaters
-        added to (or removed from) its body at runtime (issue #57). Falls back
-        to the list captured at construction if the live model yields nothing.
+        Cached between structural dependency invalidations so ordinary state
+        pushes do not rescan the model. Falls back to the list captured at
+        construction if the live model yields nothing, which keeps behaviour
+        stable when the model is not enumerable.
         """
-        live = heaters_for_body(self.coordinator, self._pool_object.objnam)
-        return live if live else self._seed_heater_list
+        if self._heater_list_cache is None:
+            live = heaters_for_body(self.coordinator, self._pool_object.objnam)
+            self._heater_list_cache = live if live else self._seed_heater_list
+        return self._heater_list_cache
+
+    @callback
+    def _invalidate_coordinator_update_dependencies(self) -> None:
+        """Clear the heater list with the existing structural dependency cache."""
+        self._heater_list_cache = None
+        super()._invalidate_coordinator_update_dependencies()
 
     def coordinator_update_dependencies(self) -> dict[str, set[str] | None]:
         """Route heater action/composition and shared unit updates here."""
@@ -339,6 +349,11 @@ class PoolClimate(PoolEntity, ClimateEntity):
 
     def isUpdated(self, updates: dict[str, dict[str, Any]]) -> bool:
         """Return true if the entity is updated."""
+        if self._heater_list_cache is not None and any(
+            LISTORD_ATTR in updates.get(heater, {})
+            for heater in self._heater_list_cache
+        ):
+            self._heater_list_cache = None
         my_updates = updates.get(self._pool_object.objnam, {})
         if bool(
             my_updates

@@ -297,6 +297,7 @@ async def test_climate_heater_list_cache_tracks_structural_add_remove(
     coordinator._known_objnams = {obj.objnam for obj in model}
     coordinator._started = True
 
+    heater_lookup_counter.count = 0
     with patch.object(
         coordinator.controller, "request_changes", new_callable=AsyncMock
     ) as request_changes:

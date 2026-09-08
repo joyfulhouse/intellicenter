@@ -291,6 +291,7 @@ async def test_heater_list_reorders_on_listord_push(
     assert second_heater is not None
     assert unrelated_heater is not None
 
+    heater_lookup_counter.count = 0
     with patch.object(
         coordinator.controller, "request_changes", new_callable=AsyncMock
     ) as request_changes:

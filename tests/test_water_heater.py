@@ -18,6 +18,7 @@ from homeassistant.exceptions import HomeAssistantError
 from pyintellicenter import (
     BODY_ATTR,
     BODY_TYPE,
+    COOL_ATTR,
     HEATER_ATTR,
     HEATER_TYPE,
     HTMODE_ATTR,
@@ -164,6 +165,15 @@ async def test_water_heater_add_invalidates_pre_registration_heater_cache(
     await entity.async_added_to_hass()
     try:
         assert entity.operation_list == [STATE_OFF, "Gas Heater", "Backup Heater"]
+        second_heater.update({COOL_ATTR: "ON"})
+        with (
+            patch.object(entity, "isUpdated", wraps=entity.isUpdated) as is_updated,
+            patch.object(entity, "async_write_ha_state") as write_state,
+        ):
+            coordinator.async_set_updated_data({"HTR02": {COOL_ATTR: "ON"}})
+
+        is_updated.assert_called_once_with({"HTR02": {COOL_ATTR: "ON"}})
+        write_state.assert_called_once_with()
     finally:
         await entity.async_will_remove_from_hass()
 
@@ -239,7 +249,7 @@ async def test_water_heater_structural_listord_push_scans_heaters_once(
 async def test_heater_list_reorders_on_listord_push(
     hass: HomeAssistant,
 ) -> None:
-    """A routed LISTORD push expires the cache before operation state is read."""
+    """A structural LISTORD push reorders the list with one heater scan."""
     entry = MagicMock(spec=ConfigEntry)
     entry.entry_id = "test_entry"
     entry.data = {CONF_HOST: "192.168.1.100"}
@@ -327,16 +337,17 @@ async def test_heater_list_reorders_on_listord_push(
 
         first_heater.update({LISTORD_ATTR: "2"})
         second_heater.update({LISTORD_ATTR: "1"})
+        heater_lookups_before_structural_push = heater_lookups
         with patch.object(entity, "async_write_ha_state"):
             coordinator.async_set_updated_data(
                 {
-                    "HTR01": {LISTORD_ATTR: "2"},
+                    "HTR01": {LISTORD_ATTR: "2", BODY_ATTR: "POOL1"},
                     "HTR02": {LISTORD_ATTR: "1"},
                 }
             )
 
         assert entity.operation_list == [STATE_OFF, "Second Heater", "First Heater"]
-        assert heater_lookups == 2
+        assert heater_lookups == heater_lookups_before_structural_push + 1
         await entity.async_turn_on()
         request_changes.assert_awaited_once_with("POOL1", {HEATER_ATTR: "HTR02"})
         assert heater_lookups == 2

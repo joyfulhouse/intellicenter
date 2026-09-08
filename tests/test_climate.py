@@ -13,6 +13,7 @@ from homeassistant.core import HomeAssistant
 from pyintellicenter import (
     BODY_ATTR,
     BODY_TYPE,
+    COOL_ATTR,
     HEATER_ATTR,
     HEATER_TYPE,
     HITMP_ATTR,
@@ -120,6 +121,15 @@ async def test_climate_add_invalidates_pre_registration_heater_cache(
     await entity.async_added_to_hass()
     try:
         assert entity.preset_modes == ["UltraTemp", "Gas Heater"]
+        second_heater.update({COOL_ATTR: "ON"})
+        with (
+            patch.object(entity, "isUpdated", wraps=entity.isUpdated) as is_updated,
+            patch.object(entity, "async_write_ha_state") as write_state,
+        ):
+            coordinator.async_set_updated_data({"HTR02": {COOL_ATTR: "ON"}})
+
+        is_updated.assert_called_once_with({"HTR02": {COOL_ATTR: "ON"}})
+        write_state.assert_called_once_with()
     finally:
         await entity.async_will_remove_from_hass()
 

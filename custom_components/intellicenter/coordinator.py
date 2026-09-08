@@ -635,6 +635,8 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
             completeness_keys - seen_keys or pending_truthy_keys
         ):
             return
+        # Do not time-bound missing keys: #155 permits legitimately late tracked
+        # values, while object-removal pruning bounds this bookkeeping's lifetime.
         self._pending_redispatch[obj.objnam] = seen_keys
         self._pending_truthy_redispatch[obj.objnam] = pending_truthy_keys
 
@@ -700,11 +702,11 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         # creation is additionally guarded by unique_id de-duplication in the
         # platforms. Dependents are already known, so they need no recording.
         self._known_objnams.update(new_objnams)
-        # Track seen attributes so later key growth can re-run entity builders.
+        # Track only objects whose later key growth can re-run entity builders.
         # Some builders require a truthy value, so a key that first arrives empty
         # remains pending until a later update makes it usable.
         for obj in new_objects:
-            self._seed_redispatch_bookkeeping(obj)
+            self._seed_redispatch_bookkeeping(obj, only_if_deferred=True)
 
         dependents_note = ""
         if dependents:

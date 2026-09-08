@@ -686,7 +686,6 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
         IntelliCenter names devices like "IntelliChem 1" even when there's
         only one. This method strips the trailing " 1" in such cases.
         """
-        # Check if name ends with " 1"
         match = re.match(r"^(.+) 1$", name)
         if not match:
             return name
@@ -701,7 +700,6 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
                 if (obj.objtype, obj.subtype) == object_kind
             )
 
-        # Only strip " 1" if there's exactly one instance
         if self._simplify_name_counts[object_kind] == 1:
             return base_name
 

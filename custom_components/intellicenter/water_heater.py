@@ -159,11 +159,6 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
             pool_object,
             extra_state_attributes=[HEATER_ATTR, HTMODE_ATTR],
         )
-        # The heaters wired to this body are derived live from the model (see
-        # `_heater_list`), so a heater added to an existing body is reflected on
-        # the next coordinator update without rebuilding the entity (issue #57).
-        # The list supplied at construction is retained only as a fallback for
-        # the (rare) case where the live model cannot be enumerated.
         self._seed_heater_list = heater_list
         self._heater_list_cache: list[str] | None = None
         # Remember the last non-off operation so turn-on can restore it. None

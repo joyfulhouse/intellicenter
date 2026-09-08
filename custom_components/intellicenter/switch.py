@@ -118,7 +118,7 @@ class PoolCircuit(PoolEntity, OnOffControlMixin, SwitchEntity):
     """Representation of a standard pool circuit.
 
     Uses OnOffControlMixin for is_on, async_turn_on, async_turn_off.
-    PoolEntity must come first to provide request_changes for the mixin.
+    PoolEntity must come first to provide the awaited execute path for the mixin.
     """
 
     _attr_device_class = SwitchDeviceClass.SWITCH

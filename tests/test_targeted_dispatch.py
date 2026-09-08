@@ -25,6 +25,7 @@ import pytest
 
 from custom_components.intellicenter import PoolEntity
 from custom_components.intellicenter.climate import PoolClimate
+from custom_components.intellicenter.const import LIMIT_ATTR
 from custom_components.intellicenter.coordinator import IntelliCenterCoordinator
 from custom_components.intellicenter.light import PoolLight
 from custom_components.intellicenter.number import PumpSpeedNumber
@@ -171,6 +172,14 @@ class _FlakyDependencyClimate(_CountingClimate):
         if self.fail_dependency_resolution:
             raise RuntimeError("dependency resolution failed")
         return {"DEP": {"RELEVANT"}}
+
+
+class _FailingDependencyWaterHeater(_CountingWaterHeater):
+    """Water heater whose dependency resolver remains in broadcast fallback."""
+
+    def coordinator_update_dependencies(self) -> dict[str, set[str] | None]:
+        """Simulate a dependency resolver failure."""
+        raise RuntimeError("dependency resolution failed")
 
 
 async def _register(hass: HomeAssistant, *entities: PoolEntity) -> None:
@@ -842,6 +851,34 @@ async def test_dependency_refresh_preserves_optimism_until_own_echo(
     assert entity.state_writes == 2
 
 
+async def test_dimmer_limit_echo_clears_status_keyed_optimistic_state(
+    hass: HomeAssistant,
+) -> None:
+    """A LIMIT-only dimmer echo reconciles its optimistic on state."""
+    coordinator = _make_coordinator(hass)
+    dimmer = coordinator.model.add_object(
+        "DIMMER1",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "DIMMER",
+            "SNAME": "Patio Dimmer",
+            "STATUS": "ON",
+            LIMIT_ATTR: "50",
+        },
+    )
+    assert dimmer is not None
+    entity = _CountingLight(coordinator, dimmer)
+    _mark_started(coordinator)
+    await _register(hass, entity)
+
+    entity._optimistic_state = True
+    dimmer.update({LIMIT_ATTR: "75"})
+    coordinator.async_set_updated_data({"DIMMER1": {LIMIT_ATTR: "75"}})
+
+    assert entity._optimistic_state is None
+    assert entity.state_writes == 1
+
+
 async def test_backfill_update_broadcasts_to_every_entity(
     hass: HomeAssistant,
 ) -> None:
@@ -952,6 +989,49 @@ async def test_dependency_resolver_failure_falls_back_once_and_recovers(
         assert entity.update_invocations == 1
         assert entity.state_writes == 1
         assert log_exception.call_count == 1
+
+
+async def test_water_heater_fallback_still_captures_operation_memory(
+    hass: HomeAssistant,
+) -> None:
+    """Resolver fallback still runs water-heater update side effects."""
+    coordinator = _make_coordinator(hass)
+    body = coordinator.model.add_object(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SUBTYP": "POOL",
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "HEATER": "00000",
+            "HTMODE": "0",
+            "LOTMP": "72",
+            "LSTTMP": "78",
+        },
+    )
+    heater = coordinator.model.add_object(
+        "HTR01",
+        {
+            "OBJTYP": HEATER_TYPE,
+            "SUBTYP": "GAS",
+            "SNAME": "Gas Heater",
+            "BODY": "POOL1",
+            "LISTORD": "1",
+        },
+    )
+    assert body is not None and heater is not None
+    entity = _FailingDependencyWaterHeater(coordinator, body, ["HTR01"])
+    _mark_started(coordinator)
+    await _register(hass, entity)
+
+    body.update({"HEATER": "HTR01", "HTMODE": "1", "LOTMP": "88"})
+    coordinator.async_set_updated_data(
+        {"POOL1": {"HEATER": "HTR01", "HTMODE": "1", "LOTMP": "88"}}
+    )
+
+    assert entity._last_operation == "Gas Heater"
+    assert entity._last_setpoint == 88.0
+    assert entity.state_writes == 1
 
 
 async def test_runtime_add_remove_and_reconnect_reconciliation(

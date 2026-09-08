@@ -194,6 +194,7 @@ class PoolLight(PoolEntity, OnOffControlMixin, LightEntity):
         self._light_effects: dict[str, str] | None = None
         self._reversed_light_effects: dict[str, str] | None = None
         self._dimmable = pool_object.subtype in _DIMMABLE_SUBTYPES
+        self._dependencies_for_light_show = pool_object.subtype == "LITSHO"
 
         if self._dimmable:
             self._attr_color_mode = ColorMode.BRIGHTNESS
@@ -402,6 +403,12 @@ class PoolLight(PoolEntity, OnOffControlMixin, LightEntity):
 
     def isUpdated(self, updates: dict[str, dict[str, Any]]) -> bool:
         """Return true if the entity is updated by the updates from IntelliCenter."""
+        subtype_updated = SUBTYP_ATTR in updates.get(self._pool_object.objnam, {})
+        is_light_show = self._pool_object.subtype == "LITSHO"
+        if subtype_updated and is_light_show != self._dependencies_for_light_show:
+            self._dependencies_for_light_show = is_light_show
+            self._invalidate_coordinator_update_dependencies()
+            self.coordinator._async_refresh_object_listener_index()
         return self._refresh_light_group_effects() or self._check_attributes_updated(
             updates,
             STATUS_ATTR,

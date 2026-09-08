@@ -36,7 +36,7 @@ from homeassistant.components.water_heater import (
     WaterHeaterEntityFeature,
 )
 from homeassistant.const import ATTR_TEMPERATURE, STATE_OFF
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
@@ -165,6 +165,7 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
         # The list supplied at construction is retained only as a fallback for
         # the (rare) case where the live model cannot be enumerated.
         self._seed_heater_list = heater_list
+        self._heater_list_cache: list[str] | None = None
         # Remember the last non-off operation so turn-on can restore it. None
         # means the body is currently off (nothing to restore yet).
         self._last_operation: str | None = self.current_operation
@@ -187,13 +188,21 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
     def _heater_list(self) -> list[str]:
         """Return the heaters wired to this body, derived from the live model.
 
-        Recomputed on each access so the entity reflects heaters added to (or
-        removed from) its body at runtime (issue #57). Falls back to the list
-        captured at construction if the live model yields nothing, which keeps
-        behaviour stable when the model is not enumerable.
+        Cached between structural dependency invalidations so ordinary state
+        pushes do not rescan the model. Falls back to the list captured at
+        construction if the live model yields nothing, which keeps behaviour
+        stable when the model is not enumerable.
         """
-        live = heaters_for_body(self.coordinator, self._pool_object.objnam)
-        return live if live else self._seed_heater_list
+        if self._heater_list_cache is None:
+            live = heaters_for_body(self.coordinator, self._pool_object.objnam)
+            self._heater_list_cache = live if live else self._seed_heater_list
+        return self._heater_list_cache
+
+    @callback
+    def _invalidate_coordinator_update_dependencies(self) -> None:
+        """Clear the heater list with the existing structural dependency cache."""
+        self._heater_list_cache = None
+        super()._invalidate_coordinator_update_dependencies()
 
     def coordinator_update_dependencies(self) -> dict[str, set[str] | None]:
         """Route heater composition and shared unit updates here."""

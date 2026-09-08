@@ -14,6 +14,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from pyintellicenter import (
+    BODY_ATTR,
     BODY_TYPE,
     HEATER_ATTR,
     HEATER_TYPE,
@@ -102,6 +103,71 @@ def _mixed_model_getitem(standard: PoolObject, hcombo: PoolObject) -> MagicMock:
     """Return a model __getitem__ that maps each objnam to its distinct object."""
     lookup = {standard.objnam: standard, hcombo.objnam: hcombo}
     return MagicMock(side_effect=lambda oid: lookup.get(oid))
+
+
+async def test_heater_list_cached_until_dependency_invalidation(
+    mock_coordinator: MagicMock,
+) -> None:
+    """Interested pushes reuse heater lookup and structural refresh replaces it."""
+    model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
+    body = model.add_object(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "HEATER": "HTR01",
+            "HTMODE": "1",
+            "LOTMP": "82",
+            "LSTTMP": "78",
+        },
+    )
+    first_heater = model.add_object(
+        "HTR01",
+        {
+            "OBJTYP": HEATER_TYPE,
+            "SUBTYP": "GAS",
+            "SNAME": "Gas Heater",
+            BODY_ATTR: "POOL1",
+            "LISTORD": "1",
+        },
+    )
+    assert body is not None and first_heater is not None
+    mock_coordinator.model = model
+    original_get_by_type = PoolModel.get_by_type
+    heater_lookups = 0
+
+    def count_heater_lookups(
+        pool_model: PoolModel, obj_type: str, subtype: str | None = None
+    ) -> list[PoolObject]:
+        nonlocal heater_lookups
+        if obj_type == HEATER_TYPE:
+            heater_lookups += 1
+        return original_get_by_type(pool_model, obj_type, subtype)
+
+    with patch.object(PoolModel, "get_by_type", count_heater_lookups):
+        entity = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
+        assert entity.current_operation == "Gas Heater"
+        assert entity.isUpdated({"POOL1": {STATUS_ATTR: "ON"}}) is True
+        assert entity.isUpdated({"POOL1": {LOTMP_ATTR: "82"}}) is True
+        assert heater_lookups == 1
+
+        first_heater.update({BODY_ATTR: ""})
+        second_heater = model.add_object(
+            "HTR02",
+            {
+                "OBJTYP": HEATER_TYPE,
+                "SUBTYP": "SOLAR",
+                "SNAME": "Solar Heater",
+                BODY_ATTR: "POOL1",
+                "LISTORD": "2",
+            },
+        )
+        assert second_heater is not None
+        entity._invalidate_coordinator_update_dependencies()
+
+        assert entity._heater_list == ["HTR02"]
+        assert heater_lookups == 2
 
 
 async def test_water_heater_setup_creates_entities(

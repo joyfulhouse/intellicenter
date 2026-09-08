@@ -13,6 +13,7 @@ from pyintellicenter import (
     CIRCUIT_TYPE,
     LIGHT_EFFECTS,
     STATUS_ATTR,
+    SUBTYP_ATTR,
     USE_ATTR,
     ICError,
     ICLightGroupError,
@@ -127,6 +128,43 @@ async def _assert_color_sync_error(
 async def test_coordinator_tracks_light_limit() -> None:
     """The model must request LIMIT or brightness never reaches entities."""
     assert LIMIT_ATTR in DEFAULT_ATTRIBUTES_MAP[CIRCUIT_TYPE]
+
+
+async def test_litsho_subtype_change_rebuilds_dependency_map(
+    mock_coordinator: MagicMock,
+) -> None:
+    """Changing into LITSHO immediately routes the group's new dependencies."""
+    model = _make_light_group_model(
+        ("GLOW1", "GLOW2"),
+        {
+            "GLOW1": (CIRCUIT_TYPE, "GLOW"),
+            "GLOW2": (CIRCUIT_TYPE, "GLOW"),
+        },
+    )
+    parent = model["GROUP"]
+    assert parent is not None
+    parent.update({SUBTYP_ATTR: "LIGHT"})
+    mock_coordinator.model = model
+    entity = PoolLight(mock_coordinator, parent)
+    member_lookups = mock_coordinator.controller.get_circuit_group_members
+    member_lookups.reset_mock()
+    mock_coordinator._async_refresh_object_listener_index.reset_mock()
+
+    assert entity._resolved_coordinator_update_dependencies() == {}
+    assert member_lookups.call_count == 0
+
+    parent.update({SUBTYP_ATTR: "LITSHO"})
+    entity.isUpdated({"GROUP": {SUBTYP_ATTR: "LITSHO"}})
+    dependencies = entity._resolved_coordinator_update_dependencies()
+
+    assert set(dependencies) == {
+        "GROUP_ROW_1",
+        "GROUP_ROW_2",
+        "GLOW1",
+        "GLOW2",
+    }
+    assert member_lookups.call_count == 2
+    mock_coordinator._async_refresh_object_listener_index.assert_called_once_with()
 
 
 async def test_light_setup_creates_entities(

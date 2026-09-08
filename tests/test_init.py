@@ -10,7 +10,13 @@ from homeassistant.const import CONF_HOST, EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import entity_registry as er
-from pyintellicenter import ICCommandError, ICConnectionError, ICTimeoutError
+from pyintellicenter import (
+    CHEM_TYPE,
+    ICCommandError,
+    ICConnectionError,
+    ICTimeoutError,
+    PoolModel,
+)
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -32,6 +38,33 @@ async def test_async_setup(hass: HomeAssistant) -> None:
     """Test the async_setup function."""
     result = await async_setup(hass, {})
     assert result is True
+
+
+async def test_entity_name_scans_model_once_and_preserves_output(
+    hass: HomeAssistant,
+) -> None:
+    """Repeated name reads preserve output without rescanning the model."""
+    coordinator = _make_started_coordinator(hass)
+    chem = coordinator.model.add_object(
+        "CHEM1",
+        {"OBJTYP": CHEM_TYPE, "SUBTYP": "ICHEM", "SNAME": "IntelliChem 1"},
+    )
+    assert chem is not None
+    original_iter = PoolModel.__iter__
+    model_iterations = 0
+
+    def count_model_iterations(model: PoolModel):
+        nonlocal model_iterations
+        model_iterations += 1
+        return original_iter(model)
+
+    with patch.object(PoolModel, "__iter__", count_model_iterations):
+        entity = PoolEntity(coordinator, chem)
+        first_name = entity.name
+        second_name = entity.name
+
+    assert (first_name, second_name) == ("IntelliChem", "IntelliChem")
+    assert model_iterations == 1
 
 
 async def test_async_setup_entry_success(

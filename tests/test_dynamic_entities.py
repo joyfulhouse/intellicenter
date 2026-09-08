@@ -955,10 +955,10 @@ async def test_setup_pool_entities_readds_entities_after_removal(
     pool_model.remove_object("CHEM1")
     state["removed_listener"]({"CHEM1"})
 
-    readded = pool_model.add_object("CHEM1", dict(CHEM2_PARAMS))
-    assert readded is not None
+    re_added = pool_model.add_object("CHEM1", dict(CHEM2_PARAMS))
+    assert re_added is not None
     added.clear()
-    state["listener"]([readded])
+    state["listener"]([re_added])
 
     assert any(e._pool_object.objnam == "CHEM1" for e in added)
 

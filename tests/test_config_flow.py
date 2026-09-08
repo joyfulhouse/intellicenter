@@ -90,7 +90,7 @@ async def test_user_flow_warns_about_known_issue_firmware(
 async def test_user_flow_without_matching_firmware_is_unchanged(
     hass: HomeAssistant, mock_controller: MagicMock, firmware: str
 ) -> None:
-    """Safe and unparseable firmware versions do not add a setup step."""
+    """Safe and unparsable firmware versions do not add a setup step."""
     type(mock_controller.system_info).sw_version = property(lambda self: firmware)
 
     result = await hass.config_entries.flow.async_init(

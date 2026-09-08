@@ -40,8 +40,8 @@ def parse_ic_version(raw_value: Any) -> tuple[int, int] | None:
     """Extract the IC panel firmware version from a raw VER string.
 
     Returns a comparable ``(major, minor)`` tuple — e.g. ``"IC: 1.064"`` ->
-    ``(1, 64)`` — or ``None`` when the value is missing or unparseable. An
-    unparseable version must never break setup; the caller treats ``None``
+    ``(1, 64)`` — or ``None`` when the value is missing or unparsable. An
+    unparsable version must never break setup; the caller treats ``None``
     as "no advisories apply".
     """
     if raw_value is None:

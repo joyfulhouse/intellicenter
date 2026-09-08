@@ -392,7 +392,7 @@ async def test_body_removal_retires_only_that_bodys_chlorinator_number(
 # -------------------------------------------------------------------------------------
 
 
-async def test_readded_heater_recreates_water_heaters(
+async def test_re_added_heater_recreates_water_heaters(
     hass: HomeAssistant, pool_model: PoolModel, mock_coordinator: MagicMock
 ) -> None:
     """A heater returning after retirement produces fresh water heater entities."""
@@ -406,10 +406,10 @@ async def test_readded_heater_recreates_water_heaters(
     state["removed_listener"]({"HTR01"})
 
     # The heater comes back (panel re-add); the new-objects dispatch rebuilds.
-    readded = pool_model.add_object("HTR01", dict(HTR01_PARAMS))
-    assert readded is not None
+    re_added = pool_model.add_object("HTR01", dict(HTR01_PARAMS))
+    assert re_added is not None
     added.clear()
-    state["listener"]([readded])
+    state["listener"]([re_added])
 
     # Fresh entities for both bodies - the dedup records were dropped with the
     # retirement, so the rebuild is not swallowed.
@@ -460,7 +460,7 @@ async def test_heater_swap_within_one_reconnect_recreates_water_heaters(
     assert {e._pool_object.objnam for e in added} == {"POOL1", "SPA01"}
 
 
-async def test_readded_body_recreates_chlorinator_number(
+async def test_re_added_body_recreates_chlorinator_number(
     hass: HomeAssistant, pool_model: PoolModel, mock_coordinator: MagicMock
 ) -> None:
     """A returning BODY recreates the IntelliChlor output number that depends on it.
@@ -480,10 +480,10 @@ async def test_readded_body_recreates_chlorinator_number(
     state["removed_listener"]({"SPA01"})
 
     # The body returns; the dispatch names ONLY the body, not the IntelliChlor.
-    readded = pool_model.add_object("SPA01", dict(SPA01_PARAMS))
-    assert readded is not None
+    re_added = pool_model.add_object("SPA01", dict(SPA01_PARAMS))
+    assert re_added is not None
     added.clear()
-    state["listener"]([readded])
+    state["listener"]([re_added])
 
     assert any(
         e._pool_object.objnam == CHLOR1_OBJNAM and e._attribute_key == SEC_ATTR

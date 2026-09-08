@@ -528,6 +528,8 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         # equipment and dispatched to the registered platform listeners.
         self._known_objnams = {obj.objnam for obj in self._model}
         self._started = True
+        for obj in self._model:
+            self._seed_redispatch_bookkeeping(obj, only_if_deferred=True)
 
     async def async_stop(self) -> None:
         """Stop the connection to the IntelliCenter.
@@ -615,6 +617,19 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         return _remove_listener
 
     @callback
+    def _seed_redispatch_bookkeeping(
+        self, obj: PoolObject, *, only_if_deferred: bool = False
+    ) -> None:
+        """Remember tracked keys whose entity builders may need another pass."""
+        tracked_keys = DEFAULT_ATTRIBUTES_MAP.get(obj.objtype, set())
+        seen_keys = set(obj.attribute_keys) & tracked_keys
+        pending_truthy_keys = {key for key in seen_keys if not obj[key]}
+        if only_if_deferred and not (tracked_keys - seen_keys or pending_truthy_keys):
+            return
+        self._pending_redispatch[obj.objnam] = seen_keys
+        self._pending_truthy_redispatch[obj.objnam] = pending_truthy_keys
+
+    @callback
     def _async_detect_new_objects(
         self, changed_objnams: set[str] | None = None
     ) -> set[str]:
@@ -680,13 +695,7 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         # Some builders require a truthy value, so a key that first arrives empty
         # remains pending until a later update makes it usable.
         for obj in new_objects:
-            tracked_keys = set(obj.attribute_keys) & DEFAULT_ATTRIBUTES_MAP.get(
-                obj.objtype, set()
-            )
-            self._pending_redispatch[obj.objnam] = tracked_keys
-            self._pending_truthy_redispatch[obj.objnam] = {
-                key for key in tracked_keys if not obj[key]
-            }
+            self._seed_redispatch_bookkeeping(obj)
 
         dependents_note = ""
         if dependents:
@@ -753,6 +762,9 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
                 pending_truthy_keys.update(key for key in new_keys if not obj[key])
                 pending_truthy_keys.difference_update(became_truthy)
                 ready_objnams.add(objnam)
+                if tracked_keys <= seen_keys and not pending_truthy_keys:
+                    self._pending_redispatch.pop(objnam, None)
+                    self._pending_truthy_redispatch.pop(objnam, None)
         if not ready_objnams:
             return False
 

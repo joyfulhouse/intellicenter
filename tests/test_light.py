@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.components.light import ATTR_BRIGHTNESS, ATTR_EFFECT
 from homeassistant.components.light.const import ColorMode
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from pyintellicenter import (
@@ -25,7 +27,10 @@ import yaml
 
 from custom_components.intellicenter import light as light_platform
 from custom_components.intellicenter.const import LIMIT_ATTR
-from custom_components.intellicenter.coordinator import DEFAULT_ATTRIBUTES_MAP
+from custom_components.intellicenter.coordinator import (
+    DEFAULT_ATTRIBUTES_MAP,
+    IntelliCenterCoordinator,
+)
 from custom_components.intellicenter.light import PoolLight, _build_entities
 
 pytestmark = pytest.mark.asyncio
@@ -41,9 +46,11 @@ _SERVICES_YAML = (
 def _make_light_group_model(
     member_refs: tuple[str, ...],
     child_shapes: dict[str, tuple[str, str]],
+    model: PoolModel | None = None,
 ) -> PoolModel:
     """Build one light-show parent with real membership rows and children."""
-    model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
+    if model is None:
+        model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
     model.add_object(
         "GROUP",
         {
@@ -200,6 +207,74 @@ async def test_litsho_subtype_change_removes_group_dependencies(
     assert entity._resolved_coordinator_update_dependencies() == {}
     assert member_lookups.call_count == 1
     mock_coordinator._async_refresh_object_listener_index.assert_called_once_with()
+
+
+@pytest.mark.parametrize(
+    ("initial_subtype", "snapshot_subtype", "child_is_dependency"),
+    [
+        ("LITSHO", "LIGHT", True),
+        ("LIGHT", "LITSHO", False),
+    ],
+    ids=("reenter-litsho", "leave-litsho"),
+)
+async def test_litsho_dependencies_follow_reconnect_snapshot(
+    hass: HomeAssistant,
+    initial_subtype: str,
+    snapshot_subtype: str,
+    child_is_dependency: bool,
+) -> None:
+    """Reconnect rebuilds keep the marker aligned for the next subtype push."""
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = "test_entry"
+    entry.data = {CONF_HOST: "192.168.1.100"}
+    coordinator = IntelliCenterCoordinator(hass, entry, host="192.168.1.100")
+    model = _make_light_group_model(
+        ("GLOW1", "GLOW2"),
+        {
+            "GLOW1": (CIRCUIT_TYPE, "GLOW"),
+            "GLOW2": (CIRCUIT_TYPE, "GLOW"),
+        },
+        coordinator.model,
+    )
+    parent = model["GROUP"]
+    child = model["GLOW1"]
+    assert parent is not None and child is not None
+    parent.update({SUBTYP_ATTR: initial_subtype})
+    entity = PoolLight(coordinator, parent)
+    update_callback = MagicMock(wraps=entity._handle_coordinator_update)
+    group_dependencies = {"GROUP_ROW_1", "GROUP_ROW_2", "GLOW1", "GLOW2"}
+
+    with patch.object(entity, "async_write_ha_state"):
+        remove_listener = coordinator.async_add_listener(
+            update_callback, entity.coordinator_context
+        )
+
+        parent.update({SUBTYP_ATTR: snapshot_subtype})
+        coordinator.async_set_connection_state(True)
+        expected_snapshot_dependencies = (
+            group_dependencies if snapshot_subtype == "LITSHO" else set()
+        )
+        assert (
+            set(entity._resolved_coordinator_update_dependencies())
+            == expected_snapshot_dependencies
+        )
+
+        parent.update({SUBTYP_ATTR: initial_subtype})
+        coordinator.async_set_updated_data({"GROUP": {SUBTYP_ATTR: initial_subtype}})
+        expected_push_dependencies = (
+            group_dependencies if initial_subtype == "LITSHO" else set()
+        )
+        assert (
+            set(entity._resolved_coordinator_update_dependencies())
+            == expected_push_dependencies
+        )
+
+        update_callback.reset_mock()
+        child.update({SUBTYP_ATTR: "GLOWT"})
+        coordinator.async_set_updated_data({"GLOW1": {SUBTYP_ATTR: "GLOWT"}})
+        assert update_callback.call_count == int(child_is_dependency)
+
+        remove_listener()
 
 
 async def test_light_setup_creates_entities(

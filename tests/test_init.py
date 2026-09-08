@@ -40,16 +40,22 @@ async def test_async_setup(hass: HomeAssistant) -> None:
     assert result is True
 
 
-async def test_entity_name_scans_model_once_and_preserves_output(
+async def test_entity_name_cache_tracks_structural_composition_changes(
     hass: HomeAssistant,
 ) -> None:
-    """Repeated name reads preserve output without rescanning the model."""
+    """Structural add/remove dispatches expire the cached same-kind count."""
     coordinator = _make_started_coordinator(hass)
     chem = coordinator.model.add_object(
         "CHEM1",
         {"OBJTYP": CHEM_TYPE, "SUBTYP": "ICHEM", "SNAME": "IntelliChem 1"},
     )
     assert chem is not None
+    coordinator._known_objnams = {obj.objnam for obj in coordinator.model}
+    coordinator._started = True
+    entity = PoolEntity(coordinator, chem)
+    remove_listener = coordinator.async_add_listener(
+        entity._handle_coordinator_update, entity.coordinator_context
+    )
     original_iter = PoolModel.__iter__
     model_iterations = 0
 
@@ -58,13 +64,47 @@ async def test_entity_name_scans_model_once_and_preserves_output(
         model_iterations += 1
         return original_iter(model)
 
-    with patch.object(PoolModel, "__iter__", count_model_iterations):
-        entity = PoolEntity(coordinator, chem)
-        first_name = entity.name
-        second_name = entity.name
+    with (
+        patch.object(PoolModel, "__iter__", count_model_iterations),
+        patch.object(entity, "async_write_ha_state"),
+    ):
+        assert entity.name == "IntelliChem"
+        assert entity.name == "IntelliChem"
+        assert model_iterations == 1
 
-    assert (first_name, second_name) == ("IntelliChem", "IntelliChem")
-    assert model_iterations == 1
+        second = coordinator.model.add_object(
+            "CHEM2",
+            {
+                "OBJTYP": CHEM_TYPE,
+                "SUBTYP": "ICHEM",
+                "SNAME": "IntelliChem 2",
+            },
+        )
+        assert second is not None
+        coordinator.async_set_updated_data(
+            {
+                "CHEM2": {
+                    "OBJTYP": CHEM_TYPE,
+                    "SUBTYP": "ICHEM",
+                    "SNAME": "IntelliChem 2",
+                }
+            }
+        )
+
+        iterations_before_name = model_iterations
+        assert entity.name == "IntelliChem 1"
+        assert entity.name == "IntelliChem 1"
+        assert model_iterations == iterations_before_name + 1
+
+        coordinator.model.remove_object("CHEM2")
+        coordinator.async_set_updated_data({"CHEM2": None})
+
+        iterations_before_name = model_iterations
+        assert entity.name == "IntelliChem"
+        assert entity.name == "IntelliChem"
+        assert model_iterations == iterations_before_name + 1
+
+    remove_listener()
 
 
 async def test_async_setup_entry_success(

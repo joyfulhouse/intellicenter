@@ -847,6 +847,7 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
     def _invalidate_coordinator_update_dependencies(self) -> None:
         """Clear cached cross-object dependencies after structural changes."""
         self._coordinator_update_dependencies = None
+        self._simplify_name_counts.clear()
 
     def coordinator_update_objnams(self) -> set[str]:
         """Return every pool object routed to this entity's callback."""

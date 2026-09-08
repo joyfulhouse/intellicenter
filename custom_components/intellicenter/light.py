@@ -231,7 +231,9 @@ class PoolLight(PoolEntity, OnOffControlMixin, LightEntity):
 
     def coordinator_update_dependencies(self) -> dict[str, set[str] | None]:
         """Route light-group membership, children, and system changes here."""
-        if not self._pool_object.is_a_light_show:
+        is_light_show = self._pool_object.is_a_light_show
+        self._dependencies_for_light_show = is_light_show
+        if not is_light_show:
             return {}
         dependencies = self._system_update_dependencies(VER_ATTR)
         for member in self._controller.get_circuit_group_members(

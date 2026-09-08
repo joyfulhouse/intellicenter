@@ -32,7 +32,7 @@ pytestmark = pytest.mark.asyncio
         ("IC: 3.004 , ICWEB:2024-11-02 2.010", (3, 4)),
         # Version without the IC: prefix (defensive)
         ("1.064", (1, 64)),
-        # Unparseable values
+        # Unparsable values
         ("", None),
         ("garbage", None),
         (None, None),
@@ -134,8 +134,8 @@ async def test_async_check_firmware_clears_stale_issue(hass: HomeAssistant) -> N
     assert registry.async_get_issue(DOMAIN, "outdated_test_entry") is None
 
 
-async def test_async_check_firmware_unparseable_is_noop(hass: HomeAssistant) -> None:
-    """An unparseable VER value raises no issue and does not crash setup."""
+async def test_async_check_firmware_unparsable_is_noop(hass: HomeAssistant) -> None:
+    """An unparsable VER value raises no issue and does not crash setup."""
     entry = MagicMock()
     entry.entry_id = "test_entry"
     coordinator = _mock_coordinator_with_ver(None, "garbage")

@@ -563,7 +563,7 @@ async def test_structural_batch_preserves_water_heater_memory(
 async def test_structural_refresh_preserves_optimistic_state(
     hass: HomeAssistant,
 ) -> None:
-    """Only a connection event clears optimistic state during a broadcast."""
+    """Structural refreshes preserve unrelated optimism but honor own echoes."""
     coordinator = _make_coordinator(hass)
     owner = coordinator.model.add_object(
         "OWNER",
@@ -600,9 +600,28 @@ async def test_structural_refresh_preserves_optimistic_state(
     assert entity._optimistic_state is False
     assert entity.state_writes == 2
 
-    coordinator.async_set_connection_state(False)
+    added = coordinator.model.add_object(
+        "C_ECHO",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "GENERIC",
+            "SNAME": "Echo Circuit",
+            "STATUS": "OFF",
+        },
+    )
+    assert added is not None
+    owner.update({"STATUS": "ON"})
+    entity._optimistic_state = True
+    coordinator.async_set_updated_data(
+        {"OWNER": {"STATUS": "ON"}, "C_ECHO": {"STATUS": "OFF"}}
+    )
     assert entity._optimistic_state is None
     assert entity.state_writes == 3
+
+    entity._optimistic_state = True
+    coordinator.async_set_connection_state(False)
+    assert entity._optimistic_state is None
+    assert entity.state_writes == 4
 
 
 async def test_backfill_update_broadcasts_to_every_entity(

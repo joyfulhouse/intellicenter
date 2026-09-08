@@ -863,12 +863,13 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
         """Handle updated data from the coordinator."""
         updates = self.coordinator.data or {}
 
-        if getattr(self.coordinator, "_structural_refresh", False):
+        if self.coordinator.structural_refresh is True:
             updated_obj = self.coordinator.model[self._pool_object.objnam]
             if updated_obj is None:
                 return
             self._pool_object = updated_obj
-            self.isUpdated(updates)
+            if self.isUpdated(updates):
+                self._clear_optimistic_state()
             self.async_write_ha_state()
             return
 

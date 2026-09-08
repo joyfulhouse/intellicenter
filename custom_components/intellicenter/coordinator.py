@@ -476,6 +476,11 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         return self._controller.system_info
 
     @property
+    def structural_refresh(self) -> bool:
+        """Return whether the current listener fan-out is structural."""
+        return self._structural_refresh
+
+    @property
     def connected(self) -> bool:
         """Return True if connected to the IntelliCenter.
 

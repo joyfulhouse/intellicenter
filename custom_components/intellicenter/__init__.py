@@ -249,13 +249,19 @@ async def async_unload_entry(
     # Unload platforms
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
+    if not unload_ok:
+        _LOGGER.warning(
+            "Failed to unload IntelliCenter integration: %s", entry.entry_id
+        )
+        return False
+
     # Stop the coordinator
     if entry.runtime_data:
         await entry.runtime_data.async_stop()
 
     _LOGGER.info("Unloaded IntelliCenter integration: %s", entry.entry_id)
 
-    return bool(unload_ok)
+    return True
 
 
 async def async_reload_entry(

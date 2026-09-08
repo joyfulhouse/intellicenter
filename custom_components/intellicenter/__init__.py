@@ -875,17 +875,21 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         updates = self.coordinator.data or {}
+        structural_refresh = self.coordinator.structural_refresh is True
+        should_clear_optimistic_state = (
+            not updates and not structural_refresh
+        ) or self._check_attributes_updated(
+            updates,
+            self._attribute_key,
+        )
 
-        if self.coordinator.structural_refresh is True:
+        if structural_refresh:
             updated_obj = self.coordinator.model[self._pool_object.objnam]
             if updated_obj is None:
                 return
             self._pool_object = updated_obj
-            own_attribute_updated = self._check_attributes_updated(
-                updates, self._attribute_key
-            )
             self.isUpdated(updates)
-            if own_attribute_updated:
+            if should_clear_optimistic_state:
                 self._clear_optimistic_state()
             self.async_write_ha_state()
             return
@@ -902,7 +906,8 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
                 # post-registry-removal state write, which HA cleans up in the
                 # same loop turn as the entity's removal completes.
                 return
-            self._clear_optimistic_state()
+            if should_clear_optimistic_state:
+                self._clear_optimistic_state()
             self.async_write_ha_state()
             return
 
@@ -926,7 +931,8 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
             updated_obj = self.coordinator.model[self._pool_object.objnam]
             if updated_obj:
                 self._pool_object = updated_obj
-            self._clear_optimistic_state()
+            if should_clear_optimistic_state:
+                self._clear_optimistic_state()
             self.async_write_ha_state()
 
     @callback

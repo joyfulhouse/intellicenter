@@ -17,6 +17,7 @@ from pyintellicenter import (
     PMPCIRC_TYPE,
     PUMP_TYPE,
     SENSE_TYPE,
+    SYSTEM_TYPE,
     PoolModel,
     PoolObject,
 )
@@ -799,6 +800,46 @@ async def test_light_group_structural_refresh_clears_only_own_echo(
         {"GROUP": {"STATUS": "ON"}, "C_NEW": {"STATUS": "OFF"}}
     )
     assert entity._optimistic_state is None
+
+
+async def test_dependency_refresh_preserves_optimism_until_own_echo(
+    hass: HomeAssistant,
+) -> None:
+    """An ordinary dependency refresh writes state without clearing optimism."""
+    coordinator = _make_coordinator(hass)
+    group = coordinator.model.add_object(
+        "GROUP",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "LITSHO",
+            "SNAME": "Color Group",
+            "STATUS": "OFF",
+            "USE": "WHITER",
+        },
+    )
+    system = coordinator.model.add_object(
+        "SYS",
+        {
+            "OBJTYP": SYSTEM_TYPE,
+            "SNAME": "System",
+            "VER": "1.064",
+        },
+    )
+    assert group is not None and system is not None
+    entity = _CountingLight(coordinator, group)
+    _mark_started(coordinator)
+    await _register(hass, entity)
+
+    entity._optimistic_state = True
+    system.update({"VER": "1.065"})
+    coordinator.async_set_updated_data({"SYS": {"VER": "1.065"}})
+    assert entity._optimistic_state is True
+    assert entity.state_writes == 1
+
+    group.update({"STATUS": "ON"})
+    coordinator.async_set_updated_data({"GROUP": {"STATUS": "ON"}})
+    assert entity._optimistic_state is None
+    assert entity.state_writes == 2
 
 
 async def test_backfill_update_broadcasts_to_every_entity(

@@ -824,7 +824,11 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
             or not changes
         ):
             self._async_refresh_object_listener_index()
-            self.async_update_listeners()
+            self.data = {}
+            try:
+                self.async_update_listeners()
+            finally:
+                self.data = changes
         else:
             self._async_update_object_listeners(changed_objnams)
 

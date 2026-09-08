@@ -34,6 +34,7 @@ from pyintellicenter import (
     HEATER_ATTR,
     HITMP_ATTR,
     HTMODE_ATTR,
+    LISTORD_ATTR,
     LOTMP_ATTR,
     LSTTMP_ATTR,
     MODE_ATTR,
@@ -156,7 +157,13 @@ class PoolClimate(PoolEntity, ClimateEntity):
         dependencies = self._system_update_dependencies(MODE_ATTR)
         dependencies.update(
             {
-                heater: {BODY_ATTR, COOL_ATTR, SNAME_ATTR, SUBTYP_ATTR}
+                heater: {
+                    BODY_ATTR,
+                    COOL_ATTR,
+                    LISTORD_ATTR,
+                    SNAME_ATTR,
+                    SUBTYP_ATTR,
+                }
                 for heater in self._heater_list
             }
         )
@@ -348,7 +355,8 @@ class PoolClimate(PoolEntity, ClimateEntity):
             return True
         # hvac_action also depends on the heater objects' COOL attribute, which
         # arrives as an update for the HEATER objnam, not the body.
-        return any(
-            COOL_ATTR in updates.get(objnam, {})
-            for objnam in self._resolved_coordinator_update_dependencies()
-        )
+        try:
+            dependencies = self._resolved_coordinator_update_dependencies()
+        except Exception:
+            dependencies = dict.fromkeys(self._heater_list)
+        return any(COOL_ATTR in updates.get(objnam, {}) for objnam in dependencies)

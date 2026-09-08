@@ -45,6 +45,7 @@ from pyintellicenter import (
     COOL_ATTR,
     HEATER_ATTR,
     HTMODE_ATTR,
+    LISTORD_ATTR,
     LOTMP_ATTR,
     LSTTMP_ATTR,
     MODE_ATTR,
@@ -199,7 +200,13 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
         dependencies = self._system_update_dependencies(MODE_ATTR)
         dependencies.update(
             {
-                heater: {BODY_ATTR, COOL_ATTR, SNAME_ATTR, SUBTYP_ATTR}
+                heater: {
+                    BODY_ATTR,
+                    COOL_ATTR,
+                    LISTORD_ATTR,
+                    SNAME_ATTR,
+                    SUBTYP_ATTR,
+                }
                 for heater in self._heater_list
             }
         )

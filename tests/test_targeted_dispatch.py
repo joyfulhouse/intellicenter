@@ -127,8 +127,8 @@ class _AttributeDependencyEntity(_CountingPoolEntity):
         return {"DEP": {"RELEVANT"}}
 
 
-class _FlakyDependencyEntity(_CountingPoolEntity):
-    """Entity whose dependency resolver can fail and recover."""
+class _FlakyDependencyClimate(_CountingClimate):
+    """Climate entity whose dependency resolver can fail and recover."""
 
     def __init__(
         self,
@@ -137,7 +137,7 @@ class _FlakyDependencyEntity(_CountingPoolEntity):
     ) -> None:
         self.dependency_calls = 0
         self.fail_dependency_resolution = True
-        super().__init__(coordinator, pool_object)
+        super().__init__(coordinator, pool_object, [])
 
     def coordinator_update_dependencies(self) -> dict[str, set[str] | None]:
         """Raise until the test enables successful dependency resolution."""
@@ -481,15 +481,26 @@ async def test_dependency_edge_change_broadcasts_and_reindexes(
         spa_climate.update_invocations,
         unrelated.update_invocations,
     ] == [1, 1, 1]
+    assert [
+        pool_climate.state_writes,
+        spa_climate.state_writes,
+        unrelated.state_writes,
+    ] == [1, 1, 1]
 
     for entity in (pool_climate, spa_climate, unrelated):
         entity.update_invocations = 0
+        entity.state_writes = 0
     heater.update({"COOL": "ON"})
     coordinator.async_set_updated_data({"HTR01": {"COOL": "ON"}})
     assert [
         pool_climate.update_invocations,
         spa_climate.update_invocations,
         unrelated.update_invocations,
+    ] == [0, 1, 0]
+    assert [
+        pool_climate.state_writes,
+        spa_climate.state_writes,
+        unrelated.state_writes,
     ] == [0, 1, 0]
 
 
@@ -527,15 +538,19 @@ async def test_backfill_update_broadcasts_to_every_entity(
     coordinator.async_set_updated_data({"PUMP3": {"STATUS": "10"}})
     for entity in entities:
         entity.update_invocations = 0
+        entity.state_writes = 0
 
     pump.update({"PWR": "850", "RPM": "2400"})
     coordinator.async_set_updated_data({"PUMP3": {"PWR": "850", "RPM": "2400"}})
     assert [entity.update_invocations for entity in entities] == [1, 1]
+    assert [entity.state_writes for entity in entities] == [1, 1]
 
     for entity in entities:
         entity.update_invocations = 0
+        entity.state_writes = 0
     coordinator.async_set_updated_data({"PUMP3": {"RPM": "2500"}})
     assert [entity.update_invocations for entity in entities] == [0, 0]
+    assert [entity.state_writes for entity in entities] == [0, 0]
 
 
 async def test_dependency_resolver_failure_falls_back_once_and_recovers(
@@ -543,13 +558,15 @@ async def test_dependency_resolver_failure_falls_back_once_and_recovers(
 ) -> None:
     """Resolver failures broadcast safely, log once, and later recover targeting."""
     coordinator = _make_coordinator(hass)
-    owner = coordinator.model.add_object(
-        "OWNER",
+    body = coordinator.model.add_object(
+        "POOL1",
         {
-            "OBJTYP": CIRCUIT_TYPE,
-            "SUBTYP": "GENERIC",
-            "SNAME": "Owner",
-            "STATUS": "OFF",
+            "OBJTYP": BODY_TYPE,
+            "SUBTYP": "POOL",
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "HEATER": "00000",
+            "HTMODE": "0",
         },
     )
     dependency = coordinator.model.add_object(
@@ -570,8 +587,8 @@ async def test_dependency_resolver_failure_falls_back_once_and_recovers(
             "STATUS": "OFF",
         },
     )
-    assert owner is not None and dependency is not None and other is not None
-    entity = _FlakyDependencyEntity(coordinator, owner)
+    assert body is not None and dependency is not None and other is not None
+    entity = _FlakyDependencyClimate(coordinator, body)
     _mark_started(coordinator)
 
     with patch(
@@ -609,7 +626,11 @@ async def test_runtime_add_remove_and_reconnect_reconciliation(
     entry.runtime_data = coordinator
     entry.async_on_unload = MagicMock()
     added: list[PoolEntity] = []
+    dispatched: list[list[str]] = []
     await setup_sensors(hass, entry, added.extend)
+    coordinator.async_add_new_objects_listener(
+        lambda objects: dispatched.append([obj.objnam for obj in objects])
+    )
     added.clear()
 
     sensor = coordinator.model.add_object(
@@ -622,17 +643,23 @@ async def test_runtime_add_remove_and_reconnect_reconciliation(
         },
     )
     assert sensor is not None
-    with patch.object(
-        coordinator,
-        "_async_detect_new_objects",
-        wraps=coordinator._async_detect_new_objects,
-    ) as detect:
-        coordinator.async_set_updated_data({"SENSE2": {"SOURCE": "80"}})
-        detect.assert_called_once_with({"SENSE2"})
+    pending = coordinator.model.add_object(
+        "C_PENDING",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "GENERIC",
+            "SNAME": "Pending Circuit",
+            "STATUS": "OFF",
+        },
+    )
+    assert pending is not None
+    coordinator.async_set_updated_data({"SENSE2": {"SOURCE": "80"}})
     sensor_entities = [
         entity for entity in added if entity._pool_object.objnam == "SENSE2"
     ]
     assert sensor_entities
+    assert {entity._pool_object.objnam for entity in added} == {"SENSE2"}
+    assert dispatched == [["SENSE2"]]
 
     target = sensor_entities[0]
     registry = er.async_get(hass)
@@ -692,16 +719,20 @@ async def test_incomplete_runtime_object_redispatches_on_backfill(
         },
     )
     assert pump is not None
-    with patch.object(
-        coordinator,
-        "_async_detect_new_objects",
-        wraps=coordinator._async_detect_new_objects,
-    ) as detect:
-        coordinator.async_set_updated_data({"PUMP3": {"STATUS": "10"}})
-        detect.assert_called_once_with({"PUMP3"})
+    coordinator.async_set_updated_data({"PUMP3": {"STATUS": "10"}})
     assert dispatched == [["PUMP3"]]
     assert coordinator._pending_redispatch == {"PUMP3"}
 
+    pending = coordinator.model.add_object(
+        "SENSE_PENDING",
+        {
+            "OBJTYP": SENSE_TYPE,
+            "SUBTYP": "AIR",
+            "SNAME": "Pending Sensor",
+            "SOURCE": "70",
+        },
+    )
+    assert pending is not None
     pump.update({"PWR": "850", "RPM": "2400", "MIN": "450", "MAX": "3450"})
     coordinator.async_set_updated_data(
         {"PUMP3": {"PWR": "850", "RPM": "2400", "MIN": "450", "MAX": "3450"}}

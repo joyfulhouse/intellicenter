@@ -863,30 +863,7 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
         """Handle updated data from the coordinator."""
         updates = self.coordinator.data or {}
 
-        dependencies_updated = False
-        if updates:
-            try:
-                dependencies = self._resolved_coordinator_update_dependencies()
-            except Exception:
-                # The coordinator has already moved this listener to its safe
-                # broadcast fallback; dependency resolution must not block it.
-                dependencies_updated = True
-            else:
-                dependencies_updated = any(
-                    attributes is None or bool(attributes & updates[objnam].keys())
-                    for objnam, attributes in dependencies.items()
-                    if objnam in updates
-                )
-
-        # Check if this entity needs to update
-        if updates and (self.isUpdated(updates) or dependencies_updated):
-            # Update the pool object reference if it changed
-            updated_obj = self.coordinator.model[self._pool_object.objnam]
-            if updated_obj:
-                self._pool_object = updated_obj
-            self._clear_optimistic_state()
-            self.async_write_ha_state()
-        elif not updates:
+        if not updates:
             if self.coordinator.model[self._pool_object.objnam] is None:
                 # The object is gone from the model (equipment deleted at the
                 # panel): this entity is concurrently being removed by the
@@ -898,11 +875,30 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
                 # post-registry-removal state write, which HA cleans up in the
                 # same loop turn as the entity's removal completes.
                 return
-            # Connection event (the coordinator cleared its diff): re-render every
-            # entity so availability changes take effect, and drop any optimistic
-            # state - after a reconnect the model is the fresh source of truth, and
-            # a command issued around a disconnect may never produce the echo update
-            # that would otherwise clear it.
+            self._clear_optimistic_state()
+            self.async_write_ha_state()
+            return
+
+        try:
+            dependencies = self._resolved_coordinator_update_dependencies()
+        except Exception:
+            # The coordinator has already moved this listener to its safe
+            # broadcast fallback; dependency resolution must not block it.
+            should_update = True
+        else:
+            dependencies_updated = any(
+                attributes is None or bool(attributes & updates[objnam].keys())
+                for objnam, attributes in dependencies.items()
+                if objnam in updates
+            )
+            should_update = self.isUpdated(updates) or dependencies_updated
+
+        # Check if this entity needs to update
+        if should_update:
+            # Update the pool object reference if it changed
+            updated_obj = self.coordinator.model[self._pool_object.objnam]
+            if updated_obj:
+                self._pool_object = updated_obj
             self._clear_optimistic_state()
             self.async_write_ha_state()
 

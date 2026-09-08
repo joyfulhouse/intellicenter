@@ -305,13 +305,10 @@ class PoolLight(PoolEntity, OnOffControlMixin, LightEntity):
                 _SUPPORTED_DIMMER_LEVELS,
                 key=lambda level: abs(level - percentage),
             )
-            self._optimistic_state = True
-            self.async_write_ha_state()
-            self.request_changes(
-                {
-                    LIMIT_ATTR: str(limit),
-                    STATUS_ATTR: self._pool_object.on_status,
-                }
+            await self._async_set_on_off_state(
+                True,
+                self._pool_object.on_status,
+                {LIMIT_ATTR: str(limit)},
             )
             return
 
@@ -417,6 +414,10 @@ class PoolLight(PoolEntity, OnOffControlMixin, LightEntity):
             USE_ATTR,
             LIMIT_ATTR,
         )
+
+    def own_echo_attributes(self) -> tuple[str, ...]:
+        """Treat a dimmer's LIMIT echo as authoritative optimistic state."""
+        return (*super().own_echo_attributes(), LIMIT_ATTR)
 
     @callback
     def _handle_coordinator_update(self) -> None:

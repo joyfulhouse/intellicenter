@@ -289,7 +289,7 @@ async def test_async_unload_entry(hass: HomeAssistant) -> None:
         mock_unload.assert_called_once_with(entry, PLATFORMS)
 
         # Verify coordinator was stopped
-        mock_coordinator.async_stop.assert_called_once()
+        mock_coordinator.async_stop.assert_awaited_once()
 
         assert result is True
 

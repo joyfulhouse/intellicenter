@@ -139,59 +139,36 @@ async def test_coordinator_tracks_light_limit() -> None:
 
 
 async def test_litsho_subtype_change_rebuilds_dependency_map(
-    mock_coordinator: MagicMock,
+    hass: HomeAssistant,
 ) -> None:
-    """Changing into LITSHO immediately routes the group's new dependencies."""
+    """A structural push changing into LITSHO rebuilds group dependencies."""
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = "test_entry"
+    entry.data = {CONF_HOST: "192.168.1.100"}
+    coordinator = IntelliCenterCoordinator(hass, entry, host="192.168.1.100")
     model = _make_light_group_model(
         ("GLOW1", "GLOW2"),
         {
             "GLOW1": (CIRCUIT_TYPE, "GLOW"),
             "GLOW2": (CIRCUIT_TYPE, "GLOW"),
         },
+        coordinator.model,
     )
     parent = model["GROUP"]
     assert parent is not None
     parent.update({SUBTYP_ATTR: "LIGHT"})
-    mock_coordinator.model = model
-    entity = PoolLight(mock_coordinator, parent)
-    member_lookups = mock_coordinator.controller.get_circuit_group_members
-    member_lookups.reset_mock()
-    mock_coordinator._async_refresh_object_listener_index.reset_mock()
+    entity = PoolLight(coordinator, parent)
+    remove_listener = coordinator.async_add_listener(
+        entity._handle_coordinator_update, entity.coordinator_context
+    )
 
     assert entity._resolved_coordinator_update_dependencies() == {}
-    assert member_lookups.call_count == 0
+    assert entity.effect_list is None
+    assert parent.is_a_light_show is False
 
     parent.update({SUBTYP_ATTR: "LITSHO"})
-    entity.isUpdated({"GROUP": {SUBTYP_ATTR: "LITSHO"}})
-    dependencies = entity._resolved_coordinator_update_dependencies()
-
-    assert set(dependencies) == {
-        "GROUP_ROW_1",
-        "GROUP_ROW_2",
-        "GLOW1",
-        "GLOW2",
-    }
-    assert member_lookups.call_count == 2
-    mock_coordinator._async_refresh_object_listener_index.assert_called_once_with()
-
-
-async def test_litsho_subtype_change_removes_group_dependencies(
-    mock_coordinator: MagicMock,
-) -> None:
-    """Changing from LITSHO rebuilds the map without group dependencies."""
-    model = _make_light_group_model(
-        ("GLOW1", "GLOW2"),
-        {
-            "GLOW1": (CIRCUIT_TYPE, "GLOW"),
-            "GLOW2": (CIRCUIT_TYPE, "GLOW"),
-        },
-    )
-    parent = model["GROUP"]
-    assert parent is not None
-    mock_coordinator.model = model
-    entity = PoolLight(mock_coordinator, parent)
-    member_lookups = mock_coordinator.controller.get_circuit_group_members
-    member_lookups.reset_mock()
+    with patch.object(entity, "async_write_ha_state"):
+        coordinator.async_set_updated_data({"GROUP": {SUBTYP_ATTR: "LITSHO"}})
 
     assert set(entity._resolved_coordinator_update_dependencies()) == {
         "GROUP_ROW_1",
@@ -199,15 +176,49 @@ async def test_litsho_subtype_change_removes_group_dependencies(
         "GLOW1",
         "GLOW2",
     }
-    assert member_lookups.call_count == 1
-    mock_coordinator._async_refresh_object_listener_index.reset_mock()
+    assert entity.effect_list == list(LIGHT_EFFECTS.values())
+    assert parent.is_a_light_show is True
+    remove_listener()
+
+
+async def test_litsho_subtype_change_removes_group_dependencies(
+    hass: HomeAssistant,
+) -> None:
+    """A structural push leaving LITSHO removes group dependencies."""
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = "test_entry"
+    entry.data = {CONF_HOST: "192.168.1.100"}
+    coordinator = IntelliCenterCoordinator(hass, entry, host="192.168.1.100")
+    model = _make_light_group_model(
+        ("GLOW1", "GLOW2"),
+        {
+            "GLOW1": (CIRCUIT_TYPE, "GLOW"),
+            "GLOW2": (CIRCUIT_TYPE, "GLOW"),
+        },
+        coordinator.model,
+    )
+    parent = model["GROUP"]
+    assert parent is not None
+    entity = PoolLight(coordinator, parent, LIGHT_EFFECTS)
+    remove_listener = coordinator.async_add_listener(
+        entity._handle_coordinator_update, entity.coordinator_context
+    )
+
+    assert set(entity._resolved_coordinator_update_dependencies()) == {
+        "GROUP_ROW_1",
+        "GROUP_ROW_2",
+        "GLOW1",
+        "GLOW2",
+    }
+    assert parent.is_a_light_show is True
 
     parent.update({SUBTYP_ATTR: "LIGHT"})
-    entity.isUpdated({"GROUP": {SUBTYP_ATTR: "LIGHT"}})
+    with patch.object(entity, "async_write_ha_state"):
+        coordinator.async_set_updated_data({"GROUP": {SUBTYP_ATTR: "LIGHT"}})
 
     assert entity._resolved_coordinator_update_dependencies() == {}
-    assert member_lookups.call_count == 1
-    mock_coordinator._async_refresh_object_listener_index.assert_called_once_with()
+    assert parent.is_a_light_show is False
+    remove_listener()
 
 
 @pytest.mark.parametrize(

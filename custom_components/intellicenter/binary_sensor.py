@@ -44,6 +44,7 @@ from pyintellicenter import (
     RPM_ATTR,
     SCHED_TYPE,
     SERVICE_ATTR,
+    SNAME_ATTR,
     STATUS_ATTR,
     STATUS_ON,
     SYSTEM_TYPE,
@@ -420,6 +421,15 @@ class HeaterBinarySensor(PoolEntity, BinarySensorEntity):
         body_attr = self._pool_object[BODY_ATTR]
         return set(body_attr.split(" ")) if body_attr else set()
 
+    def coordinator_update_dependencies(self) -> dict[str, set[str] | None]:
+        """Route updates from every body this heater can serve."""
+        body_objnams = self._bodies | {
+            body.objnam for body in self.coordinator.model.get_by_type(BODY_TYPE)
+        }
+        return {
+            objnam: {STATUS_ATTR, HEATER_ATTR, HTMODE_ATTR} for objnam in body_objnams
+        }
+
     @property
     def is_on(self) -> bool:
         """Return true if the heater is actively heating."""
@@ -449,9 +459,10 @@ class HeaterBinarySensor(PoolEntity, BinarySensorEntity):
         """
         # Check if any body's heating-related attributes changed. Include the
         # heater's live BODY list as a fallback for objects not yet in the model.
-        body_objnams = self._bodies | {
-            body.objnam for body in self.coordinator.model.get_by_type(BODY_TYPE)
-        }
+        try:
+            body_objnams = self._resolved_coordinator_update_dependencies().keys()
+        except Exception:
+            return True
         for objnam in body_objnams & updates.keys():
             if {STATUS_ATTR, HEATER_ATTR, HTMODE_ATTR} & updates[objnam].keys():
                 return True
@@ -495,6 +506,11 @@ class ScheduleBinarySensor(PoolEntity, BinarySensorEntity):
         """Return the name as 'Schedule (Object Name)'."""
         sname = self._pool_object.sname or "Unknown"
         return f"Schedule ({sname})"
+
+    def coordinator_update_dependencies(self) -> dict[str, set[str] | None]:
+        """Route changes from the circuit named in diagnostic attributes."""
+        circuit = self._pool_object[CIRCUIT_ATTR]
+        return {circuit: {SNAME_ATTR}} if circuit else {}
 
     @property
     def is_on(self) -> bool | None:

@@ -136,6 +136,7 @@ class PumpModeSelect(PoolEntity, SelectEntity):
     @property
     def current_option(self) -> str | None:
         """Return the current selected option."""
+        # Parent-pump capabilities gate construction; rendered state reads PMPCIRC.
         value = self._pool_object[SELECT_ATTR]
         if value is not None and str(value) in PUMP_MODES:
             return str(value)

@@ -29,15 +29,20 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyintellicenter import (
+    BODY_ATTR,
     COOL_ATTR,
     HEATER_ATTR,
     HITMP_ATTR,
     HTMODE_ATTR,
+    LISTORD_ATTR,
     LOTMP_ATTR,
     LSTTMP_ATTR,
+    MODE_ATTR,
     NULL_OBJNAM,
+    SNAME_ATTR,
     STATUS_ATTR,
     STATUS_OFF,
+    SUBTYP_ATTR,
     PoolObject,
 )
 
@@ -146,6 +151,23 @@ class PoolClimate(PoolEntity, ClimateEntity):
         """
         live = heaters_for_body(self.coordinator, self._pool_object.objnam)
         return live if live else self._seed_heater_list
+
+    def coordinator_update_dependencies(self) -> dict[str, set[str] | None]:
+        """Route heater action/composition and shared unit updates here."""
+        dependencies = self._system_update_dependencies(MODE_ATTR)
+        dependencies.update(
+            {
+                heater: {
+                    BODY_ATTR,
+                    COOL_ATTR,
+                    LISTORD_ATTR,
+                    SNAME_ATTR,
+                    SUBTYP_ATTR,
+                }
+                for heater in self._heater_list
+            }
+        )
+        return dependencies
 
     @property
     def unique_id(self) -> str:
@@ -333,4 +355,8 @@ class PoolClimate(PoolEntity, ClimateEntity):
             return True
         # hvac_action also depends on the heater objects' COOL attribute, which
         # arrives as an update for the HEATER objnam, not the body.
-        return any(COOL_ATTR in updates.get(heater, {}) for heater in self._heater_list)
+        try:
+            dependencies = self._resolved_coordinator_update_dependencies()
+        except Exception:
+            dependencies = dict.fromkeys(self._heater_list)
+        return any(COOL_ATTR in updates.get(objnam, {}) for objnam in dependencies)

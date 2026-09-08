@@ -9,6 +9,7 @@ notifications from the controller.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 import logging
 from typing import Any
 
@@ -127,6 +128,20 @@ NewObjectsListener = Callable[[list[PoolObject]], None]
 # dispatch. Each platform registers one of these so it can remove the
 # corresponding entities.
 RemovedObjectsListener = Callable[[set[str]], None]
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectUpdateContext:
+    """Resolve the pool objects whose updates can affect one entity."""
+
+    objnams: Callable[[], set[str]]
+    invalidate: CALLBACK_TYPE
+
+
+# These configuration attributes change the dependency graph itself. They are
+# rare structural updates, so rebuild every entity edge and broadcast them.
+_DEPENDENCY_EDGE_ATTRIBUTES = frozenset({BODY_ATTR, CIRCUIT_ATTR, PARENT_ATTR})
+
 
 # Default attribute tracking map - defines which attributes to monitor per object type
 DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
@@ -298,6 +313,15 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
             # No update_interval - we use push updates
         )
 
+        self._object_update_listeners: dict[str, dict[CALLBACK_TYPE, None]] = {}
+        # ponytail: CoordinatorEntity registers each bound entity callback once,
+        # so callback identity is equivalent to HA's internal listener id here.
+        self._object_update_contexts: dict[CALLBACK_TYPE, ObjectUpdateContext] = {}
+        self._broadcast_update_listeners: dict[CALLBACK_TYPE, None] = {}
+        self._failed_object_update_listeners: dict[CALLBACK_TYPE, None] = {}
+        self._logged_object_update_failures: set[CALLBACK_TYPE] = set()
+        self._structural_refresh = False
+
         self.config_entry = entry
         self._host = host
         self._keepalive_interval = keepalive_interval
@@ -351,6 +375,87 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         # updates. Remember seen keys so each later key growth can be dispatched.
         self._pending_redispatch: dict[str, set[str]] = {}
 
+    @callback
+    def async_add_listener(
+        self, update_callback: CALLBACK_TYPE, context: Any = None
+    ) -> Callable[[], None]:
+        """Register a listener for its declared pool-object dependencies."""
+        remove_listener = super().async_add_listener(update_callback, context)
+        if isinstance(context, ObjectUpdateContext):
+            self._object_update_contexts[update_callback] = context
+            self._async_index_object_listener(update_callback, context)
+        else:
+            self._broadcast_update_listeners[update_callback] = None
+
+        removed = False
+
+        @callback
+        def _remove_listener() -> None:
+            nonlocal removed
+            if removed:
+                return
+            removed = True
+            self._object_update_contexts.pop(update_callback, None)
+            self._broadcast_update_listeners.pop(update_callback, None)
+            self._failed_object_update_listeners.pop(update_callback, None)
+            self._logged_object_update_failures.discard(update_callback)
+            for listeners in self._object_update_listeners.values():
+                listeners.pop(update_callback, None)
+            remove_listener()
+
+        return _remove_listener
+
+    @callback
+    def _async_index_object_listener(
+        self, update_callback: CALLBACK_TYPE, context: ObjectUpdateContext
+    ) -> None:
+        """Add one entity callback to each object it depends on."""
+        self._broadcast_update_listeners.pop(update_callback, None)
+        try:
+            objnams = context.objnams()
+        except Exception:
+            if update_callback not in self._logged_object_update_failures:
+                _LOGGER.exception(
+                    "Error resolving object dependencies for listener %s",
+                    id(update_callback),
+                )
+                self._logged_object_update_failures.add(update_callback)
+            self._broadcast_update_listeners[update_callback] = None
+            self._failed_object_update_listeners[update_callback] = None
+            return
+        self._failed_object_update_listeners.pop(update_callback, None)
+        self._logged_object_update_failures.discard(update_callback)
+        for objnam in objnams:
+            self._object_update_listeners.setdefault(objnam, {})[update_callback] = None
+
+    @callback
+    def _async_refresh_object_listener_index(self) -> None:
+        """Rebuild dependency edges after the pool-model structure changes."""
+        self._object_update_listeners.clear()
+        for update_callback, context in self._object_update_contexts.items():
+            context.invalidate()
+            self._async_index_object_listener(update_callback, context)
+
+    @callback
+    def _async_update_object_listeners(self, updated_objnams: set[str]) -> None:
+        """Notify only listeners interested in the changed pool objects."""
+        for update_callback in tuple(self._failed_object_update_listeners):
+            context = self._object_update_contexts.get(update_callback)
+            if context is not None:
+                self._async_index_object_listener(update_callback, context)
+        listeners = dict(self._broadcast_update_listeners)
+        for objnam in updated_objnams:
+            listeners.update(self._object_update_listeners.get(objnam, {}))
+        for update_callback in listeners:
+            try:
+                update_callback()
+            except Exception:
+                _LOGGER.exception(
+                    "Unexpected error updating listener %s for %s",
+                    id(update_callback),
+                    self.name,
+                )
+
     @property
     def controller(self) -> ICModelController:
         """Return the ICModelController."""
@@ -365,6 +470,11 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
     def system_info(self) -> ICSystemInfo | None:
         """Return the system info from the controller."""
         return self._controller.system_info
+
+    @property
+    def structural_refresh(self) -> bool:
+        """Return whether the current listener fan-out is structural."""
+        return self._structural_refresh
 
     @property
     def connected(self) -> bool:
@@ -503,7 +613,9 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         return _remove_listener
 
     @callback
-    def _async_detect_new_objects(self) -> set[str]:
+    def _async_detect_new_objects(
+        self, changed_objnams: set[str] | None = None
+    ) -> set[str]:
         """Detect objects added to the model and notify platform listeners.
 
         Compares the current model against the set of objects the platforms
@@ -511,6 +623,10 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         registered listeners so the platforms can create entities for them at
         runtime. Does nothing until the initial connection has completed.
         Returns the objnams dispatched as new (empty when nothing changed).
+
+        When changed_objnams is provided, only those direct model lookups are
+        considered. A None value performs the full snapshot reconciliation used
+        after initial connection and reconnect.
 
         Both independent and dependent new equipment are handled. Independent
         objects (e.g. a newly-installed IntelliChem) dispatch on their own.
@@ -526,8 +642,16 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         if not self._started:
             return set()
 
+        if changed_objnams is None:
+            candidates = list(self._model)
+        else:
+            candidates = [
+                obj
+                for objnam in changed_objnams
+                if (obj := self._model[objnam]) is not None
+            ]
         new_objects = [
-            obj for obj in self._model if obj.objnam not in self._known_objnams
+            obj for obj in candidates if obj.objnam not in self._known_objnams
         ]
         if not new_objects:
             return set()
@@ -591,7 +715,7 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
     @callback
     def _async_redispatch_backfilled(
         self, changes: Mapping[str, dict[str, Any]]
-    ) -> None:
+    ) -> bool:
         """Re-dispatch newly-added objects once their attribute backfill arrives.
 
         A runtime-added object reaches the platforms before the controller has
@@ -601,10 +725,11 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         tracked attribute key; ordinary value changes such as STATUS must not
         rebuild entities. Dispatch the object (and any dependents whose parent
         it is) on each key growth. ``unique_id`` de-duplication in the platforms
-        makes this harmless for entities that were already built.
+        makes this harmless for entities that were already built. Returns
+        whether a structural re-dispatch occurred.
         """
         if not self._pending_redispatch:
-            return
+            return False
         ready_objnams: set[str] = set()
         for objnam, attributes in changes.items():
             seen_keys = self._pending_redispatch.get(objnam)
@@ -617,7 +742,7 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
                 seen_keys.update(arrived_keys)
                 ready_objnams.add(objnam)
         if not ready_objnams:
-            return
+            return False
 
         ready = [
             obj for objnam in ready_objnams if (obj := self._model[objnam]) is not None
@@ -632,7 +757,7 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         ]
         dispatched = ready + dependents
         if not dispatched:
-            return
+            return False
 
         _LOGGER.debug(
             "Re-dispatching %d backfilled pool object(s): %s",
@@ -646,6 +771,7 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
                 _LOGGER.exception(
                     "Error dispatching backfilled pool objects to a platform listener"
                 )
+        return True
 
     @callback
     def _handle_model_updates(
@@ -687,26 +813,34 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
             self._async_remove_objects(removed)
 
         self.data = changes
-        # New equipment can enter the model on a reconnect (the controller
-        # re-fetches every object on start), so snapshot its keys before checking
-        # whether this payload grew them.
-        self._async_detect_new_objects()
-        self._async_redispatch_backfilled(changes)
-        # A removal-only update leaves ``data`` empty: the fan-out then takes
-        # the connection-event path in the entities, re-rendering everything -
-        # which is exactly what survivors that referenced the removed objects
-        # (a body's heater list, a group's members) need. The platforms have
-        # already handled the structural side above via the removal listeners:
-        # ``async_setup_pool_entities`` retires the removed objects' own
-        # entities plus (on opted-in platforms) dependents whose creation
-        # predicate no longer holds, and refreshes every survivor's
-        # cross-object context (issue #124). This re-render relies on a
-        # library invariant: pyintellicenter dispatches reconnect-reconciliation
-        # removals and the attribute backfill as SEPARATE _notify_updated calls,
-        # so removals always arrive alone. If a future version coalesced them,
-        # survivors not named in the mixed diff would miss this re-render (the
-        # subsequent on_reconnected full re-render still corrects availability).
-        self.async_update_listeners()
+        changed_objnams = set(changes)
+        # Ordinary notifications name every changed object, so additions can be
+        # detected without traversing the full model. Reconnect completion below
+        # retains the authoritative full-model reconciliation.
+        just_added = self._async_detect_new_objects(changed_objnams)
+        backfilled = self._async_redispatch_backfilled(changes)
+        dependency_edges_changed = any(
+            _DEPENDENCY_EDGE_ATTRIBUTES & attrs.keys() for attrs in changes.values()
+        )
+        # Structural changes can affect entities not named in the diff, so
+        # rebuild the dependency index and force a full refresh. Keep the real
+        # diff visible so entity-specific update side effects still run; only
+        # ordinary attribute-only pushes use the targeted listener index.
+        if (
+            removed
+            or just_added
+            or backfilled
+            or dependency_edges_changed
+            or not changes
+        ):
+            self._async_refresh_object_listener_index()
+            self._structural_refresh = True
+            try:
+                self.async_update_listeners()
+            finally:
+                self._structural_refresh = False
+        else:
+            self._async_update_object_listeners(changed_objnams)
 
     @callback
     def _async_remove_objects(self, removed: set[str]) -> None:
@@ -749,6 +883,7 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         # equipment that was added while the connection was down.
         if connected:
             self._async_detect_new_objects()
+            self._async_refresh_object_listener_index()
         # Clear the last push diff before fanning out. PoolEntity's update handler
         # writes state either when its attribute is in the diff or when the diff is
         # empty (= connection event); leaving the stale last-push diff in place would

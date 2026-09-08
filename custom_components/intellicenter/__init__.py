@@ -33,6 +33,7 @@ from pyintellicenter import (
     STATUS_ATTR,
     STATUS_OFF,
     STATUS_ON,
+    SYSTEM_TYPE,
     ICConnectionError,
     ICError,
     ICModelController,
@@ -49,7 +50,7 @@ from .const import (
     DEFAULT_TRANSPORT,
     DOMAIN,
 )
-from .coordinator import IntelliCenterCoordinator
+from .coordinator import IntelliCenterCoordinator, ObjectUpdateContext
 from .firmware import async_check_firmware
 
 _LOGGER = logging.getLogger(__name__)
@@ -631,11 +632,17 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
         self._extra_state_attrs: set[str] = (
             set(extra_state_attributes) if extra_state_attributes else set()
         )
+        self._coordinator_update_dependencies: dict[str, set[str] | None] | None = None
 
         self._attr_entity_registry_enabled_default = enabled_by_default
         self._attr_native_unit_of_measurement = unit_of_measurement
         if icon:
             self._attr_icon = icon
+
+        self.coordinator_context = ObjectUpdateContext(
+            self.coordinator_update_objnams,
+            self._invalidate_coordinator_update_dependencies,
+        )
 
         _LOGGER.debug("Mapping %s", pool_object)
 
@@ -824,24 +831,70 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
         """Return true if the entity is updated by the updates from IntelliCenter."""
         return self._attribute_key in updates.get(self._pool_object.objnam, {})
 
+    def coordinator_update_dependencies(self) -> dict[str, set[str] | None]:
+        """Return other pool objects whose state affects this entity."""
+        return {}
+
+    def _resolved_coordinator_update_dependencies(
+        self,
+    ) -> dict[str, set[str] | None]:
+        """Return the cached cross-object dependency map."""
+        if self._coordinator_update_dependencies is None:
+            self._coordinator_update_dependencies = (
+                self.coordinator_update_dependencies()
+            )
+        return self._coordinator_update_dependencies
+
+    @callback
+    def _invalidate_coordinator_update_dependencies(self) -> None:
+        """Clear cached cross-object dependencies after structural changes."""
+        self._coordinator_update_dependencies = None
+
+    def coordinator_update_objnams(self) -> set[str]:
+        """Return every pool object routed to this entity's callback."""
+        return {
+            self._pool_object.objnam,
+            *self._resolved_coordinator_update_dependencies(),
+        }
+
+    def _system_update_dependencies(
+        self, *attributes: str
+    ) -> dict[str, set[str] | None]:
+        """Return system objects that carry shared native-unit state."""
+        return {
+            obj.objnam: set(attributes)
+            for obj in self.coordinator.model.get_by_type(SYSTEM_TYPE)
+        }
+
     @callback
     def async_refresh_model_context(self) -> None:
         """Refresh state derived from other objects in the shared model."""
+        self._invalidate_coordinator_update_dependencies()
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         updates = self.coordinator.data or {}
+        structural_refresh = self.coordinator.structural_refresh is True
+        should_clear_optimistic_state = (
+            not updates and not structural_refresh
+        ) or self._check_attributes_updated(
+            updates,
+            self._attribute_key,
+        )
 
-        # Check if this entity needs to update
-        if updates and self.isUpdated(updates):
-            # Update the pool object reference if it changed
+        if structural_refresh:
             updated_obj = self.coordinator.model[self._pool_object.objnam]
-            if updated_obj:
-                self._pool_object = updated_obj
-            self._clear_optimistic_state()
+            if updated_obj is None:
+                return
+            self._pool_object = updated_obj
+            self.isUpdated(updates)
+            if should_clear_optimistic_state:
+                self._clear_optimistic_state()
             self.async_write_ha_state()
-        elif not updates:
+            return
+
+        if not updates:
             if self.coordinator.model[self._pool_object.objnam] is None:
                 # The object is gone from the model (equipment deleted at the
                 # panel): this entity is concurrently being removed by the
@@ -853,12 +906,33 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
                 # post-registry-removal state write, which HA cleans up in the
                 # same loop turn as the entity's removal completes.
                 return
-            # Connection event (the coordinator cleared its diff): re-render every
-            # entity so availability changes take effect, and drop any optimistic
-            # state - after a reconnect the model is the fresh source of truth, and
-            # a command issued around a disconnect may never produce the echo update
-            # that would otherwise clear it.
-            self._clear_optimistic_state()
+            if should_clear_optimistic_state:
+                self._clear_optimistic_state()
+            self.async_write_ha_state()
+            return
+
+        try:
+            dependencies = self._resolved_coordinator_update_dependencies()
+        except Exception:
+            # The coordinator has already moved this listener to its safe
+            # broadcast fallback; dependency resolution must not block it.
+            should_update = True
+        else:
+            dependencies_updated = any(
+                attributes is None or bool(attributes & updates[objnam].keys())
+                for objnam, attributes in dependencies.items()
+                if objnam in updates
+            )
+            should_update = self.isUpdated(updates) or dependencies_updated
+
+        # Check if this entity needs to update
+        if should_update:
+            # Update the pool object reference if it changed
+            updated_obj = self.coordinator.model[self._pool_object.objnam]
+            if updated_obj:
+                self._pool_object = updated_obj
+            if should_clear_optimistic_state:
+                self._clear_optimistic_state()
             self.async_write_ha_state()
 
     @callback

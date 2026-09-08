@@ -44,6 +44,7 @@ from pyintellicenter import (
     MAXF_ATTR,
     MIN_ATTR,
     MINF_ATTR,
+    MODE_ATTR,
     ORPSET_ATTR,
     PARENT_ATTR,
     PHSET_ATTR,
@@ -543,6 +544,12 @@ class PoolNumber(PoolEntity, NumberEntity):
             return self.pentairTemperatureSettings()
         return self._attr_native_unit_of_measurement
 
+    def coordinator_update_dependencies(self) -> dict[str, set[str] | None]:
+        """Route shared panel-unit changes to temperature controls."""
+        if self.device_class == NumberDeviceClass.TEMPERATURE:
+            return self._system_update_dependencies(MODE_ATTR)
+        return {}
+
     @property
     def native_min_value(self) -> float:
         """Return the minimum value, panel-unit aware for temperatures."""
@@ -723,6 +730,11 @@ class PumpSpeedNumber(PoolEntity, NumberEntity):
         self._rpm_max = rpm_max
         self._gpm_min = gpm_min
         self._gpm_max = gpm_max
+
+    def coordinator_update_dependencies(self) -> dict[str, set[str] | None]:
+        """Route live parent-pump limit changes to the speed value."""
+        parent = self._pool_object[PARENT_ATTR]
+        return {parent: {MIN_ATTR, MAX_ATTR, MINF_ATTR, MAXF_ATTR}} if parent else {}
 
     @property
     def _current_mode(self) -> str:

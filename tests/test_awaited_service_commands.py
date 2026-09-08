@@ -312,7 +312,9 @@ async def test_select_refresh_timeout_after_write_does_not_fail_service(
     )
 
 
-@pytest.mark.parametrize("platform", ["cover", "climate", "number"])
+@pytest.mark.parametrize(
+    "platform", ["cover", "climate", "number", "select", "pump-speed-number"]
+)
 async def test_platform_failure_is_translated(
     hass: HomeAssistant,
     mock_coordinator: MagicMock,
@@ -322,9 +324,13 @@ async def test_platform_failure_is_translated(
     mock_coordinator.controller.request_changes.side_effect = ICConnectionError(
         "panel disconnected"
     )
+    if platform == "select":
+        mock_coordinator.controller.refresh_pump_circuit_speed = AsyncMock()
 
     with pytest.raises(HomeAssistantError) as raised:
         await _make_platform_service(platform, hass, mock_coordinator)
 
     assert raised.value.translation_domain == "intellicenter"
     assert raised.value.translation_key == "command_failed"
+    if platform == "select":
+        mock_coordinator.controller.refresh_pump_circuit_speed.assert_not_awaited()

@@ -67,6 +67,131 @@ def pool_object_ultratemp_heater() -> PoolObject:
     )
 
 
+async def test_climate_add_invalidates_pre_registration_heater_cache(
+    hass: HomeAssistant,
+) -> None:
+    """Refresh a heater cache primed before coordinator registration."""
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = "test_entry"
+    entry.data = {CONF_HOST: "192.168.1.100"}
+    coordinator = IntelliCenterCoordinator(hass, entry, host="192.168.1.100")
+    body = coordinator.model.add_object(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SUBTYP": "POOL",
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "LSTTMP": "78",
+            "LOTMP": "72",
+            "HITMP": "85",
+            "HEATER": "HTR01",
+            "HTMODE": "1",
+        },
+    )
+    first_heater = coordinator.model.add_object(
+        "HTR01",
+        {
+            "OBJTYP": HEATER_TYPE,
+            "SUBTYP": "ULTRA",
+            "SNAME": "UltraTemp",
+            BODY_ATTR: "POOL1",
+            LISTORD_ATTR: "1",
+        },
+    )
+    assert body is not None
+    assert first_heater is not None
+    entity = PoolClimate(coordinator, body, ["HTR01"])
+
+    assert entity.preset_modes == ["UltraTemp"]
+    second_heater = coordinator.model.add_object(
+        "HTR02",
+        {
+            "OBJTYP": HEATER_TYPE,
+            "SUBTYP": "GAS",
+            "SNAME": "Gas Heater",
+            BODY_ATTR: "POOL1",
+            LISTORD_ATTR: "2",
+        },
+    )
+    assert second_heater is not None
+
+    entity.hass = hass
+    await entity.async_added_to_hass()
+    try:
+        assert entity.preset_modes == ["UltraTemp", "Gas Heater"]
+    finally:
+        await entity.async_will_remove_from_hass()
+
+
+async def test_climate_structural_listord_push_scans_heaters_once(
+    hass: HomeAssistant,
+) -> None:
+    """Reuse the heater list resolved by a structural index rebuild."""
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = "test_entry"
+    entry.data = {CONF_HOST: "192.168.1.100"}
+    coordinator = IntelliCenterCoordinator(hass, entry, host="192.168.1.100")
+    body = coordinator.model.add_object(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SUBTYP": "POOL",
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "LSTTMP": "78",
+            "LOTMP": "72",
+            "HITMP": "85",
+            "HEATER": "HTR01",
+            "HTMODE": "1",
+        },
+    )
+    heater = coordinator.model.add_object(
+        "HTR01",
+        {
+            "OBJTYP": HEATER_TYPE,
+            "SUBTYP": "ULTRA",
+            "SNAME": "UltraTemp",
+            BODY_ATTR: "POOL1",
+            LISTORD_ATTR: "1",
+        },
+    )
+    assert body is not None
+    assert heater is not None
+    entity = PoolClimate(coordinator, body, ["HTR01"])
+    entity.hass = hass
+    await entity.async_added_to_hass()
+    original_get_by_type = PoolModel.get_by_type
+    heater_lookups = 0
+
+    def count_heater_lookups(
+        pool_model: PoolModel, obj_type: str, subtype: str | None = None
+    ) -> list[PoolObject]:
+        nonlocal heater_lookups
+        if obj_type == HEATER_TYPE:
+            heater_lookups += 1
+        return original_get_by_type(pool_model, obj_type, subtype)
+
+    try:
+        with patch.object(PoolModel, "get_by_type", count_heater_lookups):
+            assert entity.preset_modes == ["UltraTemp"]
+            heater_lookups = 0
+            heater.update({LISTORD_ATTR: "2"})
+            coordinator.data = {"HTR01": {LISTORD_ATTR: "2"}}
+            coordinator._async_refresh_object_listener_index()
+            coordinator._structural_refresh = True
+            try:
+                with patch.object(entity, "async_write_ha_state"):
+                    entity._handle_coordinator_update()
+            finally:
+                coordinator._structural_refresh = False
+
+            assert entity.preset_modes == ["UltraTemp"]
+            assert heater_lookups == 1
+    finally:
+        await entity.async_will_remove_from_hass()
+
+
 async def test_climate_heater_list_cache_tracks_structural_add_remove(
     hass: HomeAssistant,
 ) -> None:
@@ -157,16 +282,16 @@ async def test_climate_heater_list_cache_tracks_structural_add_remove(
         assert entity.preset_modes == ["UltraTemp", "Gas Heater"]
         await entity.async_set_preset_mode("Gas Heater")
         request_changes.assert_awaited_once_with("POOL1", {HEATER_ATTR: "HTR02"})
-        assert heater_lookups == 3
+        assert heater_lookups == 2
 
         model.remove_object("HTR02")
         with patch.object(entity, "async_write_ha_state"):
             coordinator.async_set_updated_data({"HTR02": None})
 
-        assert heater_lookups == 4
+        assert heater_lookups == 3
         assert entity.preset_modes == ["UltraTemp"]
         assert entity.preset_mode == "UltraTemp"
-        assert heater_lookups == 4
+        assert heater_lookups == 3
         remove_listener()
 
 

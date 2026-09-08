@@ -584,9 +584,6 @@ class PoolNumber(PoolEntity, NumberEntity):
             CYACID_ATTR: ("set_cyanuric_acid", int),
         }
 
-        # Failures raise HomeAssistantError (via _async_execute_command) so the
-        # service call reports the problem; previously they were swallowed and
-        # the call 'succeeded' while the UI value silently snapped back.
         if self._attribute_key in dispatch:
             method_name, converter = dispatch[self._attribute_key]
             method = getattr(controller, method_name)
@@ -607,7 +604,7 @@ class PoolNumber(PoolEntity, NumberEntity):
             )
         else:
             # Fallback for other number entities (e.g., HITMP)
-            self.request_changes({self._attribute_key: str(int(value))})
+            await self._async_execute_changes({self._attribute_key: str(int(value))})
 
 
 class SuperChlorinateDurationNumber(PoolNumber):
@@ -771,7 +768,7 @@ class PumpSpeedNumber(PoolEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the speed value via SPEED attribute."""
-        self.request_changes({SPEED_ATTR: str(int(value))})
+        await self._async_execute_changes({SPEED_ATTR: str(int(value))})
 
     def isUpdated(self, updates: dict[str, dict[str, Any]]) -> bool:
         """Return true if SPEED or SELECT changed.

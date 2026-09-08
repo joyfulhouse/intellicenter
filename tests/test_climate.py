@@ -137,7 +137,7 @@ async def test_climate_add_invalidates_pre_registration_heater_cache(
 async def test_climate_structural_listord_push_scans_heaters_once(
     hass: HomeAssistant,
 ) -> None:
-    """Reuse the heater list resolved by a structural index rebuild."""
+    """Reuse the heater list resolved by a real structural push."""
     entry = MagicMock(spec=ConfigEntry)
     entry.entry_id = "test_entry"
     entry.data = {CONF_HOST: "192.168.1.100"}
@@ -187,19 +187,95 @@ async def test_climate_structural_listord_push_scans_heaters_once(
             assert entity.preset_modes == ["UltraTemp"]
             heater_lookups = 0
             heater.update({LISTORD_ATTR: "2"})
-            coordinator.data = {"HTR01": {LISTORD_ATTR: "2"}}
-            coordinator._async_refresh_object_listener_index()
-            coordinator._structural_refresh = True
-            try:
-                with patch.object(entity, "async_write_ha_state"):
-                    entity._handle_coordinator_update()
-            finally:
-                coordinator._structural_refresh = False
+            with patch.object(entity, "async_write_ha_state"):
+                coordinator.async_set_updated_data(
+                    {"HTR01": {LISTORD_ATTR: "2", BODY_ATTR: "POOL1"}}
+                )
 
             assert entity.preset_modes == ["UltraTemp"]
             assert heater_lookups == 1
     finally:
         await entity.async_will_remove_from_hass()
+
+
+async def test_climate_heater_list_reorders_on_listord_push(
+    hass: HomeAssistant,
+) -> None:
+    """A non-structural LISTORD push expires and rescans the heater list."""
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = "test_entry"
+    entry.data = {CONF_HOST: "192.168.1.100"}
+    coordinator = IntelliCenterCoordinator(hass, entry, host="192.168.1.100")
+    model = coordinator.model
+    body = model.add_object(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SUBTYP": "POOL",
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "LSTTMP": "78",
+            "LOTMP": "72",
+            "HITMP": "85",
+            "HEATER": "HTR01",
+            "HTMODE": "1",
+        },
+    )
+    first_heater = model.add_object(
+        "HTR01",
+        {
+            "OBJTYP": HEATER_TYPE,
+            "SUBTYP": "ULTRA",
+            "SNAME": "First Heater",
+            BODY_ATTR: "POOL1",
+            LISTORD_ATTR: "1",
+        },
+    )
+    second_heater = model.add_object(
+        "HTR02",
+        {
+            "OBJTYP": HEATER_TYPE,
+            "SUBTYP": "GAS",
+            "SNAME": "Second Heater",
+            BODY_ATTR: "POOL1",
+            LISTORD_ATTR: "2",
+        },
+    )
+    assert body is not None
+    assert first_heater is not None
+    assert second_heater is not None
+    original_get_by_type = PoolModel.get_by_type
+    heater_lookups = 0
+
+    def count_heater_lookups(
+        pool_model: PoolModel, obj_type: str, subtype: str | None = None
+    ) -> list[PoolObject]:
+        nonlocal heater_lookups
+        if obj_type == HEATER_TYPE:
+            heater_lookups += 1
+        return original_get_by_type(pool_model, obj_type, subtype)
+
+    with patch.object(PoolModel, "get_by_type", count_heater_lookups):
+        entity = PoolClimate(coordinator, body, ["HTR01", "HTR02"])
+        remove_listener = coordinator.async_add_listener(
+            entity._handle_coordinator_update, entity.coordinator_context
+        )
+        assert entity.preset_modes == ["First Heater", "Second Heater"]
+        heater_lookups_before_listord_push = heater_lookups
+
+        first_heater.update({LISTORD_ATTR: "2"})
+        second_heater.update({LISTORD_ATTR: "1"})
+        with patch.object(entity, "async_write_ha_state"):
+            coordinator.async_set_updated_data(
+                {
+                    "HTR01": {LISTORD_ATTR: "2"},
+                    "HTR02": {LISTORD_ATTR: "1"},
+                }
+            )
+
+        assert entity.preset_modes == ["Second Heater", "First Heater"]
+        assert heater_lookups == heater_lookups_before_listord_push + 1
+        remove_listener()
 
 
 async def test_climate_heater_list_cache_tracks_structural_add_remove(

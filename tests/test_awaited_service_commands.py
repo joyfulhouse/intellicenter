@@ -253,6 +253,21 @@ def _make_platform_service(
         entity.hass = hass
         return entity.async_set_hvac_mode(HVACMode.HEAT)
 
+    if platform == "climate-heat-current-heater":
+        pool_object = PoolObject(
+            "POOL1",
+            {
+                "OBJTYP": BODY_TYPE,
+                "SNAME": "Pool",
+                STATUS_ATTR: "ON",
+                HEATER_ATTR: "HTR01",
+            },
+        )
+        mock_coordinator.model = _HeaterModel({})
+        entity = PoolClimate(mock_coordinator, pool_object, ["HTR01"])
+        entity.hass = hass
+        return entity.async_set_hvac_mode(HVACMode.HEAT)
+
     if platform == "number":
         pool_object = PoolObject(
             "POOL1",
@@ -310,6 +325,7 @@ def _make_platform_service(
         "climate",
         "climate-preset",
         "climate-heat-no-heater",
+        "climate-heat-current-heater",
         "number",
         "pump-speed-number",
         "select",

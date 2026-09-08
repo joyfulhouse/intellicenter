@@ -1,20 +1,23 @@
 """Test the Pentair IntelliCenter climate platform."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.components.climate import (
     ClimateEntityFeature,
     HVACAction,
     HVACMode,
 )
-from homeassistant.const import UnitOfTemperature
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_HOST, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from pyintellicenter import (
+    BODY_ATTR,
     BODY_TYPE,
     HEATER_ATTR,
     HEATER_TYPE,
     HITMP_ATTR,
     HTMODE_ATTR,
+    LISTORD_ATTR,
     LOTMP_ATTR,
     LSTTMP_ATTR,
     NULL_OBJNAM,
@@ -25,6 +28,7 @@ from pyintellicenter import (
 import pytest
 
 from custom_components.intellicenter.climate import PoolClimate
+from custom_components.intellicenter.coordinator import IntelliCenterCoordinator
 
 pytestmark = pytest.mark.asyncio
 
@@ -61,6 +65,109 @@ def pool_object_ultratemp_heater() -> PoolObject:
             "LISTORD": "1",
         },
     )
+
+
+async def test_climate_heater_list_cache_tracks_structural_add_remove(
+    hass: HomeAssistant,
+) -> None:
+    """Cache heater scans and refresh presets on structural add and remove."""
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = "test_entry"
+    entry.data = {CONF_HOST: "192.168.1.100"}
+    coordinator = IntelliCenterCoordinator(hass, entry, host="192.168.1.100")
+    model = coordinator.model
+    body = model.add_object(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SUBTYP": "POOL",
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "LSTTMP": "78",
+            "LOTMP": "72",
+            "HITMP": "85",
+            "HEATER": "HTR01",
+            "HTMODE": "1",
+        },
+    )
+    first_heater = model.add_object(
+        "HTR01",
+        {
+            "OBJTYP": HEATER_TYPE,
+            "SUBTYP": "ULTRA",
+            "SNAME": "UltraTemp",
+            BODY_ATTR: "POOL1",
+            LISTORD_ATTR: "1",
+        },
+    )
+    assert body is not None
+    assert first_heater is not None
+    coordinator._known_objnams = {obj.objnam for obj in model}
+    coordinator._started = True
+    original_get_by_type = PoolModel.get_by_type
+    heater_lookups = 0
+
+    def count_heater_lookups(
+        pool_model: PoolModel, obj_type: str, subtype: str | None = None
+    ) -> list[PoolObject]:
+        nonlocal heater_lookups
+        if obj_type == HEATER_TYPE:
+            heater_lookups += 1
+        return original_get_by_type(pool_model, obj_type, subtype)
+
+    with (
+        patch.object(PoolModel, "get_by_type", count_heater_lookups),
+        patch.object(
+            coordinator.controller, "request_changes", new_callable=AsyncMock
+        ) as request_changes,
+    ):
+        entity = PoolClimate(coordinator, body, ["HTR01"])
+        remove_listener = coordinator.async_add_listener(
+            entity._handle_coordinator_update, entity.coordinator_context
+        )
+        assert entity.preset_modes == ["UltraTemp"]
+        assert entity.preset_mode == "UltraTemp"
+        assert entity.preset_modes == ["UltraTemp"]
+        assert heater_lookups == 1
+
+        second_heater = model.add_object(
+            "HTR02",
+            {
+                "OBJTYP": HEATER_TYPE,
+                "SUBTYP": "GAS",
+                "SNAME": "Gas Heater",
+                BODY_ATTR: "POOL1",
+                LISTORD_ATTR: "2",
+            },
+        )
+        assert second_heater is not None
+        with patch.object(entity, "async_write_ha_state"):
+            coordinator.async_set_updated_data(
+                {
+                    "HTR02": {
+                        "SUBTYP": "GAS",
+                        "SNAME": "Gas Heater",
+                        BODY_ATTR: "POOL1",
+                        LISTORD_ATTR: "2",
+                    }
+                }
+            )
+
+        assert heater_lookups == 2
+        assert entity.preset_modes == ["UltraTemp", "Gas Heater"]
+        await entity.async_set_preset_mode("Gas Heater")
+        request_changes.assert_awaited_once_with("POOL1", {HEATER_ATTR: "HTR02"})
+        assert heater_lookups == 3
+
+        model.remove_object("HTR02")
+        with patch.object(entity, "async_write_ha_state"):
+            coordinator.async_set_updated_data({"HTR02": None})
+
+        assert heater_lookups == 4
+        assert entity.preset_modes == ["UltraTemp"]
+        assert entity.preset_mode == "UltraTemp"
+        assert heater_lookups == 4
+        remove_listener()
 
 
 async def test_climate_setup_creates_entities_only_for_cooling_capable(

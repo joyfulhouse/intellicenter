@@ -647,6 +647,11 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
 
         _LOGGER.debug("Mapping %s", pool_object)
 
+    async def async_added_to_hass(self) -> None:
+        """Discard name counts retained before coordinator registration."""
+        await super().async_added_to_hass()
+        self._simplify_name_counts.clear()
+
     @property
     def _entry_id(self) -> str:
         """Return the config entry ID."""

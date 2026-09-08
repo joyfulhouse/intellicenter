@@ -592,9 +592,13 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
 
     def isUpdated(self, updates: dict[str, dict[str, Any]]) -> bool:
         """Return true if the entity is updated by the updates from IntelliCenter."""
-        if self._heater_list_cache is not None and any(
-            LISTORD_ATTR in updates.get(heater, {})
-            for heater in self._heater_list_cache
+        if (
+            not self.coordinator.structural_refresh
+            and self._heater_list_cache is not None
+            and any(
+                LISTORD_ATTR in updates.get(heater, {})
+                for heater in self._heater_list_cache
+            )
         ):
             self._heater_list_cache = None
         updated = self._check_attributes_updated(

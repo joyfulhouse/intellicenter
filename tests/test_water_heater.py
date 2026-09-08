@@ -18,6 +18,7 @@ from homeassistant.exceptions import HomeAssistantError
 from pyintellicenter import (
     BODY_ATTR,
     BODY_TYPE,
+    COOL_ATTR,
     HEATER_ATTR,
     HEATER_TYPE,
     HTMODE_ATTR,
@@ -111,10 +112,140 @@ def _mixed_model_getitem(standard: PoolObject, hcombo: PoolObject) -> MagicMock:
     return MagicMock(side_effect=lambda oid: lookup.get(oid))
 
 
+async def test_water_heater_add_invalidates_pre_registration_heater_cache(
+    hass: HomeAssistant,
+) -> None:
+    """Refresh a heater cache primed before coordinator registration."""
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = "test_entry"
+    entry.data = {CONF_HOST: "192.168.1.100"}
+    coordinator = IntelliCenterCoordinator(hass, entry, host="192.168.1.100")
+    body = coordinator.model.add_object(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SUBTYP": "POOL",
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "LSTTMP": "78",
+            "LOTMP": "82",
+            "HEATER": "HTR01",
+            "HTMODE": "1",
+            "MODE": "2",
+        },
+    )
+    first_heater = coordinator.model.add_object(
+        "HTR01",
+        {
+            "OBJTYP": HEATER_TYPE,
+            "SUBTYP": "GAS",
+            "SNAME": "Gas Heater",
+            BODY_ATTR: "POOL1",
+            LISTORD_ATTR: "1",
+        },
+    )
+    assert body is not None
+    assert first_heater is not None
+    entity = PoolWaterHeater(coordinator, body, ["HTR01"])
+
+    assert entity.operation_list == [STATE_OFF, "Gas Heater"]
+    second_heater = coordinator.model.add_object(
+        "HTR02",
+        {
+            "OBJTYP": HEATER_TYPE,
+            "SUBTYP": "GAS",
+            "SNAME": "Backup Heater",
+            BODY_ATTR: "POOL1",
+            LISTORD_ATTR: "2",
+        },
+    )
+    assert second_heater is not None
+
+    entity.hass = hass
+    await entity.async_added_to_hass()
+    try:
+        assert entity.operation_list == [STATE_OFF, "Gas Heater", "Backup Heater"]
+        second_heater.update({COOL_ATTR: "ON"})
+        with (
+            patch.object(entity, "isUpdated", wraps=entity.isUpdated) as is_updated,
+            patch.object(entity, "async_write_ha_state") as write_state,
+        ):
+            coordinator.async_set_updated_data({"HTR02": {COOL_ATTR: "ON"}})
+
+        is_updated.assert_called_once_with({"HTR02": {COOL_ATTR: "ON"}})
+        write_state.assert_called_once_with()
+    finally:
+        await entity.async_will_remove_from_hass()
+
+
+async def test_water_heater_structural_listord_push_scans_heaters_once(
+    hass: HomeAssistant,
+) -> None:
+    """Reuse the heater list resolved by a real structural push."""
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = "test_entry"
+    entry.data = {CONF_HOST: "192.168.1.100"}
+    coordinator = IntelliCenterCoordinator(hass, entry, host="192.168.1.100")
+    body = coordinator.model.add_object(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SUBTYP": "POOL",
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "LSTTMP": "78",
+            "LOTMP": "82",
+            "HEATER": "HTR01",
+            "HTMODE": "1",
+            "MODE": "2",
+        },
+    )
+    heater = coordinator.model.add_object(
+        "HTR01",
+        {
+            "OBJTYP": HEATER_TYPE,
+            "SUBTYP": "GAS",
+            "SNAME": "Gas Heater",
+            BODY_ATTR: "POOL1",
+            LISTORD_ATTR: "1",
+        },
+    )
+    assert body is not None
+    assert heater is not None
+    entity = PoolWaterHeater(coordinator, body, ["HTR01"])
+    entity.hass = hass
+    await entity.async_added_to_hass()
+    original_get_by_type = PoolModel.get_by_type
+    heater_lookups = 0
+
+    def count_heater_lookups(
+        pool_model: PoolModel, obj_type: str, subtype: str | None = None
+    ) -> list[PoolObject]:
+        nonlocal heater_lookups
+        if obj_type == HEATER_TYPE:
+            heater_lookups += 1
+        return original_get_by_type(pool_model, obj_type, subtype)
+
+    try:
+        with patch.object(PoolModel, "get_by_type", count_heater_lookups):
+            assert entity.operation_list == [STATE_OFF, "Gas Heater"]
+            heater_lookups = 0
+            heater.update({LISTORD_ATTR: "2"})
+            with patch.object(entity, "async_write_ha_state"):
+                coordinator.async_set_updated_data(
+                    {"HTR01": {LISTORD_ATTR: "2", BODY_ATTR: "POOL1"}}
+                )
+
+            assert entity.operation_list == [STATE_OFF, "Gas Heater"]
+            assert heater_lookups == 1
+    finally:
+        await entity.async_will_remove_from_hass()
+
+
 async def test_heater_list_reorders_on_listord_push(
     hass: HomeAssistant,
 ) -> None:
-    """A routed LISTORD push expires the cache before operation state is read."""
+    """A non-structural LISTORD push expires and rescans the heater list."""
     entry = MagicMock(spec=ConfigEntry)
     entry.entry_id = "test_entry"
     entry.data = {CONF_HOST: "192.168.1.100"}
@@ -202,6 +333,7 @@ async def test_heater_list_reorders_on_listord_push(
 
         first_heater.update({LISTORD_ATTR: "2"})
         second_heater.update({LISTORD_ATTR: "1"})
+        heater_lookups_before_listord_push = heater_lookups
         with patch.object(entity, "async_write_ha_state"):
             coordinator.async_set_updated_data(
                 {
@@ -211,7 +343,7 @@ async def test_heater_list_reorders_on_listord_push(
             )
 
         assert entity.operation_list == [STATE_OFF, "Second Heater", "First Heater"]
-        assert heater_lookups == 2
+        assert heater_lookups == heater_lookups_before_listord_push + 1
         await entity.async_turn_on()
         request_changes.assert_awaited_once_with("POOL1", {HEATER_ATTR: "HTR02"})
         assert heater_lookups == 2

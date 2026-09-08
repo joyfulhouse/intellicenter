@@ -12,6 +12,7 @@ from pyintellicenter import (
     BODY_TYPE,
     EXTINSTR_TYPE,
     HEATER_ATTR,
+    HEATER_TYPE,
     HITMP_ATTR,
     NORMAL_ATTR,
     PMPCIRC_TYPE,
@@ -33,6 +34,13 @@ from custom_components.intellicenter.select import PumpModeSelect
 from custom_components.intellicenter.switch import PoolCircuit
 
 pytestmark = pytest.mark.asyncio
+
+
+class _HeaterModel(dict[str, PoolObject]):
+    """Provide PoolModel enumeration while retaining real dict lookups."""
+
+    def get_by_type(self, _obj_type: str) -> list[PoolObject]:
+        return []
 
 
 def _block_controller_request(
@@ -213,6 +221,36 @@ def _make_platform_service(
         entity.hass = hass
         return entity.async_set_hvac_mode(HVACMode.OFF)
 
+    if platform == "climate-preset":
+        pool_object = PoolObject(
+            "POOL1",
+            {
+                "OBJTYP": BODY_TYPE,
+                "SNAME": "Pool",
+                STATUS_ATTR: "ON",
+                HEATER_ATTR: "HTR01",
+            },
+        )
+        heater = PoolObject("HTR01", {"OBJTYP": HEATER_TYPE, "SNAME": "UltraTemp"})
+        mock_coordinator.model = _HeaterModel({heater.objnam: heater})
+        entity = PoolClimate(mock_coordinator, pool_object, [heater.objnam])
+        entity.hass = hass
+        return entity.async_set_preset_mode("UltraTemp")
+
+    if platform == "climate-heat-no-heater":
+        pool_object = PoolObject(
+            "POOL1",
+            {
+                "OBJTYP": BODY_TYPE,
+                "SNAME": "Pool",
+                STATUS_ATTR: "ON",
+                HEATER_ATTR: "",
+            },
+        )
+        entity = PoolClimate(mock_coordinator, pool_object, ["HTR01"])
+        entity.hass = hass
+        return entity.async_set_hvac_mode(HVACMode.HEAT)
+
     if platform == "number":
         pool_object = PoolObject(
             "POOL1",
@@ -265,7 +303,15 @@ def _make_platform_service(
 
 @pytest.mark.parametrize(
     "platform",
-    ["cover", "climate", "number", "pump-speed-number", "select"],
+    [
+        "cover",
+        "climate",
+        "climate-preset",
+        "climate-heat-no-heater",
+        "number",
+        "pump-speed-number",
+        "select",
+    ],
 )
 async def test_platform_service_waits_for_panel_acknowledgement(
     hass: HomeAssistant,

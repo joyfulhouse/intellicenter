@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
@@ -64,7 +64,7 @@ async def _start_with_initial_pump(
     initial = {**SPARSE_PUMP, **telemetry}
     pump = coordinator.model.add_object(PUMP_OBJNAM, initial)
     assert pump is not None
-    with patch.object(coordinator._handler, "start", new_callable=AsyncMock):
+    with patch.object(coordinator._handler, "start"):
         await coordinator.async_start()
     added = await _setup_sensor_platform(hass, coordinator)
     return coordinator, pump, added
@@ -285,7 +285,7 @@ async def test_initial_setup_skips_complete_truthy_object_bookkeeping(
     }
     assert coordinator.model.add_object(objnam, initial) is not None
 
-    with patch.object(coordinator._handler, "start", new_callable=AsyncMock):
+    with patch.object(coordinator._handler, "start"):
         await coordinator.async_start()
 
     assert objnam not in coordinator._pending_redispatch
@@ -307,7 +307,7 @@ async def test_initial_setup_prunes_resolved_bookkeeping(
     obj = coordinator.model.add_object(objnam, initial)
     assert obj is not None
 
-    with patch.object(coordinator._handler, "start", new_callable=AsyncMock):
+    with patch.object(coordinator._handler, "start"):
         await coordinator.async_start()
     assert objnam in coordinator._pending_redispatch
 

@@ -277,6 +277,81 @@ async def test_litsho_dependencies_follow_reconnect_snapshot(
         remove_listener()
 
 
+async def test_peer_light_subtype_push_invalidates_name_count_cache(
+    hass: HomeAssistant,
+) -> None:
+    """Peer subtype changes refresh cached names without steady-state scans."""
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = "test_entry"
+    entry.data = {CONF_HOST: "192.168.1.100"}
+    coordinator = IntelliCenterCoordinator(hass, entry, host="192.168.1.100")
+    first = coordinator.model.add_object(
+        "GLOW1",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "GLOW",
+            "SNAME": "GloBrite 1",
+            "STATUS": "OFF",
+            "USE": "WHITER",
+        },
+    )
+    peer = coordinator.model.add_object(
+        "GLOW2",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "GLOW",
+            "SNAME": "GloBrite 2",
+            "STATUS": "OFF",
+            "USE": "WHITER",
+        },
+    )
+    assert first is not None and peer is not None
+    first_entity = PoolLight(coordinator, first)
+    peer_entity = PoolLight(coordinator, peer)
+    remove_first = coordinator.async_add_listener(
+        first_entity._handle_coordinator_update, first_entity.coordinator_context
+    )
+    remove_peer = coordinator.async_add_listener(
+        peer_entity._handle_coordinator_update, peer_entity.coordinator_context
+    )
+    original_iter = PoolModel.__iter__
+    model_iterations = 0
+
+    def count_model_iterations(model: PoolModel):
+        nonlocal model_iterations
+        model_iterations += 1
+        return original_iter(model)
+
+    with (
+        patch.object(PoolModel, "__iter__", count_model_iterations),
+        patch.object(first_entity, "async_write_ha_state"),
+        patch.object(peer_entity, "async_write_ha_state"),
+    ):
+        assert first_entity.name == "GloBrite 1"
+        assert first_entity.name == "GloBrite 1"
+        assert model_iterations == 1
+
+        peer.update({SUBTYP_ATTR: "GLOWT"})
+        coordinator.async_set_updated_data({"GLOW2": {SUBTYP_ATTR: "GLOWT"}})
+        assert first_entity.name == "GloBrite"
+        assert first_entity.name == "GloBrite"
+        assert model_iterations == 2
+
+        first.update({STATUS_ATTR: "ON"})
+        coordinator.async_set_updated_data({"GLOW1": {STATUS_ATTR: "ON"}})
+        assert first_entity.name == "GloBrite"
+        assert model_iterations == 2
+
+        peer.update({SUBTYP_ATTR: "GLOW"})
+        coordinator.async_set_updated_data({"GLOW2": {SUBTYP_ATTR: "GLOW"}})
+        assert first_entity.name == "GloBrite 1"
+        assert first_entity.name == "GloBrite 1"
+        assert model_iterations == 3
+
+    remove_first()
+    remove_peer()
+
+
 async def test_light_setup_creates_entities(
     hass: HomeAssistant,
     pool_model: PoolModel,

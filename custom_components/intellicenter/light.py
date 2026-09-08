@@ -407,7 +407,7 @@ class PoolLight(PoolEntity, OnOffControlMixin, LightEntity):
         """Return true if the entity is updated by the updates from IntelliCenter."""
         subtype_updated = SUBTYP_ATTR in updates.get(self._pool_object.objnam, {})
         is_light_show = self._pool_object.subtype == "LITSHO"
-        if subtype_updated and is_light_show != self._dependencies_for_light_show:
+        if subtype_updated:
             self._dependencies_for_light_show = is_light_show
             self._invalidate_coordinator_update_dependencies()
             self.coordinator._async_refresh_object_listener_index()

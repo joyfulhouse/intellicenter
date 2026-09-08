@@ -153,7 +153,20 @@ async def test_heater_list_reorders_on_listord_push(
             LISTORD_ATTR: "2",
         },
     )
-    assert body is not None and first_heater is not None and second_heater is not None
+    unrelated_heater = model.add_object(
+        "HTR99",
+        {
+            "OBJTYP": HEATER_TYPE,
+            "SUBTYP": "GAS",
+            "SNAME": "Spa Heater",
+            BODY_ATTR: "SPA01",
+            LISTORD_ATTR: "1",
+        },
+    )
+    assert body is not None
+    assert first_heater is not None
+    assert second_heater is not None
+    assert unrelated_heater is not None
     original_get_by_type = PoolModel.get_by_type
     heater_lookups = 0
 
@@ -176,6 +189,15 @@ async def test_heater_list_reorders_on_listord_push(
             entity._handle_coordinator_update, entity.coordinator_context
         )
         assert entity.operation_list == [STATE_OFF, "First Heater", "Second Heater"]
+        assert heater_lookups == 1
+
+        body.update({STATUS_ATTR: "OFF"})
+        with patch.object(entity, "async_write_ha_state"):
+            coordinator.async_set_updated_data({"POOL1": {STATUS_ATTR: "OFF"}})
+        assert heater_lookups == 1
+
+        unrelated_heater.update({LISTORD_ATTR: "2"})
+        coordinator.async_set_updated_data({"HTR99": {LISTORD_ATTR: "2"}})
         assert heater_lookups == 1
 
         first_heater.update({LISTORD_ATTR: "2"})

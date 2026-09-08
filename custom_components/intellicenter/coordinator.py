@@ -372,8 +372,10 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         self._new_objects_listeners: list[NewObjectsListener] = []
         self._removed_objects_listeners: list[RemovedObjectsListener] = []
         # Runtime-added objects may receive tracked attributes across multiple
-        # updates. Remember seen keys so each later key growth can be dispatched.
+        # updates. Remember seen keys so each later key growth can be dispatched,
+        # and retain initially empty keys until a builder can use their value.
         self._pending_redispatch: dict[str, set[str]] = {}
+        self._pending_truthy_redispatch: dict[str, set[str]] = {}
 
     @callback
     def async_add_listener(
@@ -675,14 +677,16 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         # platforms. Dependents are already known, so they need no recording.
         self._known_objnams.update(new_objnams)
         # Track seen attributes so later key growth can re-run entity builders.
-        self._pending_redispatch.update(
-            (
-                obj.objnam,
-                set(obj.attribute_keys)
-                & DEFAULT_ATTRIBUTES_MAP.get(obj.objtype, set()),
+        # Some builders require a truthy value, so a key that first arrives empty
+        # remains pending until a later update makes it usable.
+        for obj in new_objects:
+            tracked_keys = set(obj.attribute_keys) & DEFAULT_ATTRIBUTES_MAP.get(
+                obj.objtype, set()
             )
-            for obj in new_objects
-        )
+            self._pending_redispatch[obj.objnam] = tracked_keys
+            self._pending_truthy_redispatch[obj.objnam] = {
+                key for key in tracked_keys if not obj[key]
+            }
 
         dependents_note = ""
         if dependents:
@@ -721,25 +725,33 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         A runtime-added object reaches the platforms before the controller has
         fetched its full tracked-attribute set, so builders that gate on those
         attributes (pump PWR/RPM/GPM sensors, parent-pump limits) skip it. A
-        subsequent update is relevant only when its payload introduces a new
-        tracked attribute key; ordinary value changes such as STATUS must not
-        rebuild entities. Dispatch the object (and any dependents whose parent
-        it is) on each key growth. ``unique_id`` de-duplication in the platforms
-        makes this harmless for entities that were already built. Returns
-        whether a structural re-dispatch occurred.
+        subsequent update is relevant when its payload introduces a new tracked
+        attribute key or makes a previously empty tracked value truthy. Ordinary
+        value changes after a key has become usable must not rebuild entities.
+        Dispatch the object (and any dependents whose parent it is) on each such
+        transition. ``unique_id`` de-duplication in the platforms makes this
+        harmless for entities that were already built. Returns whether a
+        structural re-dispatch occurred.
         """
         if not self._pending_redispatch:
             return False
         ready_objnams: set[str] = set()
         for objnam, attributes in changes.items():
             seen_keys = self._pending_redispatch.get(objnam)
+            pending_truthy_keys = self._pending_truthy_redispatch.get(objnam)
             obj = self._model[objnam]
-            if seen_keys is None or obj is None:
+            if seen_keys is None or pending_truthy_keys is None or obj is None:
                 continue
             tracked_keys = DEFAULT_ATTRIBUTES_MAP.get(obj.objtype, set())
             arrived_keys = attributes.keys() & obj.attribute_keys & tracked_keys
-            if arrived_keys - seen_keys:
+            new_keys = arrived_keys - seen_keys
+            became_truthy = {
+                key for key in arrived_keys & pending_truthy_keys if obj[key]
+            }
+            if new_keys or became_truthy:
                 seen_keys.update(arrived_keys)
+                pending_truthy_keys.update(key for key in new_keys if not obj[key])
+                pending_truthy_keys.difference_update(became_truthy)
                 ready_objnams.add(objnam)
         if not ready_objnams:
             return False
@@ -856,6 +868,7 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         self._known_objnams -= removed
         for objnam in removed:
             self._pending_redispatch.pop(objnam, None)
+            self._pending_truthy_redispatch.pop(objnam, None)
         _LOGGER.info(
             "Pool object(s) removed from the panel: %s", ", ".join(sorted(removed))
         )

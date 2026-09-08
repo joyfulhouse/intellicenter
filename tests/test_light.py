@@ -14,6 +14,7 @@ from pyintellicenter import (
     LIGHT_EFFECTS,
     STATUS_ATTR,
     USE_ATTR,
+    ICConnectionError,
     ICError,
     ICLightGroupError,
     PoolModel,
@@ -947,6 +948,40 @@ async def test_dimmer_brightness_write_uses_nearest_panel_level(
     mock_coordinator.controller.request_changes.assert_called_once_with(
         "DIMMER1", {LIMIT_ATTR: str(expected_limit), STATUS_ATTR: "ON"}
     )
+
+
+async def test_dimmer_brightness_failure_is_awaited_and_reverts_optimism(
+    hass: HomeAssistant,
+    mock_coordinator: MagicMock,
+    mock_write_ha_state: MagicMock,
+) -> None:
+    """A failed brightness command raises and restores authoritative state."""
+    dimmer = PoolObject(
+        "DIMMER1",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "DIMMER",
+            "SNAME": "Patio Dimmer",
+            "STATUS": "OFF",
+            LIMIT_ATTR: "50",
+        },
+    )
+    mock_coordinator.controller.request_changes.side_effect = ICConnectionError(
+        "panel disconnected"
+    )
+    light = PoolLight(mock_coordinator, dimmer)
+    light.hass = hass
+
+    with pytest.raises(HomeAssistantError) as raised:
+        await light.async_turn_on(**{ATTR_BRIGHTNESS: 255})
+
+    assert raised.value.translation_key == "command_failed"
+    mock_coordinator.controller.request_changes.assert_awaited_once_with(
+        "DIMMER1", {LIMIT_ATTR: "100", STATUS_ATTR: "ON"}
+    )
+    assert light._optimistic_state is None
+    assert light.is_on is False
+    assert mock_write_ha_state.call_count == 2
 
 
 @pytest.mark.parametrize("subtype", ["LIGHT", "INTELLI", "GLOW", "GLOWT", "MAGIC2"])

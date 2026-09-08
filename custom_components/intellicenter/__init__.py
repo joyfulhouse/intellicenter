@@ -752,41 +752,6 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
 
         return attributes
 
-    def request_changes(self, changes: dict[str, Any]) -> None:
-        """Request changes to the associated Pool object.
-
-        Args:
-            changes: Dictionary of attribute changes to apply
-
-        Note:
-            This method fires and forgets the request. Changes will be
-            reflected as an update notification if successful.
-        """
-        self.hass.async_create_task(
-            self._async_request_changes(changes),
-            f"intellicenter_request_changes_{self._pool_object.objnam}",
-        )
-
-    async def _async_request_changes(self, changes: dict[str, Any]) -> None:
-        """Async helper to request changes with error handling.
-
-        Runs as a fire-and-forget task, so a failure cannot be raised back to
-        the service call. Instead, any optimistic state is reverted and the
-        entity re-rendered from the model - otherwise a failed command (e.g.
-        issued while the connection drops) would leave the UI showing a state
-        the device never reached, with no push update ever clearing it.
-        """
-        try:
-            await self._controller.request_changes(self._pool_object.objnam, changes)
-        except Exception:
-            _LOGGER.exception(
-                "Failed to request changes for %s: %s",
-                self._pool_object.objnam,
-                changes,
-            )
-            self._clear_optimistic_state()
-            self.async_write_ha_state()
-
     async def _async_execute_command(
         self,
         command: Awaitable[Any],
@@ -830,6 +795,10 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
     def isUpdated(self, updates: dict[str, dict[str, Any]]) -> bool:
         """Return true if the entity is updated by the updates from IntelliCenter."""
         return self._attribute_key in updates.get(self._pool_object.objnam, {})
+
+    def own_echo_attributes(self) -> tuple[str, ...]:
+        """Return attributes whose device echoes reconcile optimistic state."""
+        return (self._attribute_key,)
 
     def coordinator_update_dependencies(self) -> dict[str, set[str] | None]:
         """Return other pool objects whose state affects this entity."""
@@ -880,7 +849,7 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
             not updates and not structural_refresh
         ) or self._check_attributes_updated(
             updates,
-            self._attribute_key,
+            *self.own_echo_attributes(),
         )
 
         if structural_refresh:
@@ -916,6 +885,13 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
         except Exception:
             # The coordinator has already moved this listener to its safe
             # broadcast fallback; dependency resolution must not block it.
+            try:
+                self.isUpdated(updates)
+            except Exception:
+                _LOGGER.exception(
+                    "Unexpected error processing update side effects for %s",
+                    self.name,
+                )
             should_update = True
         else:
             dependencies_updated = any(
@@ -1026,14 +1002,22 @@ class OnOffControlMixin(_MixinBase):
         """Turn the entity off."""
         await self._async_set_on_off_state(False, self._pool_object.off_status)
 
-    async def _async_set_on_off_state(self, optimistic: bool, state: str) -> None:
+    async def _async_set_on_off_state(
+        self,
+        optimistic: bool,
+        state: str,
+        additional_changes: dict[str, Any] | None = None,
+    ) -> None:
         """Render an optimistic state while awaiting the panel command."""
+        changes = {self._attribute_key: state}
+        if additional_changes is not None:
+            changes.update(additional_changes)
         # Optimistic update for immediate UI feedback
         self._optimistic_state = optimistic
         self.async_write_ha_state()
         committed = False
         try:
-            await self._async_execute_changes({self._attribute_key: state})
+            await self._async_execute_changes(changes)
             committed = True
         finally:
             if not committed:

@@ -349,9 +349,13 @@ class PoolClimate(PoolEntity, ClimateEntity):
 
     def isUpdated(self, updates: dict[str, dict[str, Any]]) -> bool:
         """Return true if the entity is updated."""
-        if self._heater_list_cache is not None and any(
-            LISTORD_ATTR in updates.get(heater, {})
-            for heater in self._heater_list_cache
+        if (
+            not self.coordinator.structural_refresh
+            and self._heater_list_cache is not None
+            and any(
+                LISTORD_ATTR in updates.get(heater, {})
+                for heater in self._heater_list_cache
+            )
         ):
             self._heater_list_cache = None
         my_updates = updates.get(self._pool_object.objnam, {})

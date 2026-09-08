@@ -49,6 +49,7 @@ from pyintellicenter import (
     MODE_ATTR,
     MODULE_TYPE,
     NORMAL_ATTR,
+    OBJTYP_ATTR,
     ORPHI_ATTR,
     ORPLO_ATTR,
     ORPSET_ATTR,
@@ -141,6 +142,10 @@ class ObjectUpdateContext:
 # These configuration attributes change the dependency graph itself. They are
 # rare structural updates, so rebuild every entity edge and broadcast them.
 _DEPENDENCY_EDGE_ATTRIBUTES = frozenset({BODY_ATTR, CIRCUIT_ATTR, PARENT_ATTR})
+
+# PoolObject pops these attributes into dedicated slots, so they never appear
+# in attribute_keys even when supplied by the panel.
+_SLOTTED_ATTRS = frozenset({OBJTYP_ATTR, SUBTYP_ATTR})
 
 
 # Default attribute tracking map - defines which attributes to monitor per object type
@@ -528,6 +533,7 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         # equipment and dispatched to the registered platform listeners.
         self._known_objnams = {obj.objnam for obj in self._model}
         self._started = True
+        # Initial objects can also defer builders on missing or falsy attributes.
         for obj in self._model:
             self._seed_redispatch_bookkeeping(obj, only_if_deferred=True)
 
@@ -622,9 +628,12 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
     ) -> None:
         """Remember tracked keys whose entity builders may need another pass."""
         tracked_keys = DEFAULT_ATTRIBUTES_MAP.get(obj.objtype, set())
+        completeness_keys = tracked_keys - _SLOTTED_ATTRS
         seen_keys = set(obj.attribute_keys) & tracked_keys
         pending_truthy_keys = {key for key in seen_keys if not obj[key]}
-        if only_if_deferred and not (tracked_keys - seen_keys or pending_truthy_keys):
+        if only_if_deferred and not (
+            completeness_keys - seen_keys or pending_truthy_keys
+        ):
             return
         self._pending_redispatch[obj.objnam] = seen_keys
         self._pending_truthy_redispatch[obj.objnam] = pending_truthy_keys
@@ -733,8 +742,9 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
 
         A runtime-added object reaches the platforms before the controller has
         fetched its full tracked-attribute set, so builders that gate on those
-        attributes (pump PWR/RPM/GPM sensors, parent-pump limits) skip it. A
-        subsequent update is relevant when its payload introduces a new tracked
+        attributes (pump PWR/RPM/GPM sensors, parent-pump limits) skip it.
+        Initial-connect objects with unusable tracked values need the same retry.
+        A subsequent update is relevant when its payload introduces a new tracked
         attribute key or makes a previously empty tracked value truthy. Ordinary
         value changes after a key has become usable must not rebuild entities.
         Dispatch the object (and any dependents whose parent it is) on each such
@@ -762,7 +772,8 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
                 pending_truthy_keys.update(key for key in new_keys if not obj[key])
                 pending_truthy_keys.difference_update(became_truthy)
                 ready_objnams.add(objnam)
-                if tracked_keys <= seen_keys and not pending_truthy_keys:
+                completeness_keys = tracked_keys - _SLOTTED_ATTRS
+                if completeness_keys <= seen_keys and not pending_truthy_keys:
                     self._pending_redispatch.pop(objnam, None)
                     self._pending_truthy_redispatch.pop(objnam, None)
         if not ready_objnams:

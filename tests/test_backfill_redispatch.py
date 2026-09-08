@@ -278,18 +278,19 @@ async def test_initial_setup_skips_complete_truthy_object_bookkeeping(
     """A complete usable initial object does not occupy deferred state."""
     coordinator = _make_coordinator(hass)
     coordinator._started = False
-    objnam = "PMPCIRC155"
+    non_slotted_tracked = DEFAULT_ATTRIBUTES_MAP[PUMP_TYPE] - {"OBJTYP", "SUBTYP"}
     initial = {
-        "OBJTYP": PMPCIRC_TYPE,
-        **dict.fromkeys(DEFAULT_ATTRIBUTES_MAP[PMPCIRC_TYPE], "1"),
+        "OBJTYP": PUMP_TYPE,
+        "SUBTYP": "VSF",
+        **dict.fromkeys(non_slotted_tracked, "1"),
     }
-    assert coordinator.model.add_object(objnam, initial) is not None
+    assert coordinator.model.add_object(PUMP_OBJNAM, initial) is not None
 
     with patch.object(coordinator._handler, "start"):
         await coordinator.async_start()
 
-    assert objnam not in coordinator._pending_redispatch
-    assert objnam not in coordinator._pending_truthy_redispatch
+    assert PUMP_OBJNAM not in coordinator._pending_redispatch
+    assert PUMP_OBJNAM not in coordinator._pending_truthy_redispatch
 
 
 async def test_initial_setup_prunes_resolved_bookkeeping(
@@ -298,25 +299,26 @@ async def test_initial_setup_prunes_resolved_bookkeeping(
     """The last deferred tracked value removes the object's pending state."""
     coordinator = _make_coordinator(hass)
     coordinator._started = False
-    objnam = "PMPCIRC155"
+    non_slotted_tracked = DEFAULT_ATTRIBUTES_MAP[PUMP_TYPE] - {"OBJTYP", "SUBTYP"}
     initial = {
-        "OBJTYP": PMPCIRC_TYPE,
-        **dict.fromkeys(DEFAULT_ATTRIBUTES_MAP[PMPCIRC_TYPE], "1"),
-        "SPEED": "",
+        "OBJTYP": PUMP_TYPE,
+        "SUBTYP": "VSF",
+        **dict.fromkeys(non_slotted_tracked, "1"),
+        "PWR": "",
     }
-    obj = coordinator.model.add_object(objnam, initial)
+    obj = coordinator.model.add_object(PUMP_OBJNAM, initial)
     assert obj is not None
 
     with patch.object(coordinator._handler, "start"):
         await coordinator.async_start()
-    assert objnam in coordinator._pending_redispatch
+    assert PUMP_OBJNAM in coordinator._pending_redispatch
 
-    changed = obj.update({"SPEED": "2400"})
+    changed = obj.update({"PWR": "250"})
     assert changed
-    coordinator.async_set_updated_data({objnam: changed})
+    coordinator.async_set_updated_data({PUMP_OBJNAM: changed})
 
-    assert objnam not in coordinator._pending_redispatch
-    assert objnam not in coordinator._pending_truthy_redispatch
+    assert PUMP_OBJNAM not in coordinator._pending_redispatch
+    assert PUMP_OBJNAM not in coordinator._pending_truthy_redispatch
 
 
 async def test_non_telemetry_key_does_not_consume_later_sensor_retries(

@@ -6,18 +6,22 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from homeassistant.components.water_heater import (
     WaterHeaterEntityFeature,
 )
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_TEMPERATURE,
+    CONF_HOST,
     STATE_OFF,
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from pyintellicenter import (
+    BODY_ATTR,
     BODY_TYPE,
     HEATER_ATTR,
     HEATER_TYPE,
     HTMODE_ATTR,
+    LISTORD_ATTR,
     LOTMP_ATTR,
     LSTTMP_ATTR,
     MODE_ATTR,
@@ -29,7 +33,10 @@ from pyintellicenter import (
 )
 import pytest
 
-from custom_components.intellicenter.coordinator import DEFAULT_ATTRIBUTES_MAP
+from custom_components.intellicenter.coordinator import (
+    DEFAULT_ATTRIBUTES_MAP,
+    IntelliCenterCoordinator,
+)
 from custom_components.intellicenter.water_heater import PoolWaterHeater
 
 pytestmark = pytest.mark.asyncio
@@ -102,6 +109,113 @@ def _mixed_model_getitem(standard: PoolObject, hcombo: PoolObject) -> MagicMock:
     """Return a model __getitem__ that maps each objnam to its distinct object."""
     lookup = {standard.objnam: standard, hcombo.objnam: hcombo}
     return MagicMock(side_effect=lambda oid: lookup.get(oid))
+
+
+async def test_heater_list_reorders_on_listord_push(
+    hass: HomeAssistant,
+) -> None:
+    """A routed LISTORD push expires the cache before operation state is read."""
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = "test_entry"
+    entry.data = {CONF_HOST: "192.168.1.100"}
+    coordinator = IntelliCenterCoordinator(hass, entry, host="192.168.1.100")
+    model = coordinator.model
+    body = model.add_object(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "HEATER": NULL_OBJNAM,
+            "HTMODE": "1",
+            "LOTMP": "82",
+            "LSTTMP": "78",
+            "MODE": "1",
+        },
+    )
+    first_heater = model.add_object(
+        "HTR01",
+        {
+            "OBJTYP": HEATER_TYPE,
+            "SUBTYP": "GAS",
+            "SNAME": "First Heater",
+            BODY_ATTR: "POOL1",
+            LISTORD_ATTR: "1",
+        },
+    )
+    second_heater = model.add_object(
+        "HTR02",
+        {
+            "OBJTYP": HEATER_TYPE,
+            "SUBTYP": "GAS",
+            "SNAME": "Second Heater",
+            BODY_ATTR: "POOL1",
+            LISTORD_ATTR: "2",
+        },
+    )
+    unrelated_heater = model.add_object(
+        "HTR99",
+        {
+            "OBJTYP": HEATER_TYPE,
+            "SUBTYP": "GAS",
+            "SNAME": "Spa Heater",
+            BODY_ATTR: "SPA01",
+            LISTORD_ATTR: "1",
+        },
+    )
+    assert body is not None
+    assert first_heater is not None
+    assert second_heater is not None
+    assert unrelated_heater is not None
+    original_get_by_type = PoolModel.get_by_type
+    heater_lookups = 0
+
+    def count_heater_lookups(
+        pool_model: PoolModel, obj_type: str, subtype: str | None = None
+    ) -> list[PoolObject]:
+        nonlocal heater_lookups
+        if obj_type == HEATER_TYPE:
+            heater_lookups += 1
+        return original_get_by_type(pool_model, obj_type, subtype)
+
+    with (
+        patch.object(PoolModel, "get_by_type", count_heater_lookups),
+        patch.object(
+            coordinator.controller, "request_changes", new_callable=AsyncMock
+        ) as request_changes,
+    ):
+        entity = PoolWaterHeater(coordinator, body, ["HTR01", "HTR02"])
+        remove_listener = coordinator.async_add_listener(
+            entity._handle_coordinator_update, entity.coordinator_context
+        )
+        assert entity.operation_list == [STATE_OFF, "First Heater", "Second Heater"]
+        assert heater_lookups == 1
+
+        body.update({STATUS_ATTR: "OFF"})
+        with patch.object(entity, "async_write_ha_state"):
+            coordinator.async_set_updated_data({"POOL1": {STATUS_ATTR: "OFF"}})
+        assert heater_lookups == 1
+
+        unrelated_heater.update({LISTORD_ATTR: "2"})
+        coordinator.async_set_updated_data({"HTR99": {LISTORD_ATTR: "2"}})
+        assert heater_lookups == 1
+
+        first_heater.update({LISTORD_ATTR: "2"})
+        second_heater.update({LISTORD_ATTR: "1"})
+        with patch.object(entity, "async_write_ha_state"):
+            coordinator.async_set_updated_data(
+                {
+                    "HTR01": {LISTORD_ATTR: "2"},
+                    "HTR02": {LISTORD_ATTR: "1"},
+                }
+            )
+
+        assert entity.operation_list == [STATE_OFF, "Second Heater", "First Heater"]
+        assert heater_lookups == 2
+        await entity.async_turn_on()
+        request_changes.assert_awaited_once_with("POOL1", {HEATER_ATTR: "HTR02"})
+        assert heater_lookups == 2
+        remove_listener()
 
 
 async def test_water_heater_setup_creates_entities(

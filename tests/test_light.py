@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.components.light import ATTR_BRIGHTNESS, ATTR_EFFECT
 from homeassistant.components.light.const import ColorMode
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from pyintellicenter import (
@@ -13,6 +15,7 @@ from pyintellicenter import (
     CIRCUIT_TYPE,
     LIGHT_EFFECTS,
     STATUS_ATTR,
+    SUBTYP_ATTR,
     USE_ATTR,
     ICConnectionError,
     ICError,
@@ -25,7 +28,10 @@ import yaml
 
 from custom_components.intellicenter import light as light_platform
 from custom_components.intellicenter.const import LIMIT_ATTR
-from custom_components.intellicenter.coordinator import DEFAULT_ATTRIBUTES_MAP
+from custom_components.intellicenter.coordinator import (
+    DEFAULT_ATTRIBUTES_MAP,
+    IntelliCenterCoordinator,
+)
 from custom_components.intellicenter.light import PoolLight, _build_entities
 
 pytestmark = pytest.mark.asyncio
@@ -41,9 +47,11 @@ _SERVICES_YAML = (
 def _make_light_group_model(
     member_refs: tuple[str, ...],
     child_shapes: dict[str, tuple[str, str]],
+    model: PoolModel | None = None,
 ) -> PoolModel:
     """Build one light-show parent with real membership rows and children."""
-    model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
+    if model is None:
+        model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
     model.add_object(
         "GROUP",
         {
@@ -128,6 +136,361 @@ async def _assert_color_sync_error(
 async def test_coordinator_tracks_light_limit() -> None:
     """The model must request LIMIT or brightness never reaches entities."""
     assert LIMIT_ATTR in DEFAULT_ATTRIBUTES_MAP[CIRCUIT_TYPE]
+
+
+async def test_litsho_subtype_change_rebuilds_dependency_map(
+    hass: HomeAssistant,
+) -> None:
+    """A structural push changing into LITSHO rebuilds group dependencies."""
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = "test_entry"
+    entry.data = {CONF_HOST: "192.168.1.100"}
+    coordinator = IntelliCenterCoordinator(hass, entry, host="192.168.1.100")
+    model = _make_light_group_model(
+        ("GLOW1", "GLOW2"),
+        {
+            "GLOW1": (CIRCUIT_TYPE, "GLOW"),
+            "GLOW2": (CIRCUIT_TYPE, "GLOW"),
+        },
+        coordinator.model,
+    )
+    parent = model["GROUP"]
+    assert parent is not None
+    parent.update({SUBTYP_ATTR: "LIGHT"})
+    entity = PoolLight(coordinator, parent)
+    remove_listener = coordinator.async_add_listener(
+        entity._handle_coordinator_update, entity.coordinator_context
+    )
+
+    assert entity._resolved_coordinator_update_dependencies() == {}
+    assert entity.effect_list is None
+    assert parent.is_a_light_show is False
+
+    parent.update({SUBTYP_ATTR: "LITSHO"})
+    with patch.object(entity, "async_write_ha_state"):
+        coordinator.async_set_updated_data({"GROUP": {SUBTYP_ATTR: "LITSHO"}})
+
+    assert set(entity._resolved_coordinator_update_dependencies()) == {
+        "GROUP_ROW_1",
+        "GROUP_ROW_2",
+        "GLOW1",
+        "GLOW2",
+    }
+    assert entity.effect_list == list(LIGHT_EFFECTS.values())
+    assert parent.is_a_light_show is True
+    remove_listener()
+
+
+async def test_litsho_subtype_change_removes_group_dependencies(
+    hass: HomeAssistant,
+) -> None:
+    """A structural push leaving LITSHO removes group dependencies."""
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = "test_entry"
+    entry.data = {CONF_HOST: "192.168.1.100"}
+    coordinator = IntelliCenterCoordinator(hass, entry, host="192.168.1.100")
+    model = _make_light_group_model(
+        ("GLOW1", "GLOW2"),
+        {
+            "GLOW1": (CIRCUIT_TYPE, "GLOW"),
+            "GLOW2": (CIRCUIT_TYPE, "GLOW"),
+        },
+        coordinator.model,
+    )
+    parent = model["GROUP"]
+    assert parent is not None
+    entity = PoolLight(coordinator, parent, LIGHT_EFFECTS)
+    remove_listener = coordinator.async_add_listener(
+        entity._handle_coordinator_update, entity.coordinator_context
+    )
+
+    assert set(entity._resolved_coordinator_update_dependencies()) == {
+        "GROUP_ROW_1",
+        "GROUP_ROW_2",
+        "GLOW1",
+        "GLOW2",
+    }
+    assert parent.is_a_light_show is True
+
+    parent.update({SUBTYP_ATTR: "LIGHT"})
+    with patch.object(entity, "async_write_ha_state"):
+        coordinator.async_set_updated_data({"GROUP": {SUBTYP_ATTR: "LIGHT"}})
+
+    assert entity._resolved_coordinator_update_dependencies() == {}
+    assert parent.is_a_light_show is False
+    remove_listener()
+
+
+@pytest.mark.parametrize(
+    ("initial_subtype", "snapshot_subtype"),
+    [
+        ("LITSHO", "LIGHT"),
+        ("LIGHT", "LITSHO"),
+    ],
+    ids=("reenter-litsho", "leave-litsho"),
+)
+async def test_litsho_dependencies_follow_reconnect_snapshot(
+    hass: HomeAssistant,
+    initial_subtype: str,
+    snapshot_subtype: str,
+) -> None:
+    """Reconnect rebuilds keep the marker aligned for the next subtype push."""
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = "test_entry"
+    entry.data = {CONF_HOST: "192.168.1.100"}
+    coordinator = IntelliCenterCoordinator(hass, entry, host="192.168.1.100")
+    model = _make_light_group_model(
+        ("GLOW1", "GLOW2"),
+        {
+            "GLOW1": (CIRCUIT_TYPE, "GLOW"),
+            "GLOW2": (CIRCUIT_TYPE, "GLOW"),
+        },
+        coordinator.model,
+    )
+    parent = model["GROUP"]
+    child = model["GLOW1"]
+    assert parent is not None and child is not None
+    parent.update({SUBTYP_ATTR: initial_subtype})
+    entity = PoolLight(coordinator, parent)
+    update_callback = MagicMock(wraps=entity._handle_coordinator_update)
+    group_dependencies = {"GROUP_ROW_1", "GROUP_ROW_2", "GLOW1", "GLOW2"}
+
+    with patch.object(entity, "async_write_ha_state"):
+        remove_listener = coordinator.async_add_listener(
+            update_callback, entity.coordinator_context
+        )
+
+        parent.update({SUBTYP_ATTR: snapshot_subtype})
+        coordinator.async_set_connection_state(True)
+        expected_snapshot_dependencies = (
+            group_dependencies if snapshot_subtype == "LITSHO" else set()
+        )
+        assert (
+            set(entity._resolved_coordinator_update_dependencies())
+            == expected_snapshot_dependencies
+        )
+
+        parent.update({SUBTYP_ATTR: initial_subtype})
+        coordinator.async_set_updated_data({"GROUP": {SUBTYP_ATTR: initial_subtype}})
+        expected_push_dependencies = (
+            group_dependencies if initial_subtype == "LITSHO" else set()
+        )
+        assert (
+            set(entity._resolved_coordinator_update_dependencies())
+            == expected_push_dependencies
+        )
+
+        update_callback.reset_mock()
+        child.update({SUBTYP_ATTR: "GLOWT"})
+        coordinator.async_set_updated_data({"GLOW1": {SUBTYP_ATTR: "GLOWT"}})
+        assert update_callback.call_count == 1
+
+        remove_listener()
+
+
+@pytest.mark.parametrize(
+    ("peer_subtype", "updated_peer_subtype", "initial_name", "updated_name"),
+    [
+        ("GLOW", "GLOWT", "GloBrite 1", "GloBrite"),
+        ("GLOWT", "GLOW", "GloBrite", "GloBrite 1"),
+    ],
+    ids=("peer-leaves-kind", "peer-enters-kind"),
+)
+async def test_peer_light_subtype_push_invalidates_name_count_cache(
+    hass: HomeAssistant,
+    peer_subtype: str,
+    updated_peer_subtype: str,
+    initial_name: str,
+    updated_name: str,
+) -> None:
+    """Peer subtype changes refresh cached names without steady-state scans."""
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = "test_entry"
+    entry.data = {CONF_HOST: "192.168.1.100"}
+    coordinator = IntelliCenterCoordinator(hass, entry, host="192.168.1.100")
+    first = coordinator.model.add_object(
+        "GLOW1",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "GLOW",
+            "SNAME": "GloBrite 1",
+            "STATUS": "OFF",
+            "USE": "WHITER",
+        },
+    )
+    peer = coordinator.model.add_object(
+        "GLOW2",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": peer_subtype,
+            "SNAME": "GloBrite 2",
+            "STATUS": "OFF",
+            "USE": "WHITER",
+        },
+    )
+    assert first is not None and peer is not None
+    first_entity = PoolLight(coordinator, first)
+    peer_entity = PoolLight(coordinator, peer)
+    remove_first = coordinator.async_add_listener(
+        first_entity._handle_coordinator_update, first_entity.coordinator_context
+    )
+    remove_peer = coordinator.async_add_listener(
+        peer_entity._handle_coordinator_update, peer_entity.coordinator_context
+    )
+    original_iter = PoolModel.__iter__
+    model_iterations = 0
+
+    def count_model_iterations(model: PoolModel):
+        nonlocal model_iterations
+        model_iterations += 1
+        return original_iter(model)
+
+    with (
+        patch.object(PoolModel, "__iter__", count_model_iterations),
+        patch.object(first_entity, "async_write_ha_state"),
+        patch.object(peer_entity, "async_write_ha_state"),
+    ):
+        assert first_entity.name == initial_name
+        assert first_entity.name == initial_name
+        assert model_iterations == 1
+
+        peer.update({SUBTYP_ATTR: updated_peer_subtype})
+        coordinator.async_set_updated_data(
+            {"GLOW2": {SUBTYP_ATTR: updated_peer_subtype}}
+        )
+        assert first_entity.name == updated_name
+        assert first_entity.name == updated_name
+        assert model_iterations == 2
+
+        first.update({STATUS_ATTR: "ON"})
+        coordinator.async_set_updated_data({"GLOW1": {STATUS_ATTR: "ON"}})
+        assert first_entity.name == updated_name
+        assert model_iterations == 2
+
+    remove_first()
+    remove_peer()
+
+
+async def test_disabled_peer_subtype_push_invalidates_name_count_cache(
+    hass: HomeAssistant,
+) -> None:
+    """A disabled peer's subtype change refreshes another light's cached name."""
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = "test_entry"
+    entry.data = {CONF_HOST: "192.168.1.100"}
+    coordinator = IntelliCenterCoordinator(hass, entry, host="192.168.1.100")
+    first = coordinator.model.add_object(
+        "GLOW1",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "GLOW",
+            "SNAME": "GloBrite 1",
+            "STATUS": "OFF",
+            "USE": "WHITER",
+        },
+    )
+    peer = coordinator.model.add_object(
+        "GLOW2",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "GLOW",
+            "SNAME": "GloBrite 2",
+            "STATUS": "OFF",
+            "USE": "WHITER",
+        },
+    )
+    assert first is not None and peer is not None
+    first_entity = PoolLight(coordinator, first)
+    disabled_peer = PoolLight(coordinator, peer)
+    assert disabled_peer._handle_coordinator_update not in (
+        coordinator._object_update_contexts
+    )
+    remove_first = coordinator.async_add_listener(
+        first_entity._handle_coordinator_update, first_entity.coordinator_context
+    )
+    original_iter = PoolModel.__iter__
+    model_iterations = 0
+
+    def count_model_iterations(model: PoolModel):
+        nonlocal model_iterations
+        model_iterations += 1
+        return original_iter(model)
+
+    with (
+        patch.object(PoolModel, "__iter__", count_model_iterations),
+        patch.object(first_entity, "async_write_ha_state"),
+    ):
+        assert first_entity.name == "GloBrite 1"
+        assert first_entity.name == "GloBrite 1"
+        assert model_iterations == 1
+
+        peer.update({SUBTYP_ATTR: "GLOWT"})
+        coordinator.async_set_updated_data({"GLOW2": {SUBTYP_ATTR: "GLOWT"}})
+
+        assert first_entity.name == "GloBrite"
+        assert first_entity.name == "GloBrite"
+        assert model_iterations == 2
+
+    remove_first()
+
+
+async def test_combined_status_and_peer_subtype_push_invalidates_before_render(
+    hass: HomeAssistant,
+) -> None:
+    """A combined push clears cached names before any entity renders."""
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = "test_entry"
+    entry.data = {CONF_HOST: "192.168.1.100"}
+    coordinator = IntelliCenterCoordinator(hass, entry, host="192.168.1.100")
+    first = coordinator.model.add_object(
+        "GLOW1",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "GLOW",
+            "SNAME": "GloBrite 1",
+            "STATUS": "OFF",
+            "USE": "WHITER",
+        },
+    )
+    peer = coordinator.model.add_object(
+        "GLOW2",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "GLOW",
+            "SNAME": "GloBrite 2",
+            "STATUS": "OFF",
+            "USE": "WHITER",
+        },
+    )
+    assert first is not None and peer is not None
+    first_entity = PoolLight(coordinator, first)
+    peer_entity = PoolLight(coordinator, peer)
+    rendered: list[tuple[bool, str | None]] = []
+    first_entity.async_write_ha_state = lambda: rendered.append(
+        (coordinator.structural_refresh, first_entity.name)
+    )
+    remove_first = coordinator.async_add_listener(
+        first_entity._handle_coordinator_update, first_entity.coordinator_context
+    )
+    remove_peer = coordinator.async_add_listener(
+        peer_entity._handle_coordinator_update, peer_entity.coordinator_context
+    )
+
+    assert first_entity.name == "GloBrite 1"
+    first.update({STATUS_ATTR: "ON"})
+    peer.update({SUBTYP_ATTR: "GLOWT"})
+    with patch.object(peer_entity, "async_write_ha_state"):
+        coordinator.async_set_updated_data(
+            {
+                "GLOW1": {STATUS_ATTR: "ON"},
+                "GLOW2": {SUBTYP_ATTR: "GLOWT"},
+            }
+        )
+
+    assert rendered == [(True, "GloBrite")]
+
+    remove_first()
+    remove_peer()
 
 
 async def test_light_setup_creates_entities(

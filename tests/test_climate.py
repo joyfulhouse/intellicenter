@@ -1,5 +1,6 @@
 """Test the Pentair IntelliCenter climate platform."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.components.climate import (
@@ -136,6 +137,7 @@ async def test_climate_add_invalidates_pre_registration_heater_cache(
 
 async def test_climate_structural_listord_push_scans_heaters_once(
     hass: HomeAssistant,
+    heater_lookup_counter: SimpleNamespace,
 ) -> None:
     """Reuse the heater list resolved by a real structural push."""
     entry = MagicMock(spec=ConfigEntry)
@@ -171,35 +173,25 @@ async def test_climate_structural_listord_push_scans_heaters_once(
     entity = PoolClimate(coordinator, body, ["HTR01"])
     entity.hass = hass
     await entity.async_added_to_hass()
-    original_get_by_type = PoolModel.get_by_type
-    heater_lookups = 0
-
-    def count_heater_lookups(
-        pool_model: PoolModel, obj_type: str, subtype: str | None = None
-    ) -> list[PoolObject]:
-        nonlocal heater_lookups
-        if obj_type == HEATER_TYPE:
-            heater_lookups += 1
-        return original_get_by_type(pool_model, obj_type, subtype)
 
     try:
-        with patch.object(PoolModel, "get_by_type", count_heater_lookups):
-            assert entity.preset_modes == ["UltraTemp"]
-            heater_lookups = 0
-            heater.update({LISTORD_ATTR: "2"})
-            with patch.object(entity, "async_write_ha_state"):
-                coordinator.async_set_updated_data(
-                    {"HTR01": {LISTORD_ATTR: "2", BODY_ATTR: "POOL1"}}
-                )
+        assert entity.preset_modes == ["UltraTemp"]
+        heater_lookup_counter.count = 0
+        heater.update({LISTORD_ATTR: "2"})
+        with patch.object(entity, "async_write_ha_state"):
+            coordinator.async_set_updated_data(
+                {"HTR01": {LISTORD_ATTR: "2", BODY_ATTR: "POOL1"}}
+            )
 
-            assert entity.preset_modes == ["UltraTemp"]
-            assert heater_lookups == 1
+        assert entity.preset_modes == ["UltraTemp"]
+        assert heater_lookup_counter.count == 1
     finally:
         await entity.async_will_remove_from_hass()
 
 
 async def test_climate_heater_list_reorders_on_listord_push(
     hass: HomeAssistant,
+    heater_lookup_counter: SimpleNamespace,
 ) -> None:
     """A non-structural LISTORD push expires and rescans the heater list."""
     entry = MagicMock(spec=ConfigEntry)
@@ -244,42 +236,31 @@ async def test_climate_heater_list_reorders_on_listord_push(
     assert body is not None
     assert first_heater is not None
     assert second_heater is not None
-    original_get_by_type = PoolModel.get_by_type
-    heater_lookups = 0
+    entity = PoolClimate(coordinator, body, ["HTR01", "HTR02"])
+    remove_listener = coordinator.async_add_listener(
+        entity._handle_coordinator_update, entity.coordinator_context
+    )
+    assert entity.preset_modes == ["First Heater", "Second Heater"]
+    heater_lookups_before_listord_push = heater_lookup_counter.count
 
-    def count_heater_lookups(
-        pool_model: PoolModel, obj_type: str, subtype: str | None = None
-    ) -> list[PoolObject]:
-        nonlocal heater_lookups
-        if obj_type == HEATER_TYPE:
-            heater_lookups += 1
-        return original_get_by_type(pool_model, obj_type, subtype)
-
-    with patch.object(PoolModel, "get_by_type", count_heater_lookups):
-        entity = PoolClimate(coordinator, body, ["HTR01", "HTR02"])
-        remove_listener = coordinator.async_add_listener(
-            entity._handle_coordinator_update, entity.coordinator_context
+    first_heater.update({LISTORD_ATTR: "2"})
+    second_heater.update({LISTORD_ATTR: "1"})
+    with patch.object(entity, "async_write_ha_state"):
+        coordinator.async_set_updated_data(
+            {
+                "HTR01": {LISTORD_ATTR: "2"},
+                "HTR02": {LISTORD_ATTR: "1"},
+            }
         )
-        assert entity.preset_modes == ["First Heater", "Second Heater"]
-        heater_lookups_before_listord_push = heater_lookups
 
-        first_heater.update({LISTORD_ATTR: "2"})
-        second_heater.update({LISTORD_ATTR: "1"})
-        with patch.object(entity, "async_write_ha_state"):
-            coordinator.async_set_updated_data(
-                {
-                    "HTR01": {LISTORD_ATTR: "2"},
-                    "HTR02": {LISTORD_ATTR: "1"},
-                }
-            )
-
-        assert entity.preset_modes == ["Second Heater", "First Heater"]
-        assert heater_lookups == heater_lookups_before_listord_push + 1
-        remove_listener()
+    assert entity.preset_modes == ["Second Heater", "First Heater"]
+    assert heater_lookup_counter.count == heater_lookups_before_listord_push + 1
+    remove_listener()
 
 
 async def test_climate_heater_list_cache_tracks_structural_add_remove(
     hass: HomeAssistant,
+    heater_lookup_counter: SimpleNamespace,
 ) -> None:
     """Cache heater scans and refresh presets on structural add and remove."""
     entry = MagicMock(spec=ConfigEntry)
@@ -315,23 +296,11 @@ async def test_climate_heater_list_cache_tracks_structural_add_remove(
     assert first_heater is not None
     coordinator._known_objnams = {obj.objnam for obj in model}
     coordinator._started = True
-    original_get_by_type = PoolModel.get_by_type
-    heater_lookups = 0
 
-    def count_heater_lookups(
-        pool_model: PoolModel, obj_type: str, subtype: str | None = None
-    ) -> list[PoolObject]:
-        nonlocal heater_lookups
-        if obj_type == HEATER_TYPE:
-            heater_lookups += 1
-        return original_get_by_type(pool_model, obj_type, subtype)
-
-    with (
-        patch.object(PoolModel, "get_by_type", count_heater_lookups),
-        patch.object(
-            coordinator.controller, "request_changes", new_callable=AsyncMock
-        ) as request_changes,
-    ):
+    heater_lookup_counter.count = 0
+    with patch.object(
+        coordinator.controller, "request_changes", new_callable=AsyncMock
+    ) as request_changes:
         entity = PoolClimate(coordinator, body, ["HTR01"])
         remove_listener = coordinator.async_add_listener(
             entity._handle_coordinator_update, entity.coordinator_context
@@ -339,7 +308,7 @@ async def test_climate_heater_list_cache_tracks_structural_add_remove(
         assert entity.preset_modes == ["UltraTemp"]
         assert entity.preset_mode == "UltraTemp"
         assert entity.preset_modes == ["UltraTemp"]
-        assert heater_lookups == 1
+        assert heater_lookup_counter.count == 1
 
         second_heater = model.add_object(
             "HTR02",
@@ -364,20 +333,20 @@ async def test_climate_heater_list_cache_tracks_structural_add_remove(
                 }
             )
 
-        assert heater_lookups == 2
+        assert heater_lookup_counter.count == 2
         assert entity.preset_modes == ["UltraTemp", "Gas Heater"]
         await entity.async_set_preset_mode("Gas Heater")
         request_changes.assert_awaited_once_with("POOL1", {HEATER_ATTR: "HTR02"})
-        assert heater_lookups == 2
+        assert heater_lookup_counter.count == 2
 
         model.remove_object("HTR02")
         with patch.object(entity, "async_write_ha_state"):
             coordinator.async_set_updated_data({"HTR02": None})
 
-        assert heater_lookups == 3
+        assert heater_lookup_counter.count == 3
         assert entity.preset_modes == ["UltraTemp"]
         assert entity.preset_mode == "UltraTemp"
-        assert heater_lookups == 3
+        assert heater_lookup_counter.count == 3
         remove_listener()
 
 

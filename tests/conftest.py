@@ -1,6 +1,7 @@
 """Fixtures for Pentair IntelliCenter integration tests."""
 
 from collections.abc import Generator
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -41,6 +42,23 @@ ON_OFF_UNKNOWN_CASES = [
 
 # Enable custom integrations
 pytest_plugins = "pytest_homeassistant_custom_component"
+
+
+@pytest.fixture
+def heater_lookup_counter() -> Generator[SimpleNamespace]:
+    """Count PoolModel heater lookups while preserving the real lookup."""
+    original_get_by_type = PoolModel.get_by_type
+    counter = SimpleNamespace(count=0)
+
+    def count_heater_lookups(
+        pool_model: PoolModel, obj_type: str, subtype: str | None = None
+    ) -> list[PoolObject]:
+        if obj_type == HEATER_TYPE:
+            counter.count += 1
+        return original_get_by_type(pool_model, obj_type, subtype)
+
+    with patch.object(PoolModel, "get_by_type", count_heater_lookups):
+        yield counter
 
 
 @pytest.fixture(autouse=True)

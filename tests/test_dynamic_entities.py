@@ -927,7 +927,7 @@ async def test_setup_pool_entities_removes_registry_entity(
     assert registry.async_get(reg_entry.entity_id) is None
 
 
-async def test_setup_pool_entities_readds_entities_after_removal(
+async def test_setup_pool_entities_re_adds_entities_after_removal(
     hass: HomeAssistant, pool_model: PoolModel, mock_coordinator: MagicMock
 ) -> None:
     """After a removal, the same object coming back produces fresh entities.

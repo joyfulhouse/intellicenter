@@ -140,14 +140,6 @@ class PumpModeSelect(PoolEntity, SelectEntity):
             return str(value)
         return None
 
-    def coordinator_update_dependencies(self) -> set[str]:
-        """Route parent-pump capability and associated-circuit changes here."""
-        return {
-            objnam
-            for attribute in (PARENT_ATTR, CIRCUIT_ATTR)
-            if (objnam := self._pool_object[attribute])
-        }
-
     async def async_select_option(self, option: str) -> None:
         """Change the selected option and refresh speed value.
 

@@ -37,6 +37,7 @@ from pyintellicenter import (
     MAXF_ATTR,
     MIN_ATTR,
     MINF_ATTR,
+    MODE_ATTR,
     MODULE_TYPE,
     ORPTNK_ATTR,
     ORPVAL_ATTR,
@@ -425,11 +426,11 @@ class PoolSensor(PoolEntity, SensorEntity):
             return self.pentairTemperatureSettings()
         return self._attr_native_unit_of_measurement
 
-    def coordinator_update_dependencies(self) -> set[str]:
+    def coordinator_update_dependencies(self) -> dict[str, set[str] | None]:
         """Route shared panel-unit changes to temperature sensors."""
         if self._attr_device_class == SensorDeviceClass.TEMPERATURE:
-            return self._system_update_dependencies()
-        return set()
+            return self._system_update_dependencies(MODE_ATTR)
+        return {}
 
 
 class SaturationIndexSensor(PoolSensor):

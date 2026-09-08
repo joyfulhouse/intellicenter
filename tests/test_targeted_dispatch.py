@@ -12,8 +12,10 @@ from pyintellicenter import (
     BODY_TYPE,
     CIRCUIT_TYPE,
     HEATER_TYPE,
+    PMPCIRC_TYPE,
     PUMP_TYPE,
     SENSE_TYPE,
+    PoolModel,
     PoolObject,
 )
 import pytest
@@ -21,7 +23,10 @@ import pytest
 from custom_components.intellicenter import PoolEntity
 from custom_components.intellicenter.climate import PoolClimate
 from custom_components.intellicenter.coordinator import IntelliCenterCoordinator
+from custom_components.intellicenter.number import PumpSpeedNumber
+from custom_components.intellicenter.select import PumpModeSelect
 from custom_components.intellicenter.sensor import async_setup_entry as setup_sensors
+from custom_components.intellicenter.water_heater import PoolWaterHeater
 
 pytestmark = pytest.mark.asyncio
 
@@ -88,6 +93,60 @@ class _CountingClimate(PoolClimate):
         self.state_writes += 1
 
 
+class _CountingWaterHeater(PoolWaterHeater):
+    """Water-heater entity that counts coordinator callbacks and state writes."""
+
+    def __init__(
+        self,
+        coordinator: IntelliCenterCoordinator,
+        pool_object: PoolObject,
+        heater_list: list[str],
+    ) -> None:
+        self.update_invocations = 0
+        self.state_writes = 0
+        super().__init__(coordinator, pool_object, heater_list)
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.update_invocations += 1
+        super()._handle_coordinator_update()
+
+    @callback
+    def async_write_ha_state(self) -> None:
+        self.state_writes += 1
+
+
+class _AttributeDependencyEntity(_CountingPoolEntity):
+    """Entity with one attribute-scoped cross-object dependency."""
+
+    dependency_calls = 0
+
+    def coordinator_update_dependencies(self) -> dict[str, set[str] | None]:
+        """Depend only on DEP.RELEVANT."""
+        self.dependency_calls += 1
+        return {"DEP": {"RELEVANT"}}
+
+
+class _FlakyDependencyEntity(_CountingPoolEntity):
+    """Entity whose dependency resolver can fail and recover."""
+
+    def __init__(
+        self,
+        coordinator: IntelliCenterCoordinator,
+        pool_object: PoolObject,
+    ) -> None:
+        self.dependency_calls = 0
+        self.fail_dependency_resolution = True
+        super().__init__(coordinator, pool_object)
+
+    def coordinator_update_dependencies(self) -> dict[str, set[str] | None]:
+        """Raise until the test enables successful dependency resolution."""
+        self.dependency_calls += 1
+        if self.fail_dependency_resolution:
+            raise RuntimeError("dependency resolution failed")
+        return {"DEP": {"RELEVANT"}}
+
+
 async def _register(hass: HomeAssistant, *entities: PoolEntity) -> None:
     """Register entity coordinator listeners without an entity platform."""
     for entity in entities:
@@ -132,16 +191,103 @@ async def test_selective_dispatch_scaling(
     await _register(hass, interested, *unrelated)
 
     pump.update({"RPM": "2600"})
-    coordinator.async_set_updated_data({"PUMP1": {"RPM": "2600"}})
+    model_iterations = 0
+    original_iter = PoolModel.__iter__
+
+    def _count_model_iterations(model: PoolModel):
+        nonlocal model_iterations
+        model_iterations += 1
+        return original_iter(model)
+
+    with patch.object(PoolModel, "__iter__", _count_model_iterations):
+        coordinator.async_set_updated_data({"PUMP1": {"RPM": "2600"}})
 
     assert interested.update_invocations == 1
     assert sum(entity.update_invocations for entity in unrelated) == 0
+    assert model_iterations == 0
+
+
+async def test_dependency_attributes_are_filtered_from_cached_map(
+    hass: HomeAssistant,
+) -> None:
+    """Dependency callbacks render only relevant attrs without re-resolving maps."""
+    coordinator = _make_coordinator(hass)
+    owner = coordinator.model.add_object(
+        "OWNER",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "GENERIC",
+            "SNAME": "Owner",
+            "STATUS": "OFF",
+        },
+    )
+    dependency = coordinator.model.add_object(
+        "DEP",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "GENERIC",
+            "SNAME": "Dependency",
+            "STATUS": "OFF",
+        },
+    )
+    pump = coordinator.model.add_object(
+        "PUMP1",
+        {
+            "OBJTYP": PUMP_TYPE,
+            "SUBTYP": "VSF",
+            "SNAME": "Pump",
+            "MIN": "450",
+            "MAX": "3450",
+            "MINF": "15",
+            "MAXF": "140",
+        },
+    )
+    pump_circuit = coordinator.model.add_object(
+        "PMPCIRC1",
+        {
+            "OBJTYP": PMPCIRC_TYPE,
+            "PARENT": "PUMP1",
+            "CIRCUIT": "OWNER",
+            "SELECT": "RPM",
+            "SPEED": "2000",
+        },
+    )
+    assert all(obj is not None for obj in (owner, dependency, pump, pump_circuit))
+    assert owner is not None and pump_circuit is not None
+    entity = _AttributeDependencyEntity(coordinator, owner)
+    speed = PumpSpeedNumber(
+        coordinator,
+        pump_circuit,
+        pump_name="Pump",
+        circuit_name="Owner",
+        rpm_min=450,
+        rpm_max=3450,
+        gpm_min=15,
+        gpm_max=140,
+    )
+    mode = PumpModeSelect(coordinator, pump_circuit, "Pump", "Owner")
+    _mark_started(coordinator)
+    await _register(hass, entity)
+
+    assert entity.dependency_calls == 1
+    assert speed.coordinator_update_dependencies() == {}
+    assert mode.coordinator_update_dependencies() == {}
+
+    coordinator.async_set_updated_data({"DEP": {"STATUS": "ON"}})
+    assert entity.update_invocations == 1
+    assert entity.state_writes == 0
+    assert entity.dependency_calls == 1
+
+    coordinator.async_set_updated_data({"DEP": {"RELEVANT": "changed"}})
+    assert entity.update_invocations == 2
+    assert entity.state_writes == 1
+    assert entity.dependency_calls == 1
 
 
 async def test_heater_cool_routes_only_to_dependent_climate(
     hass: HomeAssistant,
 ) -> None:
-    """A heater COOL push refreshes its climate without touching an unrelated entity."""
+    """A heater COOL push refreshes dependents without touching unrelated entities."""
     coordinator = _make_coordinator(hass)
     body = coordinator.model.add_object(
         "POOL1",
@@ -178,15 +324,18 @@ async def test_heater_cool_routes_only_to_dependent_climate(
     )
     assert body is not None and heater is not None and circuit is not None
     climate = _CountingClimate(coordinator, body, ["HTR01"])
+    water_heater = _CountingWaterHeater(coordinator, body, ["HTR01"])
     unrelated = _CountingPoolEntity(coordinator, circuit)
     _mark_started(coordinator)
-    await _register(hass, climate, unrelated)
+    await _register(hass, climate, water_heater, unrelated)
 
     heater.update({"COOL": "ON"})
     coordinator.async_set_updated_data({"HTR01": {"COOL": "ON"}})
 
     assert climate.update_invocations == 1
     assert climate.state_writes == 1
+    assert water_heater.update_invocations == 1
+    assert water_heater.state_writes == 1
     assert unrelated.update_invocations == 0
 
 
@@ -227,6 +376,227 @@ async def test_connection_transitions_broadcast_after_targeted_update(
     coordinator.async_set_connection_state(True)
     assert [entity.update_invocations for entity in entities] == [1, 1, 1]
     assert all(entity.available for entity in entities)
+
+
+async def test_removal_only_update_broadcasts_to_every_entity(
+    hass: HomeAssistant,
+) -> None:
+    """Removal-only structural updates retain a global entity callback fan-out."""
+    coordinator = _make_coordinator(hass)
+    entities: list[_CountingPoolEntity] = []
+    for index in range(3):
+        obj = coordinator.model.add_object(
+            f"C{index:04d}",
+            {
+                "OBJTYP": CIRCUIT_TYPE,
+                "SUBTYP": "GENERIC",
+                "SNAME": f"Circuit {index}",
+                "STATUS": "OFF",
+            },
+        )
+        assert obj is not None
+        entities.append(_CountingPoolEntity(coordinator, obj))
+    removed = coordinator.model.add_object(
+        "REMOVED",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "GENERIC",
+            "SNAME": "Removed",
+            "STATUS": "OFF",
+        },
+    )
+    assert removed is not None
+    _mark_started(coordinator)
+    await _register(hass, *entities)
+
+    coordinator.async_set_updated_data({"C0000": {"STATUS": "ON"}})
+    assert [entity.update_invocations for entity in entities] == [1, 0, 0]
+
+    for entity in entities:
+        entity.update_invocations = 0
+    coordinator.model.remove_object("REMOVED")
+    coordinator.async_set_updated_data({"REMOVED": None})
+    assert [entity.update_invocations for entity in entities] == [1, 1, 1]
+
+
+async def test_dependency_edge_change_broadcasts_and_reindexes(
+    hass: HomeAssistant,
+) -> None:
+    """A heater rewire broadcasts once and targets its new climate afterward."""
+    coordinator = _make_coordinator(hass)
+    pool = coordinator.model.add_object(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SUBTYP": "POOL",
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "HEATER": "HTR01",
+            "HTMODE": "1",
+        },
+    )
+    spa = coordinator.model.add_object(
+        "SPA1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SUBTYP": "SPA",
+            "SNAME": "Spa",
+            "STATUS": "ON",
+            "HEATER": "HTR01",
+            "HTMODE": "1",
+        },
+    )
+    heater = coordinator.model.add_object(
+        "HTR01",
+        {
+            "OBJTYP": HEATER_TYPE,
+            "SUBTYP": "ULTRA",
+            "SNAME": "UltraTemp",
+            "BODY": "POOL1",
+            "COOL": "OFF",
+        },
+    )
+    circuit = coordinator.model.add_object(
+        "C0001",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "GENERIC",
+            "SNAME": "Unrelated",
+            "STATUS": "OFF",
+        },
+    )
+    assert all(obj is not None for obj in (pool, spa, heater, circuit))
+    assert pool is not None and spa is not None and heater is not None
+    assert circuit is not None
+    pool_climate = _CountingClimate(coordinator, pool, [])
+    spa_climate = _CountingClimate(coordinator, spa, [])
+    unrelated = _CountingPoolEntity(coordinator, circuit)
+    _mark_started(coordinator)
+    await _register(hass, pool_climate, spa_climate, unrelated)
+
+    heater.update({"BODY": "SPA1"})
+    coordinator.async_set_updated_data({"HTR01": {"BODY": "SPA1"}})
+    assert [
+        pool_climate.update_invocations,
+        spa_climate.update_invocations,
+        unrelated.update_invocations,
+    ] == [1, 1, 1]
+
+    for entity in (pool_climate, spa_climate, unrelated):
+        entity.update_invocations = 0
+    heater.update({"COOL": "ON"})
+    coordinator.async_set_updated_data({"HTR01": {"COOL": "ON"}})
+    assert [
+        pool_climate.update_invocations,
+        spa_climate.update_invocations,
+        unrelated.update_invocations,
+    ] == [0, 1, 0]
+
+
+async def test_backfill_update_broadcasts_to_every_entity(
+    hass: HomeAssistant,
+) -> None:
+    """A pending object backfill retains a global entity callback fan-out."""
+    coordinator = _make_coordinator(hass)
+    entities: list[_CountingPoolEntity] = []
+    for index in range(2):
+        obj = coordinator.model.add_object(
+            f"C{index:04d}",
+            {
+                "OBJTYP": CIRCUIT_TYPE,
+                "SUBTYP": "GENERIC",
+                "SNAME": f"Circuit {index}",
+                "STATUS": "OFF",
+            },
+        )
+        assert obj is not None
+        entities.append(_CountingPoolEntity(coordinator, obj))
+    _mark_started(coordinator)
+    await _register(hass, *entities)
+
+    pump = coordinator.model.add_object(
+        "PUMP3",
+        {
+            "OBJTYP": PUMP_TYPE,
+            "SUBTYP": "SPEED",
+            "SNAME": "Booster Pump",
+            "STATUS": "10",
+        },
+    )
+    assert pump is not None
+    coordinator.async_set_updated_data({"PUMP3": {"STATUS": "10"}})
+    for entity in entities:
+        entity.update_invocations = 0
+
+    pump.update({"PWR": "850", "RPM": "2400"})
+    coordinator.async_set_updated_data({"PUMP3": {"PWR": "850", "RPM": "2400"}})
+    assert [entity.update_invocations for entity in entities] == [1, 1]
+
+    for entity in entities:
+        entity.update_invocations = 0
+    coordinator.async_set_updated_data({"PUMP3": {"RPM": "2500"}})
+    assert [entity.update_invocations for entity in entities] == [0, 0]
+
+
+async def test_dependency_resolver_failure_falls_back_once_and_recovers(
+    hass: HomeAssistant,
+) -> None:
+    """Resolver failures broadcast safely, log once, and later recover targeting."""
+    coordinator = _make_coordinator(hass)
+    owner = coordinator.model.add_object(
+        "OWNER",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "GENERIC",
+            "SNAME": "Owner",
+            "STATUS": "OFF",
+        },
+    )
+    dependency = coordinator.model.add_object(
+        "DEP",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "GENERIC",
+            "SNAME": "Dependency",
+            "STATUS": "OFF",
+        },
+    )
+    other = coordinator.model.add_object(
+        "OTHER",
+        {
+            "OBJTYP": CIRCUIT_TYPE,
+            "SUBTYP": "GENERIC",
+            "SNAME": "Other",
+            "STATUS": "OFF",
+        },
+    )
+    assert owner is not None and dependency is not None and other is not None
+    entity = _FlakyDependencyEntity(coordinator, owner)
+    _mark_started(coordinator)
+
+    with patch(
+        "custom_components.intellicenter.coordinator._LOGGER.exception"
+    ) as log_exception:
+        await _register(hass, entity)
+        coordinator._async_refresh_object_listener_index()
+        coordinator._async_refresh_object_listener_index()
+        assert log_exception.call_count == 1
+
+        coordinator.async_set_updated_data({"OTHER": {"STATUS": "ON"}})
+        assert entity.update_invocations == 1
+        assert entity.state_writes == 1
+        assert log_exception.call_count == 1
+
+        entity.fail_dependency_resolution = False
+        entity.update_invocations = 0
+        entity.state_writes = 0
+        coordinator.async_set_updated_data({"OTHER": {"STATUS": "OFF"}})
+        assert entity.update_invocations == 0
+
+        coordinator.async_set_updated_data({"DEP": {"RELEVANT": "changed"}})
+        assert entity.update_invocations == 1
+        assert entity.state_writes == 1
+        assert log_exception.call_count == 1
 
 
 async def test_runtime_add_remove_and_reconnect_reconciliation(
@@ -287,14 +657,18 @@ async def test_runtime_add_remove_and_reconnect_reconciliation(
         },
     )
     assert sensor is not None
-    with patch.object(
-        coordinator,
-        "_async_detect_new_objects",
-        wraps=coordinator._async_detect_new_objects,
-    ) as detect:
+    model_iterations = 0
+    original_iter = PoolModel.__iter__
+
+    def _count_model_iterations(model: PoolModel):
+        nonlocal model_iterations
+        model_iterations += 1
+        return original_iter(model)
+
+    with patch.object(PoolModel, "__iter__", _count_model_iterations):
         coordinator.async_set_connection_state(True)
-        detect.assert_called_once_with()
     assert [entity for entity in added if entity._pool_object.objnam == "SENSE2"]
+    assert model_iterations > 0
 
 
 async def test_incomplete_runtime_object_redispatches_on_backfill(

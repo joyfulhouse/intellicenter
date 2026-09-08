@@ -135,6 +135,7 @@ class ObjectUpdateContext:
     """Resolve the pool objects whose updates can affect one entity."""
 
     objnams: Callable[[], set[str]]
+    invalidate: CALLBACK_TYPE
 
 
 # These configuration attributes change the dependency graph itself. They are
@@ -313,8 +314,12 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         )
 
         self._object_update_listeners: dict[str, dict[CALLBACK_TYPE, None]] = {}
+        # ponytail: CoordinatorEntity registers each bound entity callback once,
+        # so callback identity is equivalent to HA's internal listener id here.
         self._object_update_contexts: dict[CALLBACK_TYPE, ObjectUpdateContext] = {}
         self._broadcast_update_listeners: dict[CALLBACK_TYPE, None] = {}
+        self._failed_object_update_listeners: dict[CALLBACK_TYPE, None] = {}
+        self._logged_object_update_failures: set[CALLBACK_TYPE] = set()
 
         self.config_entry = entry
         self._host = host
@@ -396,6 +401,8 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
             removed = True
             self._object_update_contexts.pop(update_callback, None)
             self._broadcast_update_listeners.pop(update_callback, None)
+            self._failed_object_update_listeners.pop(update_callback, None)
+            self._logged_object_update_failures.discard(update_callback)
             for listeners in self._object_update_listeners.values():
                 listeners.pop(update_callback, None)
             remove_listener()
@@ -411,12 +418,16 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         try:
             objnams = context.objnams()
         except Exception:
-            _LOGGER.exception(
-                "Error resolving object dependencies for listener %s",
-                id(update_callback),
-            )
+            if update_callback not in self._logged_object_update_failures:
+                _LOGGER.exception(
+                    "Error resolving object dependencies for listener %s",
+                    id(update_callback),
+                )
+                self._logged_object_update_failures.add(update_callback)
             self._broadcast_update_listeners[update_callback] = None
+            self._failed_object_update_listeners[update_callback] = None
             return
+        self._failed_object_update_listeners.pop(update_callback, None)
         for objnam in objnams:
             self._object_update_listeners.setdefault(objnam, {})[update_callback] = None
 
@@ -425,11 +436,16 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         """Rebuild dependency edges after the pool-model structure changes."""
         self._object_update_listeners.clear()
         for update_callback, context in self._object_update_contexts.items():
+            context.invalidate()
             self._async_index_object_listener(update_callback, context)
 
     @callback
     def _async_update_object_listeners(self, updated_objnams: set[str]) -> None:
         """Notify only listeners interested in the changed pool objects."""
+        for update_callback in tuple(self._failed_object_update_listeners):
+            context = self._object_update_contexts.get(update_callback)
+            if context is not None:
+                self._async_index_object_listener(update_callback, context)
         listeners = dict(self._broadcast_update_listeners)
         for objnam in updated_objnams:
             listeners.update(self._object_update_listeners.get(objnam, {}))

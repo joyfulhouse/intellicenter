@@ -326,12 +326,12 @@ async def test_dependency_attributes_are_filtered_from_cached_map(
     coordinator.async_set_updated_data({"DEP": {"STATUS": "ON"}})
     assert entity.update_invocations == 1
     assert entity.state_writes == 0
-    assert entity.dependency_calls == 2
+    assert entity.dependency_calls == 1
 
     coordinator.async_set_updated_data({"DEP": {"RELEVANT": "changed"}})
     assert entity.update_invocations == 2
     assert entity.state_writes == 1
-    assert entity.dependency_calls == 2
+    assert entity.dependency_calls == 1
 
 
 async def test_pump_limit_updates_refresh_speed_number(

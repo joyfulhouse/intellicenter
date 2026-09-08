@@ -648,9 +648,9 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
         _LOGGER.debug("Mapping %s", pool_object)
 
     async def async_added_to_hass(self) -> None:
-        """Refresh caches primed before coordinator registration."""
-        await super().async_added_to_hass()
+        """Refresh add-time-primeable caches before coordinator registration."""
         self._invalidate_coordinator_update_dependencies()
+        await super().async_added_to_hass()
 
     @property
     def _entry_id(self) -> str:

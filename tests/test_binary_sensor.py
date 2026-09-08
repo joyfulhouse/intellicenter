@@ -460,7 +460,7 @@ async def test_pump_sensor_any_telemetry_above_zero_means_running(
     assert sensor.is_on is expected
 
 
-async def test_pump_sensor_ignores_unparseable_telemetry(
+async def test_pump_sensor_ignores_unparsable_telemetry(
     hass: HomeAssistant,
     pool_object_vsf_pump: PoolObject,
     mock_coordinator: MagicMock,

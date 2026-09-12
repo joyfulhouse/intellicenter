@@ -10,6 +10,7 @@ Control your Pentair IntelliCenter pool system directly from Home Assistant with
 [![Project Maintenance][maintenance-shield]][maintenance]
 [![GitHub Sponsors][sponsors-shield]][sponsors]
 [![Ko-fi][kofi-shield]][kofi]
+[![Built with Omnigent][omnigent-shield]][omnigent]
 
 ## What Does This Integration Do?
 
@@ -525,6 +526,12 @@ We extend our sincere gratitude for their foundational work that made this integ
 
 ---
 
+<p align="center">
+  <a href="https://github.com/omnigent-ai/omnigent"><img src="https://raw.githubusercontent.com/joyfulhouse/.github/main/assets/badges/built-with-omnigent.svg" alt="Built with Omnigent"></a>
+  <br>
+  <sub>Built with <a href="https://github.com/omnigent-ai/omnigent">Omnigent</a> — the open-source AI agent framework and meta-harness.</sub>
+</p>
+
 [releases-shield]: https://img.shields.io/github/v/release/joyfulhouse/intellicenter?style=for-the-badge
 [releases]: https://github.com/joyfulhouse/intellicenter/releases
 [license-shield]: https://img.shields.io/github/license/joyfulhouse/intellicenter?style=for-the-badge
@@ -542,3 +549,5 @@ We extend our sincere gratitude for their foundational work that made this integ
 [sponsors]: https://github.com/sponsors/btli
 [kofi-shield]: https://img.shields.io/badge/Ko--fi-support-FF5E5B.svg?style=for-the-badge&logo=ko-fi&logoColor=white
 [kofi]: https://ko-fi.com/bryanli
+[omnigent-shield]: https://raw.githubusercontent.com/joyfulhouse/.github/main/assets/badges/built-with-omnigent.svg
+[omnigent]: https://github.com/omnigent-ai/omnigent

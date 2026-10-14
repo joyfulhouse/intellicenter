@@ -1,10 +1,14 @@
 """Test the Pentair IntelliCenter binary sensor platform."""
 
-from unittest.mock import MagicMock
+from collections.abc import Generator
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass
-from homeassistant.const import EntityCategory
+from homeassistant.config_entries import ConfigEntryState
+from homeassistant.const import CONF_HOST, EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.setup import async_setup_component
 from pyintellicenter import (
     BODY_TYPE,
     CHEM_TYPE,
@@ -22,11 +26,18 @@ from pyintellicenter import (
     STATUS_ON,
     SYSTEM_TYPE,
     UPDATE_ATTR,
+    ICBaseController,
+    ICCommandError,
+    ICModelController,
+    ICSystemInfo,
+    ICTimeoutError,
     PoolModel,
     PoolObject,
 )
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.intellicenter import async_unload_entry
 from custom_components.intellicenter.binary_sensor import (
     ChemAlertBinarySensor,
     FirmwareUpdateBinarySensor,
@@ -37,12 +48,352 @@ from custom_components.intellicenter.binary_sensor import (
     SystemModeBinarySensor,
     _build_entities,
 )
-from custom_components.intellicenter.const import DNTSTP_ATTR, SINGLE_ATTR
+from custom_components.intellicenter.const import DNTSTP_ATTR, DOMAIN, SINGLE_ATTR
 from custom_components.intellicenter.coordinator import DEFAULT_ATTRIBUTES_MAP
 
 from tests.conftest import ON_OFF_UNKNOWN_CASES
 
 pytestmark = pytest.mark.asyncio
+
+
+@pytest.fixture
+def connection_transport() -> Generator[tuple[AsyncMock, AsyncMock]]:
+    """Mock network operations while keeping library startup/retry/stop real."""
+
+    async def connect(controller: ICBaseController) -> None:
+        controller._connection = MagicMock(connected=True)
+        controller._connection.disconnect = AsyncMock()
+        controller._system_info = ICSystemInfo(
+            "SYS01",
+            {
+                "SNAME": "System",
+                "PROPNAME": "Test Pool",
+                "VER": "3.008",
+                "MODE": "ENGLISH",
+            },
+        )
+
+    with (
+        patch.object(ICBaseController, "start", connect),
+        patch.object(
+            ICModelController, "get_all_objects", new_callable=AsyncMock
+        ) as snapshot,
+        patch.object(ICModelController, "send_cmd", new_callable=AsyncMock) as command,
+    ):
+        snapshot.return_value = []
+        command.return_value = {"objectList": []}
+        yield snapshot, command
+
+
+def _connection_entry(hass: HomeAssistant, suffix: str = "1") -> MockConfigEntry:
+    """Register an independent entry without running a config flow."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=f"Pool {suffix}",
+        unique_id=f"panel-{suffix}",
+        data={CONF_HOST: f"192.0.2.{suffix}"},
+    )
+    entry.add_to_hass(hass)
+    return entry
+
+
+def _connection_id(hass: HomeAssistant, entry: MockConfigEntry) -> str:
+    """Find the sensor through its stable registry identity."""
+    entity_id = er.async_get(hass).async_get_entity_id(
+        "binary_sensor", DOMAIN, f"{entry.entry_id}_connection"
+    )
+    assert entity_id is not None
+    return entity_id
+
+
+async def test_connection_registry_empty_model_two_entries_and_retirement(
+    hass: HomeAssistant, connection_transport: tuple[AsyncMock, AsyncMock]
+) -> None:
+    """Empty models still get complete shared devices and independent observers."""
+    entries = []
+    for suffix in ("1", "2"):
+        entry = _connection_entry(hass, suffix)
+        entries.append(entry)
+        assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    ids = [_connection_id(hass, entry) for entry in entries]
+    assert ids[0] != ids[1]
+    registry = er.async_get(hass)
+    for entry, entity_id in zip(entries, ids, strict=True):
+        sensor = registry.async_get(entity_id)
+        assert sensor is not None
+        assert sensor.original_name == "Connection"
+        assert sensor.entity_category is EntityCategory.DIAGNOSTIC
+        assert sensor.disabled_by is None
+        state = hass.states.get(entity_id)
+        assert state is not None and state.state == "on"
+        assert state.attributes["device_class"] == "connectivity"
+        device = dr.async_get(hass).async_get_device(
+            identifiers={(DOMAIN, entry.entry_id)}
+        )
+        assert device is not None and sensor.device_id == device.id
+        assert (device.manufacturer, device.model, device.name, device.sw_version) == (
+            "Pentair",
+            "IntelliCenter",
+            "Test Pool",
+            "3.008",
+        )
+        coordinator = entry.runtime_data
+        assert len(coordinator._broadcast_update_listeners) == 1
+        # Repeated equipment discovery/removal must not own this observer.
+        for _ in range(2):
+            coordinator.model.add_object(
+                "FRZ01",
+                {
+                    "OBJTYP": CIRCUIT_TYPE,
+                    "SUBTYP": "FRZ",
+                    "SNAME": "Freeze",
+                    "STATUS": "OFF",
+                },
+            )
+            coordinator.async_set_updated_data({"FRZ01": {"STATUS": "OFF"}})
+            await hass.async_block_till_done()
+            equipment_id = registry.async_get_entity_id(
+                "binary_sensor", DOMAIN, f"{entry.entry_id}_FRZ01"
+            )
+            assert equipment_id is not None
+            assert registry.async_get(equipment_id).device_id == device.id
+            coordinator.model.remove_object("FRZ01")
+            coordinator.async_set_updated_data({"FRZ01": None})
+            await hass.async_block_till_done()
+        assert (
+            len(
+                [
+                    e
+                    for e in registry.entities.values()
+                    if e.unique_id == f"{entry.entry_id}_connection"
+                ]
+            )
+            == 1
+        )
+        assert hass.states.get(entity_id).state == "on"
+        assert await hass.config_entries.async_unload(entry.entry_id)
+        await hass.async_block_till_done()
+        assert not coordinator._broadcast_update_listeners
+        coordinator.async_set_connection_state(False)
+        assert hass.states.get(entity_id).state == "unavailable"
+
+
+async def test_connection_states_refresh_and_silent_reconnect(
+    hass: HomeAssistant, connection_transport: tuple[AsyncMock, AsyncMock]
+) -> None:
+    """Connection stays available off; a stale diff cannot hide transitions."""
+    snapshot, command = connection_transport
+    snapshot.return_value = [
+        {
+            "objnam": "FRZ01",
+            "params": {
+                "OBJTYP": CIRCUIT_TYPE,
+                "SUBTYP": "FRZ",
+                "SNAME": "Freeze",
+                "STATUS": "OFF",
+            },
+        }
+    ]
+    entry = _connection_entry(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    entity_id = _connection_id(hass, entry)
+    equipment_id = er.async_get(hass).async_get_entity_id(
+        "binary_sensor", DOMAIN, f"{entry.entry_id}_FRZ01"
+    )
+    assert equipment_id is not None
+    coordinator = entry.runtime_data
+    coordinator.async_set_updated_data({"OTHER": {"STATUS": "ON"}})
+    health = coordinator.last_update_success
+    requests = command.await_count
+    assert await async_setup_component(hass, "homeassistant", {})
+    with patch.object(
+        coordinator, "async_request_refresh", new_callable=AsyncMock
+    ) as refresh:
+        await hass.services.async_call(
+            "homeassistant", "update_entity", {"entity_id": entity_id}, blocking=True
+        )
+        refresh.assert_not_awaited()
+    assert coordinator.last_update_success is health
+    assert command.await_count == requests
+    assert hass.states.get(equipment_id).state == "off"
+    coordinator._handler._is_connected = False
+    coordinator._controller._connection = None
+    coordinator._handler.on_disconnected(coordinator.controller, None)
+    assert hass.states.get(entity_id).state == "off"
+    assert hass.states.get(equipment_id).state == "unavailable"
+    # Transport live during backfill, before on_reconnected / handler flag.
+    coordinator._controller._connection = MagicMock(
+        connected=True, disconnect=AsyncMock()
+    )
+    coordinator.async_set_updated_data({"OTHER": {"STATUS": "OFF"}})
+    assert coordinator._handler._is_connected is False
+    assert hass.states.get(entity_id).state == "on"
+    coordinator._handler._is_connected = True
+    coordinator._handler.on_reconnected(coordinator.controller)
+    assert hass.states.get(entity_id).state == "on"
+    assert hass.states.get(equipment_id).state == "off"
+    assert command.await_count == requests
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [ICCommandError("rejected"), ICTimeoutError("timed out")],
+    ids=["rejected", "timeout"],
+)
+async def test_connection_failed_partial_reconnect_publishes_off_before_wait(
+    hass: HomeAssistant,
+    connection_transport: tuple[AsyncMock, AsyncMock],
+    failure: Exception,
+) -> None:
+    """Exercise real model rollback and retry callbacks, with no injected disconnect."""
+    snapshot, command = connection_transport
+    snapshot.return_value = [
+        {
+            "objnam": "OLD",
+            "params": {
+                "OBJTYP": CIRCUIT_TYPE,
+                "SUBTYP": "FRZ",
+                "SNAME": "Old",
+                "STATUS": "OFF",
+            },
+        }
+    ]
+    entry = _connection_entry(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    entity_id = _connection_id(hass, entry)
+    coordinator = entry.runtime_data
+    handler = coordinator._handler
+    handler._is_connected = False
+    coordinator.controller._connection = None
+    # Leave the last published on state until the original delay/debounce runs.
+    snapshot.return_value = [
+        {"objnam": "SYS01", "params": {"OBJTYP": SYSTEM_TYPE, "SNAME": "System"}}
+    ]
+    early_states = []
+
+    async def reject_monitoring(*args, **kwargs):
+        early_states.append(hass.states.get(entity_id).state)
+        assert coordinator.connected is True
+        assert handler._is_connected is False
+        raise failure
+
+    command.side_effect = reject_monitoring
+
+    class RetryWait(BaseException):
+        """Stop the real starter at its second failed-attempt retry wait."""
+
+    waits = []
+
+    async def retry_sleep(delay):
+        waits.append((delay, hass.states.get(entity_id).state))
+        if len(waits) == 1:
+            assert waits[-1] == (30, "on")  # original delay does not advance debounce
+            return
+        assert coordinator.connected is False
+        assert hass.states.get(entity_id).state == "off"
+        if len(waits) == 3:
+            raise RetryWait
+
+    try:
+        with patch("pyintellicenter.controller.asyncio.sleep", retry_sleep):
+            with pytest.raises(RetryWait):
+                await handler._starter(30)
+        assert early_states == ["on", "off"]
+        assert [state for _, state in waits] == ["on", "off", "off"]
+        assert hass.states.get(entity_id).state == "off"
+        command.side_effect = None
+        await handler._starter(0)
+        assert coordinator.connected is True
+        assert handler._failure_count == 0
+        assert hass.states.get(entity_id).state == "on"
+    finally:
+        await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_connection_registry_choices_reload_and_failed_unload(
+    hass: HomeAssistant, connection_transport: tuple[AsyncMock, AsyncMock]
+) -> None:
+    """Names/disable choices persist; subscriptions follow successful unload only."""
+    entry = _connection_entry(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    entity_id = _connection_id(hass, entry)
+    registry = er.async_get(hass)
+    coordinator = entry.runtime_data
+    with patch.object(
+        hass.config_entries, "async_unload_platforms", return_value=False
+    ):
+        assert not await async_unload_entry(hass, entry)
+    assert len(coordinator._broadcast_update_listeners) == 1
+    assert coordinator._handler._stopped is False
+    coordinator._handler._is_connected = False
+    coordinator.controller._connection = None
+    coordinator._handler.on_disconnected(coordinator.controller, None)
+    assert hass.states.get(entity_id).state == "off"
+    registry.async_update_entity(
+        entity_id, name="My panel link", disabled_by=er.RegistryEntryDisabler.USER
+    )
+    await hass.async_block_till_done()
+    assert not coordinator._broadcast_update_listeners
+    # Reload uses a new coordinator without changing the identity or choices.
+    hass.config_entries.async_update_entry(
+        entry, data={CONF_HOST: "192.0.2.99", "transport": "websocket"}
+    )
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    new_coordinator = entry.runtime_data
+    assert new_coordinator is not coordinator
+    assert _connection_id(hass, entry) == entity_id
+    assert registry.async_get(entity_id).name == "My panel link"
+    assert registry.async_get(entity_id).disabled_by is er.RegistryEntryDisabler.USER
+    assert not new_coordinator._broadcast_update_listeners
+    registry.async_update_entity(entity_id, disabled_by=None)
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert len(entry.runtime_data._broadcast_update_listeners) == 1
+    assert hass.states.get(entity_id).attributes["friendly_name"] == "My panel link"
+    coordinator.async_set_connection_state(False)
+    assert hass.states.get(entity_id).state == "on"
+    active_coordinator = entry.runtime_data
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert not active_coordinator._broadcast_update_listeners
+
+
+async def test_connection_startup_and_reload_failure_do_not_fabricate_off(
+    hass: HomeAssistant, connection_transport: tuple[AsyncMock, AsyncMock]
+) -> None:
+    """Failed setup has no new observer; a registered observer becomes unavailable."""
+    entry = _connection_entry(hass)
+    with patch.object(ICBaseController, "start", side_effect=ICTimeoutError("offline")):
+        assert not await hass.config_entries.async_setup(entry.entry_id)
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+    assert (
+        er.async_get(hass).async_get_entity_id(
+            "binary_sensor", DOMAIN, f"{entry.entry_id}_connection"
+        )
+        is None
+    )
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    entity_id = _connection_id(hass, entry)
+    assert hass.states.get(entity_id).state == "on"
+    coordinator = entry.runtime_data
+    with patch.object(ICBaseController, "start", side_effect=ICTimeoutError("offline")):
+        assert not await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+    assert hass.states.get(entity_id).state == "unavailable"
+    assert not coordinator._broadcast_update_listeners
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert _connection_id(hass, entry) == entity_id
+    assert hass.states.get(entity_id).state == "on"
+    assert await hass.config_entries.async_unload(entry.entry_id)
 
 
 async def test_schedule_attributes_are_tracked() -> None:

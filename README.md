@@ -148,6 +148,72 @@ After setup, configure connection settings:
   the pump is off — the Last Temp value latches the last circulating temperature,
   so it stays accurate while the pump is idle.
 
+### Connection Status
+
+Each successfully loaded IntelliCenter integration has an enabled diagnostic
+**Connection** binary sensor on its existing device. Home Assistant displays
+Connected (`on`) when the integration observes a live local transport, and
+Disconnected (`off`) when it observes a lost connection. The sensor stays
+available during a known disconnection so automations can use `off`.
+
+This measures the detected transport connection, not panel power or complete
+equipment/model synchronization. It can report `on` during reconnect backfill
+before initialization finishes; if initialization fails, it returns to `off`
+before the next retry wait. A network problem can look like a panel outage.
+No extra polling or keepalive requests are added, and outage detection is no
+faster than the integration's existing connection handling.
+
+For an otherwise quiet connection with default settings, a silent network loss
+may take roughly **225-315 seconds** to be detected and published, including
+keepalive timeouts and disconnect debounce. This is an estimate, not an SLA or
+maximum: request contention, traffic, and connection settings can change the
+delay. Short interruptions can be suppressed by the existing debounce.
+
+During Home Assistant startup/restart, or an integration reload that cannot
+connect, the registered sensor is **unavailable**, not a fabricated `off`.
+A first setup failure creates no new sensor until setup succeeds. Unavailable
+means the integration cannot currently provide the observation; it does not
+prove the panel is powered off. A last-response timestamp is not provided.
+
+The example below handles sustained `off` and `unavailable` separately. Replace
+`binary_sensor.your_pool_connection` with your entity ID. The five-minute hold
+starts after the state is published, adding to detection time. Home Assistant
+state-trigger `for` timers reset on Home Assistant restart or automation reload;
+integration reload can also interrupt a continuous `off` hold by changing the
+state to `unavailable`. These timers do not persist across restarts. If you need
+an alert deadline that survives restarts, store it separately (for example, in
+an `input_datetime`) and check it after startup.
+
+```yaml
+automation:
+  - alias: "Pool: Connection observation missing"
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.your_pool_connection
+        to: "off"
+        for: "00:05:00"
+        id: disconnected
+      - trigger: state
+        entity_id: binary_sensor.your_pool_connection
+        to: "unavailable"
+        for: "00:05:00"
+        id: unavailable
+    actions:
+      - choose:
+          - conditions: "{{ trigger.id == 'disconnected' }}"
+            sequence:
+              - action: persistent_notification.create
+                data:
+                  title: "Pool connection lost"
+                  message: "IntelliCenter's detected connection has been off for five minutes. Check the panel and network."
+          - conditions: "{{ trigger.id == 'unavailable' }}"
+            sequence:
+              - action: persistent_notification.create
+                data:
+                  title: "Pool connection status unavailable"
+                  message: "The integration has not provided connection status for five minutes. Check Home Assistant setup and the network; this does not prove a panel outage."
+```
+
 ## Automation Examples
 
 ### Color Sync for a GloBrite Light Group

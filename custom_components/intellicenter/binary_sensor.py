@@ -20,7 +20,9 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from pyintellicenter import (
     ACT_ATTR,
     BODY_ATTR,
@@ -61,7 +63,7 @@ from . import (
     async_setup_pool_entities,
     protocol_on_off,
 )
-from .const import CHEM_CONTROLLER_SUBTYPE, DNTSTP_ATTR, SINGLE_ATTR
+from .const import CHEM_CONTROLLER_SUBTYPE, DNTSTP_ATTR, DOMAIN, SINGLE_ATTR
 from .coordinator import IntelliCenterCoordinator
 from .sensor import normalize_system_mode
 
@@ -189,10 +191,52 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Load pool binary sensors based on a config entry."""
+    async_add_entities([ConnectionBinarySensor(entry.runtime_data)])
     async_setup_pool_entities(entry, async_add_entities, _build_entities)
 
 
 # -------------------------------------------------------------------------------------
+
+
+class ConnectionBinarySensor(
+    CoordinatorEntity[IntelliCenterCoordinator], BinarySensorEntity
+):
+    """Observe the local transport independently of equipment availability."""
+
+    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_has_entity_name = True
+    _attr_translation_key = "connection"
+
+    def __init__(self, coordinator: IntelliCenterCoordinator) -> None:
+        """Subscribe to the existing coordinator's broadcasts."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_connection"
+
+    @property
+    def available(self) -> bool:
+        """A known disconnection is still an available observation."""
+        return True
+
+    @property
+    def is_on(self) -> bool:
+        """Return whether the handler observes a live connection."""
+        return self.coordinator.connected
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Describe the shared device even when no equipment was discovered."""
+        system_info = self.coordinator.system_info
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
+            manufacturer="Pentair",
+            model="IntelliCenter",
+            name=system_info.prop_name if system_info else "IntelliCenter",
+            sw_version=system_info.sw_version if system_info else None,
+        )
+
+    async def async_update(self) -> None:
+        """Keep manual refresh local; this push observer makes no requests."""
 
 
 class PoolBinarySensor(PoolEntity, BinarySensorEntity):

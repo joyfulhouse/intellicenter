@@ -975,6 +975,17 @@ class _CoordinatorConnectionHandler(ICConnectionHandler):
         self._coordinator.async_set_connection_state(True)
 
     @callback
+    def on_retrying(self, delay: int) -> None:
+        """Publish a failed reconnect's teardown before its retry wait."""
+        super().on_retrying(delay)
+        # A partial backfill can publish connected before start() fails. The
+        # library tears that transport down without a disconnect callback.
+        # Its failure counter distinguishes this from the initial retry delay,
+        # which must keep the existing disconnect debounce.
+        if self._coordinator._started and self._failure_count and not self.connected:
+            self._coordinator.async_set_connection_state(False)
+
+    @callback
     def on_disconnected(
         self, controller: ICBaseController, exc: Exception | None
     ) -> None:

@@ -205,7 +205,9 @@ async def test_connection_states_refresh_and_silent_reconnect(
     assert equipment_id is not None
     coordinator = entry.runtime_data
     coordinator.async_set_updated_data({"OTHER": {"STATUS": "ON"}})
-    health = coordinator.last_update_success
+    coordinator.last_update_success = False
+    coordinator.async_update_listeners()
+    assert hass.states.get(entity_id).state == "on"
     requests = command.await_count
     assert await async_setup_component(hass, "homeassistant", {})
     with patch.object(
@@ -215,12 +217,14 @@ async def test_connection_states_refresh_and_silent_reconnect(
             "homeassistant", "update_entity", {"entity_id": entity_id}, blocking=True
         )
         refresh.assert_not_awaited()
-    assert coordinator.last_update_success is health
+    assert coordinator.last_update_success is False
+    assert hass.states.get(entity_id).state == "on"
     assert command.await_count == requests
     assert hass.states.get(equipment_id).state == "off"
     coordinator._handler._is_connected = False
     coordinator._controller._connection = None
     coordinator._handler.on_disconnected(coordinator.controller, None)
+    assert coordinator.last_update_success is False
     assert hass.states.get(entity_id).state == "off"
     assert hass.states.get(equipment_id).state == "unavailable"
     # Transport live during backfill, before on_reconnected / handler flag.

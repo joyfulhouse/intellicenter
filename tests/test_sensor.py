@@ -868,6 +868,10 @@ async def test_system_mode_sensor_enum_contract(
         ("auto", "auto"),
         ("SERVICE", "service"),
         ("Service", "service"),
+        # Hardware protocol spelling: IntelliCenter reports indefinite
+        # service mode as "MANUAL", not "SERVICE".
+        ("MANUAL", "service"),
+        ("manual", "service"),
         ("TIMEOUT", "timeout"),
         ("TIME OUT", "timeout"),
         ("Time Out", "timeout"),

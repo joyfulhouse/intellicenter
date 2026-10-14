@@ -1045,6 +1045,8 @@ async def test_system_mode_binary_sensor_not_created_without_service(
         ("auto", False),
         ("SERVICE", True),
         ("Service", True),
+        ("MANUAL", True),  # hardware protocol spelling for indefinite service
+        ("manual", True),
         ("TIMOUT", True),  # hardware protocol spelling (issue #80)
         ("TIMEOUT", True),
         ("Time Out", True),

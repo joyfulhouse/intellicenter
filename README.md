@@ -453,6 +453,7 @@ If you're still having issues:
 
 ## Known Limitations
 
+- **IntelliVibe Lighting**: IntelliVibe devices are app/cloud-only and are not exposed on the local IntelliCenter protocol, so they cannot be integrated. This is consistent across open-source IntelliCenter projects (see [#114](https://github.com/joyfulhouse/intellicenter/issues/114)).
 - **Equipment Coverage**: Tested primarily with standard configurations. Some equipment may have limited testing.
 - **Unit Changes**: Reload integration after changing metric/imperial on IntelliCenter.
 - **Configuration Changes**: Reload integration after significant pool configuration changes.

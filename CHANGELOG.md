@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.12.0b1] - 2026-10-15
+
+### Added
+
+- **Connection status sensor** (#178, #180) - An enabled diagnostic binary sensor reports the observed local transport connection. It stays available during a detected disconnection; startup/setup failures remain unavailable. This measures transport connectivity, not panel power or complete model synchronization.
+
+### Fixed
+
+- **Manual service mode** (#177) - Map the panel's `SYSTEM SERVICE=MANUAL` value to `service`, so System Mode and the Not in Auto problem sensor correctly reflect maintenance mode.
+
+### Changed
+
+- **Requires pyintellicenter >= 0.2.3** - Includes the released fixes for notification overflow ordering, retries after transient dynamic subscription failures, and bounded request/keepalive waits.
+- This beta is intended for hardware validation of service mode, connection loss/recovery, and the updated protocol library before a stable integration release.
+
 ## [3.11.1] - 2026-09-08
 
 ### Changed

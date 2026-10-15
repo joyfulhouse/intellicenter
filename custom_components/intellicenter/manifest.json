@@ -11,9 +11,9 @@
   "issue_tracker": "https://github.com/joyfulhouse/intellicenter/issues",
   "quality_scale": "platinum",
   "requirements": [
-    "pyintellicenter>=0.2.2"
+    "pyintellicenter>=0.2.3"
   ],
-  "version": "3.11.1",
+  "version": "3.12.0b1",
   "zeroconf": [
     {
       "type": "_http._tcp.local.",

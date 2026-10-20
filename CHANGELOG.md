@@ -7,8 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.12.0b2] - 2026-10-20
+
+### Added
+
+- Separate guarded manual-priority (MANOVR) control and optional read-only advanced-setting diagnostics (#190).
+- Read-only freeze, cover, and unresolved restriction context for operational equipment (#191).
+- Staged sensor calibration numbers with explicit temperature-delta conversion and verified readback (#192). Hardware support remains empty; no calibration controls are activated.
+
+### Changed
+
+- Pin the beta to pyintellicenter 0.3.0b1 so installations exercise the reviewed library APIs and lifecycle changes.
+- Firmware installation, group commissioning, unverified calibration, and broader light actions remain disabled pending device evidence.
+
 ### Fixed
 
+- Invalidate advanced settings immediately on disconnect, including fast reconnects that bypass the delayed announcement (#193).
+- Reject stale calibration responses across newer observations or reconnects, while recognizing fresh unchanged offsets (#192).
 - **Heater activity display** (#182) - Preserve the selected gas/heater operation while showing panel-reported activity through a dynamic icon and an always-present `heating_status` attribute (`heating`, `idle`, `off`, `unknown`, or `cooling` for an assigned cooling heater). Missing or malformed activity telemetry no longer claims heating. Dashboards can show mode and activity separately; automations that tested for an absent `heating_status` should now test for `off`.
 
 ## [3.12.0b1] - 2026-10-15

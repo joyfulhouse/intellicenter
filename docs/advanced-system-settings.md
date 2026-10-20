@@ -47,8 +47,13 @@ connection loss and cancellation. No new library release is required.
 A command acknowledgement completes the service, but the entity retains its
 last readback until a subscribed panel update arrives. There is no optimistic
 state or automatic replay. New advanced-setting values are invalidated on
-disconnect: reconnect must supply fresh state rather than reusing a surviving
-object's cached capability. Setup and reconnect only read/subscribe.
+the immediate handler disconnect callback, before reconnect can start. This
+also covers quick reconnects that cancel the debounced disconnect announcement.
+Invalidation does not emit an early availability broadcast or clear unrelated
+fields (including calibration); the existing disconnect debounce stays intact.
+Reconnect must supply fresh state rather than reusing a surviving object's
+cached capability. Fresh subscription readback is not cleared by the successful
+reconnect announcement. Setup and reconnect only read/subscribe.
 
 ## Evidence and Remaining Gates
 

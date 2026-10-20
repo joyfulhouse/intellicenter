@@ -217,12 +217,25 @@ def _capture_listener(
     """
     state: dict[str, Any] = {"listener": None, "removed_listener": None, "added": []}
 
+    listeners: list[Any] = []
+    removed_listeners: list[Any] = []
+
+    def _dispatch(objects: Any) -> None:
+        for listener in tuple(listeners):
+            listener(objects)
+
+    def _dispatch_removed(objects: Any) -> None:
+        for listener in tuple(removed_listeners):
+            listener(objects)
+
     def _register(listener: Any) -> Any:
-        state["listener"] = listener
+        listeners.append(listener)
+        state["listener"] = _dispatch
         return MagicMock()
 
     def _register_removed(listener: Any) -> Any:
-        state["removed_listener"] = listener
+        removed_listeners.append(listener)
+        state["removed_listener"] = _dispatch_removed
         return MagicMock()
 
     mock_coordinator.async_add_new_objects_listener = MagicMock(side_effect=_register)

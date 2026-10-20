@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 import logging
+import re
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -96,6 +97,7 @@ from pyintellicenter import (
     ICConnectionHandler,
     ICModelController,
     ICSystemInfo,
+    ObjectEntry,
     PoolModel,
     PoolObject,
 )
@@ -256,7 +258,7 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
         SPEED_ATTR,  # RPM setpoint when SELECT=RPM
         GPM_ATTR,  # GPM setpoint when SELECT=GPM
     },
-    SENSE_TYPE: {SNAME_ATTR, SOURCE_ATTR, PROBE_ATTR, CALIB_ATTR},
+    SENSE_TYPE: {SNAME_ATTR, SOURCE_ATTR, PROBE_ATTR, CALIB_ATTR, STATUS_ATTR},
     SCHED_TYPE: {
         SNAME_ATTR,
         STATUS_ATTR,
@@ -344,6 +346,10 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         self._failed_object_update_listeners: dict[CALLBACK_TYPE, None] = {}
         self._logged_object_update_failures: set[CALLBACK_TYPE] = set()
         self._structural_refresh = False
+        self._calibration_generation = 0
+        self._calibration_sequence = 0
+        self._calibration_revisions: dict[str, int] = {}
+        self._calibration_context_revision = 0
 
         self.config_entry = entry
         self._host = host
@@ -356,9 +362,10 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         self.restrictions = RestrictionIndex(self._model)
 
         # Create the controller
-        self._controller = ICModelController(
+        self._controller = _CoordinatorModelController(
             host,
             self._model,
+            coordinator=self,
             keepalive_interval=keepalive_interval,
             transport=transport,
         )
@@ -524,6 +531,26 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         """
         return self._handler.connected
 
+    def calibration_revision(self, objnam: str) -> tuple[int, int, int]:
+        """Identify the connection, target readback and panel-unit revision."""
+        return (
+            self._calibration_generation,
+            self._calibration_revisions.get(objnam, 0),
+            self._calibration_context_revision,
+        )
+
+    def calibration_is_fresh(self, objnam: str) -> bool:
+        """Require explicit CALIB delivery after the initial connection is lost."""
+        return self.connected and (
+            self._calibration_generation == 0 or objnam in self._calibration_revisions
+        )
+
+    @callback
+    def async_invalidate_calibration(self) -> None:
+        """Invalidate pending reads and cached calibration before reconnect starts."""
+        self._calibration_generation += 1
+        self._calibration_revisions.clear()
+
     async def async_start(self) -> None:
         """Start the connection to the IntelliCenter."""
 
@@ -564,6 +591,7 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         ``async_unload_entry`` cannot complete - and a reload cannot reconnect
         - over a connection that is still closing.
         """
+        self.async_invalidate_calibration()
         # Cancel stop listener
         if self._stop_listener:
             self._stop_listener()
@@ -642,6 +670,22 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
 
         return _remove_listener
 
+    @staticmethod
+    def _redispatch_value_ready(obj: PoolObject, key: str) -> bool:
+        """Retry unusable probe and manual-priority values until supported."""
+        value = obj[key]
+        if key == MANOVR_ATTR:
+            return manual_priority_supported(value)
+        if obj.objtype == SENSE_TYPE:
+            if key == STATUS_ATTR:
+                return bool(value == "OK")
+            if key == PROBE_ATTR:
+                return type(value) is int or (
+                    isinstance(value, str)
+                    and re.fullmatch(r"[+-]?[0-9]+", value.strip()) is not None
+                )
+        return bool(value)
+
     @callback
     def _seed_redispatch_bookkeeping(
         self, obj: PoolObject, *, only_if_deferred: bool = False
@@ -651,10 +695,7 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         completeness_keys = tracked_keys - _SLOTTED_ATTRS
         seen_keys = set(obj.attribute_keys) & tracked_keys
         pending_truthy_keys = {
-            key
-            for key in seen_keys
-            if not obj[key]
-            or (key == MANOVR_ATTR and not manual_priority_supported(obj[key]))
+            key for key in seen_keys if not self._redispatch_value_ready(obj, key)
         }
         if only_if_deferred and not (
             completeness_keys - seen_keys or pending_truthy_keys
@@ -794,16 +835,14 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
             became_truthy = {
                 key
                 for key in arrived_keys & pending_truthy_keys
-                if obj[key]
-                and (key != MANOVR_ATTR or manual_priority_supported(obj[key]))
+                if self._redispatch_value_ready(obj, key)
             }
             if new_keys or became_truthy:
                 seen_keys.update(arrived_keys)
                 pending_truthy_keys.update(
                     key
                     for key in new_keys
-                    if not obj[key]
-                    or (key == MANOVR_ATTR and not manual_priority_supported(obj[key]))
+                    if not self._redispatch_value_ready(obj, key)
                 )
                 pending_truthy_keys.difference_update(became_truthy)
                 ready_objnams.add(objnam)
@@ -879,6 +918,21 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         changes: dict[str, dict[str, Any]] = {
             objnam: attrs for objnam, attrs in data.items() if attrs is not None
         }
+        # Record revisions before discovery/listener fan-out, including when a
+        # number is disabled or has not yet registered a coordinator listener.
+        for objnam, attrs in data.items():
+            obj = self._model[objnam]
+            if attrs is None:
+                self._calibration_revisions.pop(objnam, None)
+            elif obj is not None:
+                if obj.objtype == SENSE_TYPE and CALIB_ATTR in attrs:
+                    self._calibration_sequence += 1
+                    if self.connected:
+                        self._calibration_revisions[objnam] = self._calibration_sequence
+                elif (
+                    obj.objtype == SYSTEM_TYPE and {MODE_ATTR, VER_ATTR} & attrs.keys()
+                ):
+                    self._calibration_context_revision += 1
         if removed:
             self._async_remove_objects(removed)
 
@@ -964,6 +1018,7 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         the connection was down.
         """
         if not connected:
+            self.async_invalidate_calibration()
             self.async_invalidate_advanced_settings()
         # A reconnect re-fetches the full object list into the model; surface any
         # equipment that was added while the connection was down.
@@ -980,6 +1035,53 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         self.data = {}
         # Notify all listeners of the connection state change
         self.async_update_listeners()
+
+
+class _CoordinatorModelController(ICModelController):
+    """Retain explicit CALIB observations suppressed by library diff filtering."""
+
+    def __init__(
+        self,
+        host: str,
+        model: PoolModel,
+        *,
+        coordinator: IntelliCenterCoordinator,
+        keepalive_interval: int,
+        transport: TransportType,
+    ) -> None:
+        super().__init__(
+            host, model, keepalive_interval=keepalive_interval, transport=transport
+        )
+        self._coordinator = coordinator
+
+    def _apply_updates(
+        self, changes_as_list: list[ObjectEntry]
+    ) -> dict[str, dict[str, Any]]:
+        updates = super()._apply_updates(changes_as_list)
+        observed: dict[str, dict[str, Any]] = {}
+        # Keep the library's tolerance for malformed wire entries.
+        raw_entries: list[Any] = changes_as_list
+        for entry in raw_entries:
+            if not isinstance(entry, dict):
+                continue
+            objnam, params = entry.get("objnam"), entry.get("params")
+            if not isinstance(objnam, str) or not isinstance(params, dict):
+                continue
+            sensor = self._model[objnam]
+            if (
+                sensor is not None
+                and sensor.objtype == SENSE_TYPE
+                and CALIB_ATTR in params
+                and CALIB_ATTR not in updates.get(objnam, {})
+                and type(params[CALIB_ATTR]) is type(sensor[CALIB_ATTR])
+                and params[CALIB_ATTR] == sensor[CALIB_ATTR]
+            ):
+                observed[objnam] = {CALIB_ATTR: sensor[CALIB_ATTR]}
+        if observed:
+            # Reconnect may deliver exactly the previous offset. A numeric diff
+            # is not required for freshness or to fence an in-flight older read.
+            self._coordinator.async_set_updated_data(observed)
+        return updates
 
 
 class _CoordinatorConnectionHandler(ICConnectionHandler):
@@ -1005,8 +1107,9 @@ class _CoordinatorConnectionHandler(ICConnectionHandler):
     def _on_disconnect(
         self, controller: ICBaseController, exc: Exception | None
     ) -> None:
-        """Invalidate cached settings even when reconnect cancels the debounce."""
+        """Invalidate both settings lifecycles before debounced reconnect events."""
         if not self._stopped:
+            self._coordinator.async_invalidate_calibration()
             self._coordinator.async_invalidate_advanced_settings()
         super()._on_disconnect(controller, exc)
 

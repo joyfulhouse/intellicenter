@@ -78,6 +78,7 @@ from .const import (
     PRIMTIM_ATTR,
 )
 from .coordinator import IntelliCenterCoordinator
+from .sensor_calibration import build_calibration_entities
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -481,6 +482,9 @@ async def async_setup_entry(
     async_setup_pool_entities(
         entry, async_add_entities, _build_entities, retire_dependents=True
     )
+    # Calibration eligibility includes live probe health, so use the ordinary
+    # own-object lifecycle rather than dependent retirement's stable predicates.
+    async_setup_pool_entities(entry, async_add_entities, build_calibration_entities)
 
 
 # -------------------------------------------------------------------------------------

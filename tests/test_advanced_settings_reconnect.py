@@ -148,6 +148,8 @@ async def test_fast_reconnect_retains_objects_without_retaining_advanced_state(
             ]
             assert len(sensors) == 8
             assert switch.available and switch.is_on is True
+            assert coordinator.calibration_is_fresh("SENSOR")
+            before_calibration = coordinator.calibration_revision("SENSOR")
             circuit = PoolCircuit(coordinator, retained["CIRCUIT"])
             assert circuit.is_on is True
             context = circuit.extra_state_attributes["restriction_context"]
@@ -164,6 +166,8 @@ async def test_fast_reconnect_retains_objects_without_retaining_advanced_state(
                 assert all(retained[objnam][key] is None for key in params)
             assert switch.is_on is None
             assert not switch.available
+            assert not coordinator.calibration_is_fresh("SENSOR")
+            assert coordinator.calibration_revision("SENSOR") != before_calibration
             assert all(e.native_value is None for e in sensors)
             context = circuit.extra_state_attributes["restriction_context"]
             assert context["reasons"] == []
@@ -182,6 +186,9 @@ async def test_fast_reconnect_retains_objects_without_retaining_advanced_state(
                 assert coordinator.model[objnam] is obj
             assert retained["SYSTEM"]["MANHT"] == "ON"
             assert retained["SENSOR"]["CALIB"] == "2"
+            # Explicit identical CALIB survives the real reconnect backfill even
+            # while the independent advanced-settings readback may be omitted.
+            assert coordinator.calibration_is_fresh("SENSOR")
             context = circuit.extra_state_attributes["restriction_context"]
             assert context["state"] == "active"
             assert context["reasons"][0]["code"] == "freeze_protection_context"

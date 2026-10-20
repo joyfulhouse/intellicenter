@@ -162,6 +162,15 @@
     },
     "unknown_light_effect": {
       "message": "Запрошенный световой эффект не поддерживается этим светильником IntelliCenter."
+    },
+    "calibration_unavailable": {
+      "message": "Calibration is unavailable for this sensor, firmware or panel unit. Check the connection and sensor readback."
+    },
+    "invalid_calibration": {
+      "message": "Enter an offset within the verified limits and step shown for this sensor."
+    },
+    "calibration_unconfirmed": {
+      "message": "The calibration write was sent, but stored CALIB readback was not confirmed. Check the panel before retrying."
     }
   }
 }

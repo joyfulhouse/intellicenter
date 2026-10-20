@@ -283,6 +283,7 @@ async def test_initial_setup_skips_complete_truthy_object_bookkeeping(
         "OBJTYP": PUMP_TYPE,
         "SUBTYP": "VSF",
         **dict.fromkeys(non_slotted_tracked, "1"),
+        "MANOVR": "OFF",  # A complete object needs recognized priority readback.
     }
     assert coordinator.model.add_object(PUMP_OBJNAM, initial) is not None
 
@@ -303,6 +304,7 @@ async def test_runtime_seeding_tracks_only_deferred_objects_until_removal(
         "OBJTYP": PUMP_TYPE,
         "SUBTYP": "VSF",
         **dict.fromkeys(non_slotted_tracked, "1"),
+        "MANOVR": "OFF",  # A complete object needs recognized priority readback.
     }
     complete_objnam = "PUMP_COMPLETE"
     assert coordinator.model.add_object(complete_objnam, complete_params) is not None
@@ -345,6 +347,7 @@ async def test_initial_setup_prunes_resolved_bookkeeping(
         "OBJTYP": PUMP_TYPE,
         "SUBTYP": "VSF",
         **dict.fromkeys(non_slotted_tracked, "1"),
+        "MANOVR": "OFF",  # A complete object needs recognized priority readback.
         "PWR": "",
     }
     obj = coordinator.model.add_object(PUMP_OBJNAM, initial)

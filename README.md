@@ -140,6 +140,23 @@ After setup, configure connection settings:
 | **System** | Switch, Binary Sensor, Sensors | Vacation mode, freeze protection, temperatures, System Mode (`auto`/`service`/`timeout`), "Not in Auto" problem indicator, firmware advisories (a Repairs warning is raised for firmware with documented issues, e.g. the pulled 2.x line) |
 | **Covers** | Cover | Pool cover position (`POSIT`) and open/close; availability follows the panel connection (STATUS never hides the entity); older firmware without position reporting shows unknown |
 
+### Advanced System Settings
+
+The **Manual operation priority** configuration switch controls `MANOVR` when
+one tracked panel object reports a recognized `ON`/`OFF` value. **Spa Manual
+Heat** remains a separate `MANHT` switch with its existing entity identity.
+Unknown or ambiguous priority state disables writes; a write acknowledgement
+alone does not change the displayed state.
+
+Optional diagnostic sensors show the reported clock source/format/DST setting,
+panel time-zone offset, persistent pump-valve/pump-heater delay settings, and
+solar-relay settings. Enable them from the entity list when needed. Unsupported
+or malformed values remain unknown; a delay setting does not indicate an active
+delay. Setup and reconnect perform no configuration writes.
+
+Clock, delay, and solar-relay editing require further validation. See
+[advanced settings and evidence gates](docs/advanced-system-settings.md).
+
 ### Heater Mode and Activity
 
 The water heater's state is the selected operation (for example, **Gas Heater**

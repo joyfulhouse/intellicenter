@@ -14,6 +14,7 @@ from homeassistant.core import HomeAssistant
 
 from . import IntelliCenterConfigEntry
 from .coordinator import IntelliCenterCoordinator
+from .restrictions import supports_restriction_context
 
 # Keys to redact from diagnostics output for privacy
 TO_REDACT = {
@@ -105,6 +106,13 @@ async def async_get_config_entry_diagnostics(
         diagnostics_data["object_count"] = len(objects)
         diagnostics_data["object_types"] = object_types
         diagnostics_data["objects"] = objects
+        diagnostics_data["restriction_contexts"] = {
+            obj.objnam: coordinator.restrictions.assess(
+                obj.objnam, connected=coordinator.connected
+            ).as_dict()
+            for obj in coordinator.model
+            if supports_restriction_context(obj)
+        }
 
     except Exception as err:
         diagnostics_data["error"] = f"Error collecting diagnostics: {err}"

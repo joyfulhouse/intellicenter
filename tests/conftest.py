@@ -32,6 +32,7 @@ from custom_components.intellicenter.coordinator import (
     DEFAULT_ATTRIBUTES_MAP,
     IntelliCenterCoordinator,
 )
+from custom_components.intellicenter.restrictions import RestrictionIndex
 
 ON_OFF_UNKNOWN_CASES = [
     (STATUS_ON, True),
@@ -504,6 +505,8 @@ def mock_coordinator(
 
     # Configure model
     mock_coord.model = pool_model
+
+    mock_coord.restrictions = RestrictionIndex(pool_model)
 
     # Configure controller with all convenience methods
     mock_controller = MagicMock()

@@ -360,12 +360,14 @@ async def test_peer_light_subtype_push_invalidates_name_count_cache(
         )
         assert first_entity.name == updated_name
         assert first_entity.name == updated_name
-        assert model_iterations == 2
+        # Two name-count scans plus one shared restriction topology scan.
+        assert model_iterations == 3
 
         first.update({STATUS_ATTR: "ON"})
         coordinator.async_set_updated_data({"GLOW1": {STATUS_ATTR: "ON"}})
         assert first_entity.name == updated_name
-        assert model_iterations == 2
+        # Two name-count scans plus one shared restriction topology scan.
+        assert model_iterations == 3
 
     remove_first()
     remove_peer()
@@ -429,7 +431,8 @@ async def test_disabled_peer_subtype_push_invalidates_name_count_cache(
 
         assert first_entity.name == "GloBrite"
         assert first_entity.name == "GloBrite"
-        assert model_iterations == 2
+        # Two name-count scans plus one shared restriction topology scan.
+        assert model_iterations == 3
 
     remove_first()
 

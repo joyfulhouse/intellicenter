@@ -587,6 +587,11 @@ uv run ruff check --fix && uv run ruff format
 
 See [docs/](docs/) for architecture documentation and development guidelines.
 
+The [Pentair Android app capability audit](docs/pentair-app-capability-audit.md)
+documents remaining functionality gaps and conditional features discovered by
+APK analysis. See the [local protocol findings](docs/pentair-app-local-protocol.md)
+for evidence and links to the reproducible reverse-engineering workflow.
+
 ## Support
 
 - **Bug Reports**: [GitHub Issues](https://github.com/joyfulhouse/intellicenter/issues)

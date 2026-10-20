@@ -20,6 +20,8 @@ Technical documentation for developers working on the Pentair IntelliCenter Home
 | [VALIDATION.md](./VALIDATION.md) | Manual validation procedures |
 | [QUALITY_SCALE_COMPLIANCE.md](./QUALITY_SCALE_COMPLIANCE.md) | Home Assistant quality scale compliance |
 | [valve-control-implementation.md](./valve-control-implementation.md) | Valve control protocol notes and reference |
+| [pentair-app-local-protocol.md](./pentair-app-local-protocol.md) | Android app analysis findings and links to the protocol reference |
+| [pentair-app-capability-audit.md](./pentair-app-capability-audit.md) | Functionality gaps, conditional features, and unresolved app capability leads |
 | [info.md](./info.md) | HACS info panel content |
 | [../CHANGELOG.md](../CHANGELOG.md) | Version history and release notes |
 

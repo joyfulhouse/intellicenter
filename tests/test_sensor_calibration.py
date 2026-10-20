@@ -940,3 +940,21 @@ async def test_handler_start_retains_calib_backfill_before_connected_flag(
             await coordinator.async_stop()
             if registered:
                 await number.async_will_remove_from_hass()
+
+
+async def test_stopped_disconnect_preserves_calibration_generation(real_calibration):
+    """A late callback after stop cannot clear freshness or restart work."""
+    coordinator, _, sensor = real_calibration
+    coordinator.controller._apply_updates(
+        [{"objnam": sensor.objnam, "params": {"CALIB": "0"}}]
+    )
+    before = coordinator.calibration_revision(sensor.objnam)
+    owner = coordinator.model.add_object("OWNER", {"OBJTYP": "SYSTIM", "MANOVR": "ON"})
+    handler = coordinator._handler
+    handler._stopped = True
+    handler._on_disconnect(coordinator.controller, None)
+    assert coordinator.calibration_revision(sensor.objnam) == before
+    assert owner["MANOVR"] == "ON"
+    assert sensor["CALIB"] == "0"
+    assert handler._starter_task is None
+    assert handler._disconnect_debounce_task is None

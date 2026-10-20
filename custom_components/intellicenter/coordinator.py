@@ -993,6 +993,19 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
                 )
 
     @callback
+    def async_invalidate_advanced_settings(self) -> None:
+        """Require fresh readback for advanced settings after a connection loss."""
+        # Surviving PoolObjects retain omitted keys across reconnects. Clear only
+        # advanced settings, leaving calibration freshness to its own lifecycle.
+        for obj in self._model:
+            keys = {MANOVR_ATTR} | {
+                setting.key
+                for setting in CONFIGURATION_SETTINGS
+                if setting.object_type == obj.objtype
+            }
+            obj.update(dict.fromkeys(keys & obj.attribute_keys))
+
+    @callback
     def async_set_connection_state(self, connected: bool) -> None:
         """Update the connection state.
 
@@ -1004,18 +1017,9 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         rendering the availability change - plus surfacing equipment added while
         the connection was down.
         """
-        # Require fresh advanced-setting readback after a disconnect. The library
-        # preserves surviving objects across reconnects, so an omitted key must
-        # not retain a stale capability or a stale ON/OFF value.
         if not connected:
             self.async_invalidate_calibration()
-            for obj in self._model:
-                keys = {MANOVR_ATTR} | {
-                    setting.key
-                    for setting in CONFIGURATION_SETTINGS
-                    if setting.object_type == obj.objtype
-                }
-                obj.update(dict.fromkeys(keys & obj.attribute_keys))
+            self.async_invalidate_advanced_settings()
         # A reconnect re-fetches the full object list into the model; surface any
         # equipment that was added while the connection was down.
         if connected:
@@ -1099,12 +1103,14 @@ class _CoordinatorConnectionHandler(ICConnectionHandler):
         super().__init__(controller, time_between_reconnects=time_between_reconnects)
         self._coordinator = coordinator
 
+    @callback
     def _on_disconnect(
         self, controller: ICBaseController, exc: Exception | None
     ) -> None:
-        # The public on_disconnected callback is debounced and may never fire
-        # on a fast reconnect. Fence readbacks at the immediate library hook.
-        self._coordinator.async_invalidate_calibration()
+        """Invalidate both settings lifecycles before debounced reconnect events."""
+        if not self._stopped:
+            self._coordinator.async_invalidate_calibration()
+            self._coordinator.async_invalidate_advanced_settings()
         super()._on_disconnect(controller, exc)
 
     def on_started(self, controller: ICBaseController) -> None:

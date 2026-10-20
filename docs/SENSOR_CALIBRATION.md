@@ -64,7 +64,9 @@ the supported library's `connected` property already includes the live transport
 during `model.start()`. Tests run the actual handler/model startup path with
 network boundaries stubbed, covering supplied, unchanged and omitted CALIB.
 Both the calibration probe-readiness predicate and #190's canonical MANOVR
-readiness/disconnect behavior are retained.
+readiness/disconnect behavior are retained, together with #191's restriction
+index. The combined #193 disconnect hook calls both calibration and advanced
+settings invalidation under the stopped guard, followed by one superclass call.
 
 Calibration changes panel temperature readings and may affect temperature-based
 operation. Use stable reference measurements appropriate to each probe. Do not

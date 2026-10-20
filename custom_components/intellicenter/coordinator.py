@@ -100,6 +100,11 @@ from pyintellicenter import (
     PoolObject,
 )
 
+from .advanced_settings import (
+    CONFIGURATION_SETTINGS,
+    MANOVR_ATTR,
+    manual_priority_supported,
+)
 from .const import (
     CALIB_ATTR,
     DEFAULT_TRANSPORT,
@@ -278,6 +283,16 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
     },
     MODULE_TYPE: {SNAME_ATTR, SUBTYP_ATTR, VER_ATTR, PORT_ATTR},
 }
+
+
+# MANOVR's object type is not established by the static save builder. Request
+# only this key on tracked equipment/clock objects (not relationship rows) before
+# exposing a control. Do not alias it to SYSTEM.MANHT.
+for _setting in CONFIGURATION_SETTINGS:
+    DEFAULT_ATTRIBUTES_MAP.setdefault(_setting.object_type, set()).add(_setting.key)
+for _objtype, _attributes in DEFAULT_ATTRIBUTES_MAP.items():
+    if _objtype != CIRCGRP_TYPE:
+        _attributes.add(MANOVR_ATTR)
 
 
 class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
@@ -635,7 +650,12 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         tracked_keys = DEFAULT_ATTRIBUTES_MAP.get(obj.objtype, set())
         completeness_keys = tracked_keys - _SLOTTED_ATTRS
         seen_keys = set(obj.attribute_keys) & tracked_keys
-        pending_truthy_keys = {key for key in seen_keys if not obj[key]}
+        pending_truthy_keys = {
+            key
+            for key in seen_keys
+            if not obj[key]
+            or (key == MANOVR_ATTR and not manual_priority_supported(obj[key]))
+        }
         if only_if_deferred and not (
             completeness_keys - seen_keys or pending_truthy_keys
         ):
@@ -772,11 +792,19 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
             arrived_keys = attributes.keys() & obj.attribute_keys & tracked_keys
             new_keys = arrived_keys - seen_keys
             became_truthy = {
-                key for key in arrived_keys & pending_truthy_keys if obj[key]
+                key
+                for key in arrived_keys & pending_truthy_keys
+                if obj[key]
+                and (key != MANOVR_ATTR or manual_priority_supported(obj[key]))
             }
             if new_keys or became_truthy:
                 seen_keys.update(arrived_keys)
-                pending_truthy_keys.update(key for key in new_keys if not obj[key])
+                pending_truthy_keys.update(
+                    key
+                    for key in new_keys
+                    if not obj[key]
+                    or (key == MANOVR_ATTR and not manual_priority_supported(obj[key]))
+                )
                 pending_truthy_keys.difference_update(became_truthy)
                 ready_objnams.add(objnam)
                 completeness_keys = tracked_keys - _SLOTTED_ATTRS
@@ -922,6 +950,17 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         rendering the availability change - plus surfacing equipment added while
         the connection was down.
         """
+        # Require fresh advanced-setting readback after a disconnect. The library
+        # preserves surviving objects across reconnects, so an omitted key must
+        # not retain a stale capability or a stale ON/OFF value.
+        if not connected:
+            for obj in self._model:
+                keys = {MANOVR_ATTR} | {
+                    setting.key
+                    for setting in CONFIGURATION_SETTINGS
+                    if setting.object_type == obj.objtype
+                }
+                obj.update(dict.fromkeys(keys & obj.attribute_keys))
         # A reconnect re-fetches the full object list into the model; surface any
         # equipment that was added while the connection was down.
         if connected:

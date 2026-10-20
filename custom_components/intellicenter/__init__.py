@@ -52,6 +52,7 @@ from .const import (
 )
 from .coordinator import IntelliCenterCoordinator, ObjectUpdateContext
 from .firmware import async_check_firmware
+from .restrictions import STATE_ATTRIBUTES, supports_restriction_context
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -753,7 +754,19 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
             if value is not None:
                 attributes[attribute] = value
 
+        if self._has_restriction_context:
+            attributes["restriction_context"] = self.coordinator.restrictions.assess(
+                pool_obj.objnam, connected=self.coordinator.connected
+            ).as_dict()
+
         return attributes
+
+    @property
+    def _has_restriction_context(self) -> bool:
+        """Expose context on operational entities rather than every setting."""
+        return self._attribute_key == STATUS_ATTR and supports_restriction_context(
+            self._pool_object
+        )
 
     async def _async_execute_command(
         self,
@@ -815,6 +828,18 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
             self._coordinator_update_dependencies = (
                 self.coordinator_update_dependencies()
             )
+            if self._has_restriction_context:
+                for objnam, attributes in self.coordinator.restrictions.dependencies(
+                    self._pool_object.objnam
+                ).items():
+                    if objnam == self._pool_object.objnam:
+                        continue
+                    existing = self._coordinator_update_dependencies.get(objnam, set())
+                    self._coordinator_update_dependencies[objnam] = (
+                        None
+                        if existing is None or attributes is None
+                        else existing | attributes
+                    )
         return self._coordinator_update_dependencies
 
     @callback
@@ -903,7 +928,14 @@ class PoolEntity(CoordinatorEntity[IntelliCenterCoordinator], Entity):
                 for objnam, attributes in dependencies.items()
                 if objnam in updates
             )
-            should_update = self.isUpdated(updates) or dependencies_updated
+            should_update = (
+                self.isUpdated(updates)
+                or dependencies_updated
+                or (
+                    self._has_restriction_context
+                    and self._check_attributes_updated(updates, *STATE_ATTRIBUTES)
+                )
+            )
 
         # Check if this entity needs to update
         if should_update:

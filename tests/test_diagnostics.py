@@ -18,6 +18,7 @@ from custom_components.intellicenter.coordinator import (
 from custom_components.intellicenter.diagnostics import (
     async_get_config_entry_diagnostics,
 )
+from custom_components.intellicenter.restrictions import RestrictionIndex
 
 pytestmark = pytest.mark.asyncio
 
@@ -76,6 +77,7 @@ def _create_mock_entry(
         mock_coord = MagicMock(spec=IntelliCenterCoordinator)
         mock_coord.hass = hass
         mock_coord.model = pool_model
+        mock_coord.restrictions = RestrictionIndex(pool_model)
         mock_coord.connected = connected
 
         # Create mock controller
@@ -112,6 +114,8 @@ async def test_diagnostics_returns_data(
     assert "connection_state" in result
     assert "object_count" in result
     assert "objects" in result
+    assert "restriction_contexts" in result
+    assert "error" not in result
 
 
 async def test_diagnostics_redacts_sensitive_data(

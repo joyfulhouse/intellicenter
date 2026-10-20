@@ -27,6 +27,7 @@ This integration connects your Pentair IntelliCenter pool control system to Home
 - **Flexible Transport**: Choose between TCP or WebSocket connections based on your network setup
 - **Automatic Discovery**: Zeroconf/mDNS discovers your IntelliCenter automatically
 - **Real-time Updates**: Push-based notifications for instant state changes
+- **Restriction Context**: Read-only [equipment diagnostics](docs/restriction-context.md) separate freeze observations, cover position/enablement, and unknown dependencies from measured equipment state
 - **Reliable Connection**: Automatic reconnection with exponential backoff and circuit breaker
 - **Highly Responsive**: Optimized async architecture with intelligent request queuing
 - **Comprehensive Support**: Pools, spas, lights, pumps, heaters, chemistry, schedules, covers

@@ -188,6 +188,13 @@ tested whether `heating_status` was absent should now test for `off`.
   the pump is off — the Last Temp value latches the last circulating temperature,
   so it stays accurate while the pump is idle.
 
+### Sensor Calibration
+
+Calibration number support is staged behind device-verified limits; no production
+firmware is enabled yet. Existing raw probe sensors and calibration attributes
+remain available. See [sensor calibration](docs/SENSOR_CALIBRATION.md) for units,
+readback handling and the remaining device evidence required for issue #185.
+
 ### Connection Status
 
 Each successfully loaded IntelliCenter integration has an enabled diagnostic

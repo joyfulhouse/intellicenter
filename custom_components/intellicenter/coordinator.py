@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 import logging
+import re
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -250,7 +251,7 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
         SPEED_ATTR,  # RPM setpoint when SELECT=RPM
         GPM_ATTR,  # GPM setpoint when SELECT=GPM
     },
-    SENSE_TYPE: {SNAME_ATTR, SOURCE_ATTR, PROBE_ATTR, CALIB_ATTR},
+    SENSE_TYPE: {SNAME_ATTR, SOURCE_ATTR, PROBE_ATTR, CALIB_ATTR, STATUS_ATTR},
     SCHED_TYPE: {
         SNAME_ATTR,
         STATUS_ATTR,
@@ -624,6 +625,20 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
 
         return _remove_listener
 
+    @staticmethod
+    def _redispatch_value_ready(obj: PoolObject, key: str) -> bool:
+        """Keep retrying initially unhealthy probes until calibration can build."""
+        value = obj[key]
+        if obj.objtype == SENSE_TYPE:
+            if key == STATUS_ATTR:
+                return bool(value == "OK")
+            if key == PROBE_ATTR:
+                return type(value) is int or (
+                    isinstance(value, str)
+                    and re.fullmatch(r"[+-]?[0-9]+", value.strip()) is not None
+                )
+        return bool(value)
+
     @callback
     def _seed_redispatch_bookkeeping(
         self, obj: PoolObject, *, only_if_deferred: bool = False
@@ -632,7 +647,9 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         tracked_keys = DEFAULT_ATTRIBUTES_MAP.get(obj.objtype, set())
         completeness_keys = tracked_keys - _SLOTTED_ATTRS
         seen_keys = set(obj.attribute_keys) & tracked_keys
-        pending_truthy_keys = {key for key in seen_keys if not obj[key]}
+        pending_truthy_keys = {
+            key for key in seen_keys if not self._redispatch_value_ready(obj, key)
+        }
         if only_if_deferred and not (
             completeness_keys - seen_keys or pending_truthy_keys
         ):
@@ -769,11 +786,17 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
             arrived_keys = attributes.keys() & obj.attribute_keys & tracked_keys
             new_keys = arrived_keys - seen_keys
             became_truthy = {
-                key for key in arrived_keys & pending_truthy_keys if obj[key]
+                key
+                for key in arrived_keys & pending_truthy_keys
+                if self._redispatch_value_ready(obj, key)
             }
             if new_keys or became_truthy:
                 seen_keys.update(arrived_keys)
-                pending_truthy_keys.update(key for key in new_keys if not obj[key])
+                pending_truthy_keys.update(
+                    key
+                    for key in new_keys
+                    if not self._redispatch_value_ready(obj, key)
+                )
                 pending_truthy_keys.difference_update(became_truthy)
                 ready_objnams.add(objnam)
                 completeness_keys = tracked_keys - _SLOTTED_ATTRS

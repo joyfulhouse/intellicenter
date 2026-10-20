@@ -59,6 +59,10 @@ an old pending response. Cached CALIB remains unknown/unavailable until explicit
 observed again; a reconnect read of exactly the prior value restores freshness
 even when the library produces an empty numeric diff. These checks live in the
 coordinator, so a disabled or not-yet-registered entity cannot miss invalidation.
+Reconnect backfill is accepted before the handler sets its connected flag:
+the supported library's `connected` property already includes the live transport
+during `model.start()`. Tests run the actual handler/model startup path with
+network boundaries stubbed, covering supplied, unchanged and omitted CALIB.
 Both the calibration probe-readiness predicate and #190's canonical MANOVR
 readiness/disconnect behavior are retained.
 

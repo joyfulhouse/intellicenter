@@ -9,7 +9,12 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_CORE_CONFIG_UPDATE, UnitOfTemperature
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util.unit_system import METRIC_SYSTEM, US_CUSTOMARY_SYSTEM
-from pyintellicenter import ICCommandError, ICModelController, PoolModel
+from pyintellicenter import (
+    ICBaseController,
+    ICCommandError,
+    ICModelController,
+    PoolModel,
+)
 import pytest
 
 from custom_components.intellicenter.coordinator import (
@@ -786,19 +791,25 @@ async def test_readiness_retains_probe_and_manual_priority_predicates(real_calib
     assert coordinator._redispatch_value_ready(sensor, "STATUS")
 
 
+@pytest.mark.parametrize("phase", ["write", "read"])
 @pytest.mark.parametrize("registered", [False, True])
-async def test_same_value_notification_fences_pending_read(
-    hass, real_calibration, registered
+async def test_same_value_notification_fences_pending_command(
+    hass, real_calibration, registered, phase
 ):
     coordinator, number, sensor = real_calibration
     entered, resume = asyncio.Event(), asyncio.Event()
 
-    async def pending_read(*args):
+    async def pending_command(*args):
         entered.set()
         await resume.wait()
-        return readback()
+        return readback() if phase == "read" else {"response": "200"}
 
-    coordinator.controller.send_cmd.side_effect = pending_read
+    command = (
+        coordinator.controller.send_cmd
+        if phase == "read"
+        else coordinator.controller.request_changes
+    )
+    command.side_effect = pending_command
     number.hass = hass
     with patch.object(number, "async_write_ha_state"):
         if registered:
@@ -848,5 +859,84 @@ async def test_same_object_reconnect_identical_calib_restores_freshness(
             await number.async_set_native_value(2)
             assert number.native_value == 2
         finally:
+            if registered:
+                await number.async_will_remove_from_hass()
+
+
+@pytest.mark.parametrize("calib", [None, "0", "-2"])
+@pytest.mark.parametrize("registered", [False, True])
+async def test_handler_start_retains_calib_backfill_before_connected_flag(
+    hass, real_calibration, calib, registered
+):
+    """Run handler.start and model.start; stub only the network boundaries."""
+    coordinator, number, sensor = real_calibration
+    controller, handler = coordinator.controller, coordinator._handler
+    number.hass = hass
+    connection = MagicMock()
+    connection.connected = True
+    connection.disconnect = AsyncMock()
+    observed_during_start = []
+
+    async def open_transport():
+        assert not handler._is_connected
+        assert not coordinator.connected
+        controller._connection = connection
+
+    async def subscription_response(command, extra):
+        assert command == "RequestParamList"
+        assert not handler._is_connected
+        # The real library connected property includes the live transport while
+        # model.start is still fetching attributes, before _starter sets its flag.
+        assert controller.connected
+        assert coordinator.connected
+        params = {"PROBE": "20", "STATUS": "OK"}
+        if calib is not None:
+            params["CALIB"] = calib
+        return {"objectList": [{"objnam": sensor.objnam, "params": params}]}
+
+    def after_model_update(*args):
+        if handler._is_connected:
+            return
+        assert controller.connected
+        observed_during_start.append(
+            (coordinator.calibration_is_fresh(sensor.objnam), sensor["CALIB"])
+        )
+
+    snapshot = [
+        {"objnam": "SYS", "params": {"OBJTYP": "SYSTEM"}},
+        {"objnam": sensor.objnam, "params": {"OBJTYP": "SENSE", "SUBTYP": "POOL"}},
+    ]
+    with patch.object(number, "async_write_ha_state"):
+        if registered:
+            await number.async_added_to_hass()
+        try:
+            await fast_reconnect(coordinator)
+            assert number.native_value is None
+            handler._is_connected = False
+            handler._first_time = False
+            remove = coordinator.async_add_listener(after_model_update)
+            with (
+                patch.object(ICBaseController, "start", side_effect=open_transport),
+                patch.object(controller, "get_all_objects", return_value=snapshot),
+                patch.object(controller, "send_cmd", side_effect=subscription_response),
+                patch.object(
+                    handler, "on_reconnected", wraps=handler.on_reconnected
+                ) as reconnected,
+            ):
+                await handler.start()
+                reconnected.assert_called_once_with(controller)
+            remove()
+            assert handler._is_connected
+            assert coordinator.model[sensor.objnam] is sensor
+            expected = int(calib) if calib is not None else None
+            assert number.native_value == expected
+            assert number.available == (calib is not None)
+            if calib is not None:
+                assert (True, calib) in observed_during_start
+            else:
+                assert not coordinator.calibration_is_fresh(sensor.objnam)
+                assert observed_during_start == []
+        finally:
+            await coordinator.async_stop()
             if registered:
                 await number.async_will_remove_from_hass()

@@ -121,6 +121,7 @@ from .const import (
     SINGLE_ATTR,
     TransportType,
 )
+from .restrictions import RestrictionIndex
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -358,6 +359,7 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
 
         # Create the model with attribute tracking
         self._model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
+        self.restrictions = RestrictionIndex(self._model)
 
         # Create the controller
         self._controller = _CoordinatorModelController(
@@ -462,6 +464,7 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
     @callback
     def _async_refresh_object_listener_index(self) -> None:
         """Rebuild dependency edges after the pool-model structure changes."""
+        self.restrictions.invalidate()
         self._object_update_listeners.clear()
         for update_callback, context in self._object_update_contexts.items():
             context.invalidate()

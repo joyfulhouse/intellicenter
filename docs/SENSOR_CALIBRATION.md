@@ -38,10 +38,29 @@ write is followed by a targeted GetParamList request for CALIB. Only a unique,
 matching object response with an exact integer offset equal to the requested
 value updates the model. Wrong-object, missing, duplicate, malformed or mismatched
 readback raises a translated unconfirmed error. A connection failure or panel
-unit/model replacement during the read also fails confirmation. A command error
+unit/model replacement during the write or read also fails confirmation. A command error
 propagates normally and prevents a follow-up read. NotifyList updates remain
 authoritative. Immediate readback confirms the observed setting; persistence
 across a reconnect/restart needs separate captured evidence.
+
+The coordinator records a per-sensor observation revision, panel-unit revision
+and connection generation before the write starts. A newer CALIB observation
+or connection/unit generation during either await rejects confirmation without
+overwriting current model state. This includes a notification with exactly the
+same numeric offset: explicit observation is distinct from a value change.
+The scoped controller adapter retains unchanged CALIB observations from the
+library's `_apply_updates` path, used by both NotifyList and reconnect backfill.
+No freshness is fabricated from an omitted field or a connection-success event.
+
+Disconnect invalidates calibration immediately at the library disconnect hook,
+before its public debounced callback. Stop and failed reconnects invalidate it
+too. Retaining the same PoolObject, firmware and unit therefore cannot validate
+an old pending response. Cached CALIB remains unknown/unavailable until explicitly
+observed again; a reconnect read of exactly the prior value restores freshness
+even when the library produces an empty numeric diff. These checks live in the
+coordinator, so a disabled or not-yet-registered entity cannot miss invalidation.
+Both the calibration probe-readiness predicate and #190's canonical MANOVR
+readiness/disconnect behavior are retained.
 
 Calibration changes panel temperature readings and may affect temperature-based
 operation. Use stable reference measurements appropriate to each probe. Do not

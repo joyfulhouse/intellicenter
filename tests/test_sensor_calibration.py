@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.config_entries import ConfigEntry
@@ -554,3 +555,298 @@ async def test_existing_control_becomes_unknown_for_unknown_mode(
     with patch.object(number, "async_write_ha_state"):
         number._handle_coordinator_update()
     assert number.native_value is None
+
+
+@pytest.fixture
+def real_calibration(hass, support):
+    """Exercise the real coordinator subscription without contacting hardware."""
+    hass.config.units = METRIC_SYSTEM
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = "calibration-revisions"
+    coordinator = IntelliCenterCoordinator(hass, entry, host="192.0.2.185")
+    coordinator._handler._is_connected = True
+    coordinator._started = True
+    coordinator.model.add_object(
+        "SYS", {"OBJTYP": "SYSTEM", "MODE": "METRIC", "VER": FIRMWARE}
+    )
+    sensor = coordinator.model.add_object("water-west", dict(SENSOR))
+    coordinator._known_objnams = {obj.objnam for obj in coordinator.model}
+    number = build_calibration_entities(coordinator, [sensor])[0]
+    coordinator.controller.request_changes = AsyncMock(return_value={"response": "200"})
+    coordinator.controller.send_cmd = AsyncMock(return_value=readback())
+    return coordinator, number, sensor
+
+
+def notify_calibration(coordinator, value, objnam="water-west"):
+    """Deliver through the library model and its real coordinator subscription."""
+    coordinator.controller._on_notification(
+        {
+            "command": "NotifyList",
+            "objectList": [{"objnam": objnam, "params": {"CALIB": value}}],
+        }
+    )
+
+
+@pytest.mark.parametrize("phase", ["write", "read"])
+@pytest.mark.parametrize("registered", [False, True])
+async def test_newer_notification_wins_for_entire_command_interval(
+    hass, real_calibration, phase, registered
+):
+    coordinator, number, sensor = real_calibration
+    entered, resume = asyncio.Event(), asyncio.Event()
+
+    async def pending_command(*args):
+        entered.set()
+        await resume.wait()
+        return readback() if phase == "read" else {"response": "200"}
+
+    command = (
+        coordinator.controller.send_cmd
+        if phase == "read"
+        else coordinator.controller.request_changes
+    )
+    command.side_effect = pending_command
+    number.hass = hass
+    with patch.object(number, "async_write_ha_state"):
+        if registered:
+            await number.async_added_to_hass()
+        task = hass.async_create_task(number.async_set_native_value(2))
+        try:
+            await entered.wait()
+            notify_calibration(coordinator, "-2")
+            assert number.native_value == -2
+            resume.set()
+            with pytest.raises(HomeAssistantError) as exc:
+                await task
+            assert exc.value.translation_key == "calibration_unconfirmed"
+            assert sensor["CALIB"] == "-2"
+            assert number.native_value == -2
+            if phase == "write":
+                coordinator.controller.send_cmd.assert_not_called()
+        finally:
+            resume.set()
+            await asyncio.gather(task, return_exceptions=True)
+            if registered:
+                await number.async_will_remove_from_hass()
+
+
+async def fast_reconnect(coordinator):
+    """Use the immediate disconnect hook, then finish before public debounce."""
+    handler = coordinator._handler
+    # Stub only network reconnection; keep the real disconnect callback wiring.
+    with patch.object(handler, "_starter", new_callable=AsyncMock):
+        coordinator.controller._on_disconnect(None)
+        assert not coordinator.connected
+        handler._disconnect_debounce_task.cancel()
+        await asyncio.gather(
+            handler._disconnect_debounce_task,
+            handler._starter_task,
+            return_exceptions=True,
+        )
+        handler._disconnect_debounce_task = None
+        handler._starter_task = None
+    handler._is_connected = True
+    handler.on_reconnected(coordinator.controller)
+
+
+@pytest.mark.parametrize("phase", ["write", "read"])
+@pytest.mark.parametrize("fresh_calib", [None, "-2"])
+async def test_same_object_fast_reconnect_rejects_inflight_response(
+    hass, real_calibration, phase, fresh_calib
+):
+    coordinator, number, sensor = real_calibration
+    entered, resume = asyncio.Event(), asyncio.Event()
+
+    async def pending_command(*args):
+        entered.set()
+        await resume.wait()
+        return readback() if phase == "read" else {"response": "200"}
+
+    command = (
+        coordinator.controller.send_cmd
+        if phase == "read"
+        else coordinator.controller.request_changes
+    )
+    command.side_effect = pending_command
+    task = hass.async_create_task(number.async_set_native_value(2))
+    try:
+        await entered.wait()
+        with patch.object(coordinator._handler, "on_disconnected") as delayed:
+            await fast_reconnect(coordinator)
+            delayed.assert_not_called()
+        if fresh_calib is not None:
+            notify_calibration(coordinator, fresh_calib)
+        assert coordinator.model[sensor.objnam] is sensor
+        assert number._key == (FIRMWARE, "POOL", "METRIC")
+        resume.set()
+        with pytest.raises(HomeAssistantError) as exc:
+            await task
+        assert exc.value.translation_key == "calibration_unconfirmed"
+        assert sensor["CALIB"] == (fresh_calib or "0")
+        assert number.native_value == (int(fresh_calib) if fresh_calib else None)
+        if phase == "write":
+            coordinator.controller.send_cmd.assert_not_called()
+    finally:
+        resume.set()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+async def test_disconnect_omitted_calib_stays_unknown_until_explicit_readback(
+    hass, real_calibration
+):
+    coordinator, number, sensor = real_calibration
+    number.hass = hass
+    with patch.object(number, "async_write_ha_state"):
+        await number.async_added_to_hass()
+        try:
+            coordinator._handler._is_connected = False
+            coordinator.async_set_connection_state(False)
+            assert number._fresh_key is None
+            assert number.native_value is None
+            coordinator._handler._is_connected = True
+            # A partial reconnect snapshot omits CALIB but retains the same object.
+            coordinator.controller._on_notification(
+                {
+                    "command": "NotifyList",
+                    "objectList": [
+                        {"objnam": sensor.objnam, "params": {"PROBE": "21"}}
+                    ],
+                }
+            )
+            coordinator.async_set_connection_state(True)
+            assert sensor["CALIB"] == "0"
+            assert number._fresh_key is None
+            assert number.native_value is None
+            assert not number.available
+            with pytest.raises(HomeAssistantError) as exc:
+                await number.async_set_native_value(2)
+            assert exc.value.translation_key == "calibration_unavailable"
+            coordinator.controller.request_changes.assert_not_called()
+            # Even an unchanged explicit readback (no numeric diff) is fresh.
+            assert (
+                coordinator.controller._apply_updates(
+                    [{"objnam": sensor.objnam, "params": {"CALIB": "0"}}]
+                )
+                == {}
+            )
+            assert number.native_value == 0
+            assert number.available
+        finally:
+            await number.async_will_remove_from_hass()
+
+
+async def test_pending_read_ignores_other_sensors_notifications(real_calibration):
+    coordinator, number, sensor = real_calibration
+    coordinator.model.add_object("water-east", dict(SENSOR))
+
+    async def read_with_unrelated_notification(*args):
+        notify_calibration(coordinator, "-2", objnam="water-east")
+        return readback()
+
+    coordinator.controller.send_cmd.side_effect = read_with_unrelated_notification
+    await number.async_set_native_value(2)
+    assert sensor["CALIB"] == "2"
+    assert coordinator.model["water-east"]["CALIB"] == "-2"
+
+
+async def test_unit_change_back_to_original_still_invalidates_read(real_calibration):
+    coordinator, number, sensor = real_calibration
+
+    async def read_with_unit_changes(*args):
+        for mode in ("ENGLISH", "METRIC"):
+            coordinator.controller._on_notification(
+                {
+                    "command": "NotifyList",
+                    "objectList": [{"objnam": "SYS", "params": {"MODE": mode}}],
+                }
+            )
+        return readback()
+
+    coordinator.controller.send_cmd.side_effect = read_with_unit_changes
+    with pytest.raises(HomeAssistantError) as exc:
+        await number.async_set_native_value(2)
+    assert exc.value.translation_key == "calibration_unconfirmed"
+    assert sensor["CALIB"] == "0"
+
+
+async def test_readiness_retains_probe_and_manual_priority_predicates(real_calibration):
+    coordinator, _, sensor = real_calibration
+    sensor.update({"STATUS": "DISCONNECTED", "PROBE": "bad", "MANOVR": "MANOVR"})
+    coordinator._seed_redispatch_bookkeeping(sensor, only_if_deferred=True)
+    assert {"STATUS", "PROBE", "MANOVR"} <= coordinator._pending_truthy_redispatch[
+        sensor.objnam
+    ]
+    for key, value in (("PROBE", "0"), ("MANOVR", "OFF"), ("STATUS", "OK")):
+        coordinator.async_set_updated_data({sensor.objnam: sensor.update({key: value})})
+        assert key not in coordinator._pending_truthy_redispatch.get(
+            sensor.objnam, set()
+        )
+    assert coordinator._redispatch_value_ready(sensor, "PROBE")
+    assert coordinator._redispatch_value_ready(sensor, "MANOVR")
+    assert coordinator._redispatch_value_ready(sensor, "STATUS")
+
+
+@pytest.mark.parametrize("registered", [False, True])
+async def test_same_value_notification_fences_pending_read(
+    hass, real_calibration, registered
+):
+    coordinator, number, sensor = real_calibration
+    entered, resume = asyncio.Event(), asyncio.Event()
+
+    async def pending_read(*args):
+        entered.set()
+        await resume.wait()
+        return readback()
+
+    coordinator.controller.send_cmd.side_effect = pending_read
+    number.hass = hass
+    with patch.object(number, "async_write_ha_state"):
+        if registered:
+            await number.async_added_to_hass()
+        task = hass.async_create_task(number.async_set_native_value(2))
+        try:
+            await entered.wait()
+            # This explicitly observed 0 has no library numeric diff. It must
+            # still outrank the older pending response claiming the requested 2.
+            notify_calibration(coordinator, "0")
+            resume.set()
+            with pytest.raises(HomeAssistantError) as exc:
+                await task
+            assert exc.value.translation_key == "calibration_unconfirmed"
+            assert sensor["CALIB"] == "0"
+            assert number.native_value == 0
+        finally:
+            resume.set()
+            await asyncio.gather(task, return_exceptions=True)
+            if registered:
+                await number.async_will_remove_from_hass()
+
+
+@pytest.mark.parametrize("registered", [False, True])
+async def test_same_object_reconnect_identical_calib_restores_freshness(
+    hass, real_calibration, registered
+):
+    coordinator, number, sensor = real_calibration
+    number.hass = hass
+    with patch.object(number, "async_write_ha_state"):
+        if registered:
+            await number.async_added_to_hass()
+        try:
+            await fast_reconnect(coordinator)
+            assert number.native_value is None
+            assert not number.available
+            # The actual library reconnect backfill path filters the unchanged
+            # value from its returned diff. The integration retains the observation.
+            diff = coordinator.controller._apply_updates(
+                [{"objnam": sensor.objnam, "params": {"CALIB": "0"}}]
+            )
+            assert diff == {}
+            assert coordinator.model[sensor.objnam] is sensor
+            assert number.native_value == 0
+            assert number.available
+            # A subsequent normal write must work, rather than staying disabled.
+            await number.async_set_native_value(2)
+            assert number.native_value == 2
+        finally:
+            if registered:
+                await number.async_will_remove_from_hass()

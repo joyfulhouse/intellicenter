@@ -97,10 +97,16 @@ from pyintellicenter import (
     ICConnectionHandler,
     ICModelController,
     ICSystemInfo,
+    ObjectEntry,
     PoolModel,
     PoolObject,
 )
 
+from .advanced_settings import (
+    CONFIGURATION_SETTINGS,
+    MANOVR_ATTR,
+    manual_priority_supported,
+)
 from .const import (
     CALIB_ATTR,
     DEFAULT_TRANSPORT,
@@ -280,6 +286,16 @@ DEFAULT_ATTRIBUTES_MAP: dict[str, set[str]] = {
 }
 
 
+# MANOVR's object type is not established by the static save builder. Request
+# only this key on tracked equipment/clock objects (not relationship rows) before
+# exposing a control. Do not alias it to SYSTEM.MANHT.
+for _setting in CONFIGURATION_SETTINGS:
+    DEFAULT_ATTRIBUTES_MAP.setdefault(_setting.object_type, set()).add(_setting.key)
+for _objtype, _attributes in DEFAULT_ATTRIBUTES_MAP.items():
+    if _objtype != CIRCGRP_TYPE:
+        _attributes.add(MANOVR_ATTR)
+
+
 class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
     """Coordinator for IntelliCenter push-based updates.
 
@@ -344,9 +360,10 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         self._model = PoolModel(DEFAULT_ATTRIBUTES_MAP)
 
         # Create the controller
-        self._controller = ICModelController(
+        self._controller = _CoordinatorModelController(
             host,
             self._model,
+            coordinator=self,
             keepalive_interval=keepalive_interval,
             transport=transport,
         )
@@ -652,8 +669,10 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
 
     @staticmethod
     def _redispatch_value_ready(obj: PoolObject, key: str) -> bool:
-        """Keep retrying initially unhealthy probes until calibration can build."""
+        """Retry unusable probe and manual-priority values until supported."""
         value = obj[key]
+        if key == MANOVR_ATTR:
+            return manual_priority_supported(value)
         if obj.objtype == SENSE_TYPE:
             if key == STATUS_ATTR:
                 return bool(value == "OK")
@@ -982,8 +1001,18 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         rendering the availability change - plus surfacing equipment added while
         the connection was down.
         """
+        # Require fresh advanced-setting readback after a disconnect. The library
+        # preserves surviving objects across reconnects, so an omitted key must
+        # not retain a stale capability or a stale ON/OFF value.
         if not connected:
             self.async_invalidate_calibration()
+            for obj in self._model:
+                keys = {MANOVR_ATTR} | {
+                    setting.key
+                    for setting in CONFIGURATION_SETTINGS
+                    if setting.object_type == obj.objtype
+                }
+                obj.update(dict.fromkeys(keys & obj.attribute_keys))
         # A reconnect re-fetches the full object list into the model; surface any
         # equipment that was added while the connection was down.
         if connected:
@@ -999,6 +1028,53 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         self.data = {}
         # Notify all listeners of the connection state change
         self.async_update_listeners()
+
+
+class _CoordinatorModelController(ICModelController):
+    """Retain explicit CALIB observations suppressed by library diff filtering."""
+
+    def __init__(
+        self,
+        host: str,
+        model: PoolModel,
+        *,
+        coordinator: IntelliCenterCoordinator,
+        keepalive_interval: int,
+        transport: TransportType,
+    ) -> None:
+        super().__init__(
+            host, model, keepalive_interval=keepalive_interval, transport=transport
+        )
+        self._coordinator = coordinator
+
+    def _apply_updates(
+        self, changes_as_list: list[ObjectEntry]
+    ) -> dict[str, dict[str, Any]]:
+        updates = super()._apply_updates(changes_as_list)
+        observed: dict[str, dict[str, Any]] = {}
+        # Keep the library's tolerance for malformed wire entries.
+        raw_entries: list[Any] = changes_as_list
+        for entry in raw_entries:
+            if not isinstance(entry, dict):
+                continue
+            objnam, params = entry.get("objnam"), entry.get("params")
+            if not isinstance(objnam, str) or not isinstance(params, dict):
+                continue
+            sensor = self._model[objnam]
+            if (
+                sensor is not None
+                and sensor.objtype == SENSE_TYPE
+                and CALIB_ATTR in params
+                and CALIB_ATTR not in updates.get(objnam, {})
+                and type(params[CALIB_ATTR]) is type(sensor[CALIB_ATTR])
+                and params[CALIB_ATTR] == sensor[CALIB_ATTR]
+            ):
+                observed[objnam] = {CALIB_ATTR: sensor[CALIB_ATTR]}
+        if observed:
+            # Reconnect may deliver exactly the previous offset. A numeric diff
+            # is not required for freshness or to fence an in-flight older read.
+            self._coordinator.async_set_updated_data(observed)
+        return updates
 
 
 class _CoordinatorConnectionHandler(ICConnectionHandler):

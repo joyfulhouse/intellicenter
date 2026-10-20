@@ -15,6 +15,7 @@ from custom_components.intellicenter.sensor import (
 )
 from custom_components.intellicenter.switch import (
     ManualPrioritySwitch,
+    PoolCircuit,
     _build_entities as build_switches,
 )
 
@@ -37,6 +38,7 @@ _TYPES = {
     "CLOCK": "SYSTIM",
     "SOURCE": "SYSTIM",
     "SENSOR": "SENSE",
+    "CIRCUIT": "CIRCUIT",
 }
 
 
@@ -84,6 +86,11 @@ def _transport(*, advanced):
                     "params": {
                         **(advanced.get(obj["objnam"], {})),
                         **({"MANHT": "ON"} if obj["objnam"] == "SYSTEM" else {}),
+                        **(
+                            {"STATUS": "ON", "FREEZE": "ON"}
+                            if obj["objnam"] == "CIRCUIT"
+                            else {}
+                        ),
                         **(
                             {"CALIB": "2", "SOURCE": "70", "PROBE": "ON"}
                             if obj["objnam"] == "SENSOR"
@@ -141,6 +148,11 @@ async def test_fast_reconnect_retains_objects_without_retaining_advanced_state(
             ]
             assert len(sensors) == 8
             assert switch.available and switch.is_on is True
+            circuit = PoolCircuit(coordinator, retained["CIRCUIT"])
+            assert circuit.is_on is True
+            context = circuit.extra_state_attributes["restriction_context"]
+            assert context["state"] == "active"
+            assert context["reasons"][0]["code"] == "freeze_protection_context"
 
             # Deliver the callback registered by the real controller, without
             # invoking the debounced coordinator callback ourselves.
@@ -153,6 +165,12 @@ async def test_fast_reconnect_retains_objects_without_retaining_advanced_state(
             assert switch.is_on is None
             assert not switch.available
             assert all(e.native_value is None for e in sensors)
+            context = circuit.extra_state_attributes["restriction_context"]
+            assert context["reasons"] == []
+            assert (
+                context["unknown_dependencies"][0]["code"] == "connection_unavailable"
+            )
+            assert circuit.is_on is True
             reconnect_task = handler._starter_task
             assert reconnect_task is not None
             await asyncio.wait_for(asyncio.shield(reconnect_task), timeout=2)
@@ -164,6 +182,10 @@ async def test_fast_reconnect_retains_objects_without_retaining_advanced_state(
                 assert coordinator.model[objnam] is obj
             assert retained["SYSTEM"]["MANHT"] == "ON"
             assert retained["SENSOR"]["CALIB"] == "2"
+            context = circuit.extra_state_attributes["restriction_context"]
+            assert context["state"] == "active"
+            assert context["reasons"][0]["code"] == "freeze_protection_context"
+            assert circuit.is_on is True
 
             if fresh_readback:
                 # Even identical readback must survive the reconnect announcement.
@@ -211,3 +233,24 @@ async def test_stopped_handler_ignores_disconnect_without_invalidating_settings(
     assert owner["MANOVR"] == "ON"
     assert coordinator._handler._starter_task is None
     assert coordinator._handler._disconnect_debounce_task is None
+
+
+def test_advanced_invalidation_preserves_calibration_and_sensor_source(
+    hass: HomeAssistant,
+) -> None:
+    """This helper leaves sensor freshness and calibration to #192's own hook."""
+    entry = MagicMock()
+    entry.entry_id = "advanced_scope"
+    coordinator = IntelliCenterCoordinator(hass, entry, host="192.0.2.186")
+    sensor = coordinator.model.add_object(
+        "SENSOR", {"OBJTYP": "SENSE", "CALIB": "2", "SOURCE": "70", "PROBE": "ON"}
+    )
+    system = coordinator.model.add_object(
+        "SYSTEM", {"OBJTYP": "SYSTEM", "MANHT": "ON", "VALVE": "OFF"}
+    )
+    coordinator.async_invalidate_advanced_settings()
+    assert sensor["CALIB"] == "2"
+    assert sensor["SOURCE"] == "70"
+    assert sensor["PROBE"] == "ON"
+    assert system["MANHT"] == "ON"
+    assert system["VALVE"] is None

@@ -46,7 +46,7 @@ connection loss and cancellation. No new library release is required.
 
 A command acknowledgement completes the service, but the entity retains its
 last readback until a subscribed panel update arrives. There is no optimistic
-state or automatic replay. New advanced-setting values are invalidated on
+state or automatic replay. New advanced-setting values are invalidated in
 the immediate handler disconnect callback, before reconnect can start. This
 also covers quick reconnects that cancel the debounced disconnect announcement.
 Invalidation does not emit an early availability broadcast or clear unrelated
@@ -102,3 +102,9 @@ additions are confined to a separate class and builder block; the coordinator
 adds subscriptions, deferred MANOVR retry, and invalidation of these settings.
 These edits should be reconciled when merging concurrent #185/#187 work;
 pyintellicenter #100/#104/#106 remain independent.
+
+The immediate `_CoordinatorConnectionHandler._on_disconnect` hook also serves
+the calibration freshness follow-up in #192. When combining those changes,
+retain both calibration invalidation and `async_invalidate_advanced_settings()`
+under the stopped guard, then delegate to the library hook once. Advanced
+invalidation does not replace calibration's own freshness bookkeeping.

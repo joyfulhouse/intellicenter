@@ -329,6 +329,10 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         self._failed_object_update_listeners: dict[CALLBACK_TYPE, None] = {}
         self._logged_object_update_failures: set[CALLBACK_TYPE] = set()
         self._structural_refresh = False
+        self._calibration_generation = 0
+        self._calibration_sequence = 0
+        self._calibration_revisions: dict[str, int] = {}
+        self._calibration_context_revision = 0
 
         self.config_entry = entry
         self._host = host
@@ -507,6 +511,26 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         """
         return self._handler.connected
 
+    def calibration_revision(self, objnam: str) -> tuple[int, int, int]:
+        """Identify the connection, target readback and panel-unit revision."""
+        return (
+            self._calibration_generation,
+            self._calibration_revisions.get(objnam, 0),
+            self._calibration_context_revision,
+        )
+
+    def calibration_is_fresh(self, objnam: str) -> bool:
+        """Require explicit CALIB delivery after the initial connection is lost."""
+        return self.connected and (
+            self._calibration_generation == 0 or objnam in self._calibration_revisions
+        )
+
+    @callback
+    def async_invalidate_calibration(self) -> None:
+        """Invalidate pending reads and cached calibration before reconnect starts."""
+        self._calibration_generation += 1
+        self._calibration_revisions.clear()
+
     async def async_start(self) -> None:
         """Start the connection to the IntelliCenter."""
 
@@ -547,6 +571,7 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         ``async_unload_entry`` cannot complete - and a reload cannot reconnect
         - over a connection that is still closing.
         """
+        self.async_invalidate_calibration()
         # Cancel stop listener
         if self._stop_listener:
             self._stop_listener()
@@ -871,6 +896,21 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         changes: dict[str, dict[str, Any]] = {
             objnam: attrs for objnam, attrs in data.items() if attrs is not None
         }
+        # Record revisions before discovery/listener fan-out, including when a
+        # number is disabled or has not yet registered a coordinator listener.
+        for objnam, attrs in data.items():
+            obj = self._model[objnam]
+            if attrs is None:
+                self._calibration_revisions.pop(objnam, None)
+            elif obj is not None:
+                if obj.objtype == SENSE_TYPE and CALIB_ATTR in attrs:
+                    self._calibration_sequence += 1
+                    if self.connected:
+                        self._calibration_revisions[objnam] = self._calibration_sequence
+                elif (
+                    obj.objtype == SYSTEM_TYPE and {MODE_ATTR, VER_ATTR} & attrs.keys()
+                ):
+                    self._calibration_context_revision += 1
         if removed:
             self._async_remove_objects(removed)
 
@@ -942,6 +982,8 @@ class IntelliCenterCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
         rendering the availability change - plus surfacing equipment added while
         the connection was down.
         """
+        if not connected:
+            self.async_invalidate_calibration()
         # A reconnect re-fetches the full object list into the model; surface any
         # equipment that was added while the connection was down.
         if connected:
@@ -977,6 +1019,14 @@ class _CoordinatorConnectionHandler(ICConnectionHandler):
         """
         super().__init__(controller, time_between_reconnects=time_between_reconnects)
         self._coordinator = coordinator
+
+    def _on_disconnect(
+        self, controller: ICBaseController, exc: Exception | None
+    ) -> None:
+        # The public on_disconnected callback is debounced and may never fire
+        # on a fast reconnect. Fence readbacks at the immediate library hook.
+        self._coordinator.async_invalidate_calibration()
+        super()._on_disconnect(controller, exc)
 
     def on_started(self, controller: ICBaseController) -> None:
         """Handle initial connection to the Pentair system."""

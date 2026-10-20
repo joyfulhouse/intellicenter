@@ -223,6 +223,7 @@ class SensorCalibrationNumber(PoolEntity, NumberEntity):
             or key is None
             or key not in CALIBRATION_SUPPORT
             or key != self._fresh_key
+            or not self.coordinator.calibration_is_fresh(sensor.objnam)
             or not _connected_sensor(self.coordinator, sensor)
         ):
             return None
@@ -247,6 +248,11 @@ class SensorCalibrationNumber(PoolEntity, NumberEntity):
         )
 
     async def async_added_to_hass(self) -> None:
+        self._fresh_key = (
+            self._key
+            if self.coordinator.calibration_is_fresh(self._pool_object.objnam)
+            else None
+        )
         await super().async_added_to_hass()
         self.async_on_remove(
             self.hass.bus.async_listen(EVENT_CORE_CONFIG_UPDATE, self._units_updated)
@@ -267,7 +273,9 @@ class SensorCalibrationNumber(PoolEntity, NumberEntity):
     @callback
     def _handle_coordinator_update(self) -> None:
         updates = self.coordinator.data or {}
-        if CALIB_ATTR in updates.get(self._pool_object.objnam, {}):
+        if not self.coordinator.calibration_is_fresh(self._pool_object.objnam):
+            self._fresh_key = None
+        elif CALIB_ATTR in updates.get(self._pool_object.objnam, {}):
             self._fresh_key = self._key
         elif self._key != self._fresh_key:
             self._fresh_key = None
@@ -288,7 +296,10 @@ class SensorCalibrationNumber(PoolEntity, NumberEntity):
         encoded = round(offset)
         if not self._limits.accepts(encoded):
             raise self._error("invalid_calibration")
+        revision = self.coordinator.calibration_revision(sensor.objnam)
         await self._async_execute_changes({CALIB_ATTR: str(encoded)})
+        if self.coordinator.calibration_revision(sensor.objnam) != revision:
+            raise self._error("calibration_unconfirmed")
         response = await self._async_execute_command(
             self._controller.send_cmd(
                 "GetParamList",
@@ -299,6 +310,7 @@ class SensorCalibrationNumber(PoolEntity, NumberEntity):
         entries = response.get("objectList") if isinstance(response, dict) else None
         if (
             not self.coordinator.connected
+            or self.coordinator.calibration_revision(sensor.objnam) != revision
             or self._key != key
             or self._sensor is not sensor
             or not isinstance(entries, list)
@@ -309,8 +321,8 @@ class SensorCalibrationNumber(PoolEntity, NumberEntity):
             or parse_calibration_integer(params.get(CALIB_ATTR)) != encoded
         ):
             raise self._error("calibration_unconfirmed")
-        # Only a validated GetParamList response enters the shared model. NotifyList
-        # remains authoritative too; SETPARAMLIST's acknowledgement never does.
+        # No await separates the revision check from applying the response.
+        # A newer notification or connection generation always wins over this read.
         changed = sensor.update({CALIB_ATTR: str(encoded)})
         self._fresh_key = key
         if changed:

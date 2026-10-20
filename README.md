@@ -140,6 +140,46 @@ After setup, configure connection settings:
 | **System** | Switch, Binary Sensor, Sensors | Vacation mode, freeze protection, temperatures, System Mode (`auto`/`service`/`timeout`), "Not in Auto" problem indicator, firmware advisories (a Repairs warning is raised for firmware with documented issues, e.g. the pulled 2.x line) |
 | **Covers** | Cover | Pool cover position (`POSIT`) and open/close; availability follows the panel connection (STATUS never hides the entity); older firmware without position reporting shows unknown |
 
+### Heater Mode and Activity
+
+The water heater's state is the selected operation (for example, **Gas Heater**
+or **Gas Only**). It stays selected when the body stops or reaches temperature.
+The separate `heating_status` attribute reports panel activity:
+
+| Activity | Meaning | Entity icon |
+|----------|---------|-------------|
+| `heating` | Body on, heat source selected, positive `HTMODE` | Flame |
+| `idle` | Body on, heat source selected, `HTMODE=0` | Thermometer |
+| `off` | Body off or heating disabled | Power |
+| `unknown` | Required activity telemetry missing or malformed | Help |
+| `cooling` | Positive `HTMODE` and the assigned heater reports `COOL=ON` | Snowflake |
+
+This is body activity reported by IntelliCenter, not independent flame
+confirmation or identification of the firing source in a multi-source system.
+A target above the current temperature alone does not establish heating: flow
+interlocks, delays, and inactive bodies can prevent it. On a lost connection,
+the entity becomes unavailable.
+
+To show both mode and activity using a built-in dashboard card, replace the
+example entity ID with your pool or spa water heater:
+
+```yaml
+type: entities
+entities:
+  - entity: water_heater.pool
+    name: Selected heat source
+  - type: attribute
+    entity: water_heater.pool
+    attribute: heating_status
+    name: Heating activity
+```
+
+Cards control their own coloring and may use fixed icons. Remove any entity
+icon customization or card icon override to use the integration's changing
+icon. The water heater's main state continues to show the selected mode; use
+the activity attribute for heating/idle text. Automations that previously
+tested whether `heating_status` was absent should now test for `off`.
+
 ### Body (Pool/Spa) Last Temp Sensor
 
 - **Last Temp** (`sensor`, one per body, e.g. "Pool Last Temp"): the body's last

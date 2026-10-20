@@ -53,6 +53,7 @@ from pyintellicenter import (
     SNAME_ATTR,
     STATUS_ATTR,
     STATUS_OFF,
+    STATUS_ON,
     SUBTYP_ATTR,
     HeaterType,
     PoolObject,
@@ -145,7 +146,6 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
     LAST_OPERATION_ATTR = "LAST_OPERATION"
     LAST_SETPOINT_ATTR = "LAST_SETPOINT"
     LAST_SETPOINT_METRIC_ATTR = "LAST_SETPOINT_METRIC"
-    _attr_icon = "mdi:thermometer"
 
     def __init__(
         self,
@@ -317,13 +317,45 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
         return str(first.sname) if first is not None else STATE_OFF
 
     @property
-    def _is_heater_active(self) -> bool:
-        """Return True if a heat mode/heater is selected and the body is on."""
-        if self._pool_object[STATUS_ATTR] == STATUS_OFF:
-            return False
-        # str() pins the comparison operand to str so the result is a concrete
-        # bool (HA's STATE_OFF is loosely typed and would otherwise widen to Any).
-        return self.current_operation != str(STATE_OFF)
+    def heating_status(self) -> str:
+        """Return panel-reported body activity separately from the selected mode."""
+        if (
+            self.current_operation == STATE_OFF
+            or self._pool_object[STATUS_ATTR] == STATUS_OFF
+        ):
+            return "off"
+        if self._pool_object[STATUS_ATTR] != STATUS_ON:
+            return "unknown"
+        htmode = self._pool_object[HTMODE_ATTR]
+        # HTMODE is a nonnegative integer on the wire. Missing or malformed
+        # telemetry must not become a heating claim merely because it != "0".
+        if (
+            not isinstance(htmode, str)
+            or not htmode.isascii()
+            or not htmode.isdecimal()
+        ):
+            return "unknown"
+        if not htmode.strip("0"):
+            return "idle"
+        # Solar MODE can leave HEATER pointing at a previously selected heat
+        # pump. Its stale COOL flag does not describe the active solar source.
+        heater_id = self._pool_object[HEATER_ATTR]
+        if heater_id in self._heater_list and self._current_solar_mode() is None:
+            heater = self.coordinator.model[heater_id]
+            if heater is not None and heater[COOL_ATTR] == STATUS_ON:
+                return "cooling"
+        return "heating"
+
+    @property
+    def icon(self) -> str:
+        """Show activity without replacing the selected operation."""
+        return {
+            "heating": "mdi:fire",
+            "cooling": "mdi:snowflake",
+            "idle": "mdi:thermometer",
+            "off": "mdi:power",
+            "unknown": "mdi:help-circle-outline",
+        }[self.heating_status]
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -345,9 +377,7 @@ class PoolWaterHeater(PoolEntity, WaterHeaterEntity, RestoreEntity):
                 self._last_setpoint_metric
             )
 
-        if self._is_heater_active:
-            htmode = self._pool_object[HTMODE_ATTR]
-            state_attributes["heating_status"] = "heating" if htmode != "0" else "idle"
+        state_attributes["heating_status"] = self.heating_status
 
         return state_attributes
 

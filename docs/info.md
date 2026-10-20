@@ -17,8 +17,9 @@
     - a sensor for the desired temperature
     - a water heater (if applicable):
         - set to ON to enable that heater, set to OFF otherwise
-        - status is 'OFF', 'IDLE' (if heater is enabled but NOT running) or
-          'HEATING' is the heater is currently running
+        - state reflects the selected heat source, even while idle
+        - the `heating_status` attribute and dynamic icon show panel-reported
+          body activity: `off`, `idle`, `heating`, `cooling`, or `unknown`
 - creates a switch for all circuits marked as "Featured" on the IntelliCenter
   (for example "Cleaner" or "Spa Blower)
 - for each light (and light show) it creates a Light entity

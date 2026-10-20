@@ -474,8 +474,7 @@ async def test_water_heater_state_body_off_heater_configured(
 
     # Operation should show the configured heater, not "off"
     assert water_heater.current_operation == "Gas Heater"
-    # But heating_status should not be present since body isn't running
-    assert "heating_status" not in water_heater.extra_state_attributes
+    assert water_heater.extra_state_attributes["heating_status"] == "off"
 
 
 async def test_water_heater_state_off_no_heater_configured(
@@ -502,7 +501,7 @@ async def test_water_heater_state_off_no_heater_configured(
     water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
 
     assert water_heater.current_operation == STATE_OFF
-    assert "heating_status" not in water_heater.extra_state_attributes
+    assert water_heater.extra_state_attributes["heating_status"] == "off"
 
 
 async def test_water_heater_state_no_heater(
@@ -526,7 +525,7 @@ async def test_water_heater_state_no_heater(
     water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
 
     assert water_heater.current_operation == STATE_OFF
-    assert "heating_status" not in water_heater.extra_state_attributes
+    assert water_heater.extra_state_attributes["heating_status"] == "off"
 
 
 async def test_water_heater_set_temperature(
@@ -1210,12 +1209,12 @@ async def test_water_heater_hcombo_set_operation_mode_uses_mode_attr(
     )
 
 
-async def test_water_heater_hcombo_is_heater_active_from_mode(
+async def test_water_heater_hcombo_heating_status_from_mode(
     hass: HomeAssistant,
     pool_object_hcombo_heater: PoolObject,
     mock_coordinator: MagicMock,
 ) -> None:
-    """Test HCOMBO _is_heater_active uses MODE_ATTR when HEATER_ATTR is null."""
+    """Test HCOMBO activity uses MODE_ATTR when HEATER_ATTR is null."""
     mock_coordinator.model = MagicMock()
     mock_coordinator.model.__getitem__ = MagicMock(
         return_value=pool_object_hcombo_heater
@@ -1237,7 +1236,7 @@ async def test_water_heater_hcombo_is_heater_active_from_mode(
 
     water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR_COMBO"])
 
-    assert water_heater._is_heater_active is True
+    assert water_heater.heating_status == "heating"
     attrs = water_heater.extra_state_attributes
     assert "heating_status" in attrs
 
@@ -2197,6 +2196,7 @@ async def test_water_heater_solar_mode_wins_over_assigned_gas_heater(
             "STATUS": "ON",
             "HEATER": "HTR01",  # stale gas assignment
             "MODE": "3",  # Solar Only
+            "HTMODE": "1",
             "LOTMP": "72",
             "LSTTMP": "68",
         },
@@ -2204,7 +2204,10 @@ async def test_water_heater_solar_mode_wins_over_assigned_gas_heater(
 
     water_heater = PoolWaterHeater(mock_coordinator, body, ["HTR01", "HTR02"])
 
+    pool_object_heater.update({COOL_ATTR: "ON"})
     assert water_heater.current_operation == "Solar Only"
+    assert water_heater.heating_status == "heating"
+    assert water_heater.icon == "mdi:fire"
     # turn-on restoration remembers the solar mode, not the gas heater
     assert water_heater._last_operation == "Solar Only"
 
@@ -3021,3 +3024,178 @@ async def test_water_heater_unit_flip_clears_memory_at_use_time(
     assert water_heater._last_setpoint_metric is None
     assert "LAST_SETPOINT" not in water_heater.extra_state_attributes
     assert "LAST_SETPOINT_METRIC" not in water_heater.extra_state_attributes
+
+
+@pytest.mark.parametrize(
+    ("status", "htmode", "heater", "activity", "icon"),
+    [
+        ("ON", "1", "HTR01", "heating", "mdi:fire"),
+        ("ON", "2", "HTR01", "heating", "mdi:fire"),
+        ("ON", "0", "HTR01", "idle", "mdi:thermometer"),
+        ("ON", "00", "HTR01", "idle", "mdi:thermometer"),
+        ("ON", None, "HTR01", "unknown", "mdi:help-circle-outline"),
+        (None, "1", "HTR01", "unknown", "mdi:help-circle-outline"),
+        ("INVALID", "1", "HTR01", "unknown", "mdi:help-circle-outline"),
+        ("ON", "", "HTR01", "unknown", "mdi:help-circle-outline"),
+        ("ON", "bad", "HTR01", "unknown", "mdi:help-circle-outline"),
+        ("ON", "-1", "HTR01", "unknown", "mdi:help-circle-outline"),
+        ("ON", "1.5", "HTR01", "unknown", "mdi:help-circle-outline"),
+        ("ON", " 1", "HTR01", "unknown", "mdi:help-circle-outline"),
+        ("ON", "\u0661", "HTR01", "unknown", "mdi:help-circle-outline"),
+        ("ON", 1, "HTR01", "unknown", "mdi:help-circle-outline"),
+        ("ON", True, "HTR01", "unknown", "mdi:help-circle-outline"),
+        ("OFF", "1", "HTR01", "off", "mdi:power"),
+        ("OFF", None, "HTR01", "off", "mdi:power"),
+        ("ON", "1", NULL_OBJNAM, "off", "mdi:power"),
+    ],
+)
+async def test_water_heater_activity_preserves_selected_mode(
+    mock_coordinator: MagicMock,
+    status: str | None,
+    htmode: Any,
+    heater: str,
+    activity: str,
+    icon: str,
+) -> None:
+    """Demand and stale/missing telemetry must not replace selected gas mode."""
+    mock_coordinator.model = PoolModel()
+    mock_coordinator.model.add_object(
+        "HTR01",
+        {
+            "OBJTYP": HEATER_TYPE,
+            "SUBTYP": "HEATER",
+            "SNAME": "Gas Heater",
+            "BODY": "POOL1",
+        },
+    )
+    attrs = {
+        "OBJTYP": BODY_TYPE,
+        "HEATER": heater,
+        "LOTMP": "90",
+        "LSTTMP": "70",
+    }
+    if status is not None:
+        attrs[STATUS_ATTR] = status
+    if htmode is not None:
+        attrs[HTMODE_ATTR] = htmode
+    body = PoolObject("POOL1", attrs)
+    entity = PoolWaterHeater(mock_coordinator, body, ["HTR01"])
+
+    assert entity.current_operation == (
+        STATE_OFF if heater == NULL_OBJNAM else "Gas Heater"
+    )
+    assert entity.extra_state_attributes["heating_status"] == activity
+    assert entity.icon == icon
+    assert entity.target_temperature > entity.current_temperature
+    mock_coordinator.controller.request_changes.assert_not_called()
+
+
+async def test_water_heater_activity_push_updates_ha_state(
+    hass: HomeAssistant,
+) -> None:
+    """Publish activity and icon changes to HA from body and heater-only pushes."""
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = "test_entry"
+    entry.data = {CONF_HOST: "192.0.2.1"}
+    coordinator = IntelliCenterCoordinator(hass, entry, host="192.0.2.1")
+    body = coordinator.model.add_object(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "SNAME": "Pool",
+            "STATUS": "ON",
+            "HEATER": "HTR01",
+            "HTMODE": "0",
+            "LOTMP": "90",
+            "LSTTMP": "70",
+        },
+    )
+    heater = coordinator.model.add_object(
+        "HTR01",
+        {
+            "OBJTYP": HEATER_TYPE,
+            "SUBTYP": "HEATER",
+            "SNAME": "Gas Heater",
+            "BODY": "POOL1",
+            "COOL": "OFF",
+        },
+    )
+    assert body is not None and heater is not None
+    entity = PoolWaterHeater(coordinator, body, ["HTR01"])
+    entity.hass = hass
+    entity.entity_id = "water_heater.pool_activity_test"
+    with patch.object(
+        type(coordinator), "connected", new_callable=property, fget=lambda _: True
+    ):
+        await entity.async_added_to_hass()
+        try:
+            entity.async_write_ha_state()
+            for obj, changes, activity, icon in [
+                (body, {HTMODE_ATTR: "1"}, "heating", "mdi:fire"),
+                (heater, {COOL_ATTR: "ON"}, "cooling", "mdi:snowflake"),
+                (heater, {COOL_ATTR: "OFF"}, "heating", "mdi:fire"),
+                (body, {HTMODE_ATTR: "0"}, "idle", "mdi:thermometer"),
+                (body, {STATUS_ATTR: "OFF"}, "off", "mdi:power"),
+                (
+                    body,
+                    {STATUS_ATTR: "ON", HTMODE_ATTR: "invalid"},
+                    "unknown",
+                    "mdi:help-circle-outline",
+                ),
+            ]:
+                obj.update(changes)
+                coordinator.async_set_updated_data({obj.objnam: changes})
+                state = hass.states.get(entity.entity_id)
+                assert state is not None
+                assert state.state == "Gas Heater"
+                assert state.attributes["heating_status"] == activity
+                assert state.attributes["icon"] == icon
+        finally:
+            await entity.async_will_remove_from_hass()
+
+
+@pytest.mark.parametrize(
+    ("mode", "operation"),
+    [
+        (HeaterType.HYBRID_GAS, "Gas Only"),
+        (HeaterType.HYBRID_ULTRA_TEMP, "Heat Pump Only"),
+        (HeaterType.HYBRID_HYBRID, "Hybrid"),
+        (HeaterType.HYBRID_DUAL, "Dual"),
+    ],
+)
+async def test_hcombo_activity_without_heater_assignment(
+    mock_coordinator: MagicMock,
+    mode: HeaterType,
+    operation: str,
+) -> None:
+    """Body activity works for combo modes without assigning a heater ID."""
+    mock_coordinator.model = PoolModel()
+    mock_coordinator.model.add_object(
+        "COMBO",
+        {
+            "OBJTYP": HEATER_TYPE,
+            "SUBTYP": "HCOMBO",
+            "SNAME": "Combo",
+            "BODY": "POOL1",
+        },
+    )
+    body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "STATUS": "ON",
+            "MODE": str(mode.value),
+            "HEATER": NULL_OBJNAM,
+            "HTMODE": "1",
+        },
+    )
+    entity = PoolWaterHeater(mock_coordinator, body, ["COMBO"])
+    for changes, activity, icon in [
+        ({HTMODE_ATTR: "1"}, "heating", "mdi:fire"),
+        ({HTMODE_ATTR: "0"}, "idle", "mdi:thermometer"),
+        ({STATUS_ATTR: "OFF"}, "off", "mdi:power"),
+    ]:
+        body.update(changes)
+        assert entity.current_operation == operation
+        assert entity.extra_state_attributes["heating_status"] == activity
+        assert entity.icon == icon

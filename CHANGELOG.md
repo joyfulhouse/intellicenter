@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Heater activity display** (#182) - Preserve the selected gas/heater operation while showing panel-reported activity through a dynamic icon and an always-present `heating_status` attribute (`heating`, `idle`, `off`, `unknown`, or `cooling` for an assigned cooling heater). Missing or malformed activity telemetry no longer claims heating. Dashboards can show mode and activity separately; automations that tested for an absent `heating_status` should now test for `off`.
+
 ## [3.12.0b1] - 2026-10-15
 
 ### Added

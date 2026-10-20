@@ -67,6 +67,7 @@ from . import (
     async_setup_pool_entities,
     safe_int,
 )
+from .advanced_settings import CONFIGURATION_SETTINGS, ConfigurationSetting
 from .const import (
     CALIB_ATTR,
     CHEM_CONTROLLER_SUBTYPE,
@@ -338,6 +339,9 @@ def _build_entities(
                 sensors.append(SystemModeSensor(coordinator, obj))
         elif obj.objtype == MODULE_TYPE:
             sensors.append(ModuleFirmwareSensor(coordinator, obj))
+        for setting in CONFIGURATION_SETTINGS:
+            if obj.objtype == setting.object_type and setting.key in obj.attribute_keys:
+                sensors.append(ConfigurationSensor(coordinator, obj, setting))
     return sensors
 
 
@@ -656,3 +660,32 @@ class SystemModeSensor(PoolSensor):
         ``options``.
         """
         return normalize_system_mode(self._pool_object[self._attribute_key])
+
+
+class ConfigurationSensor(PoolSensor):
+    """Read-only panel configuration, with no inferred activity or timestamps."""
+
+    def __init__(
+        self,
+        coordinator: IntelliCenterCoordinator,
+        pool_object: PoolObject,
+        setting: ConfigurationSetting,
+    ) -> None:
+        """Keep each object's setting identity and raw protocol representation."""
+        super().__init__(
+            coordinator,
+            pool_object,
+            device_class=None,
+            attribute_key=setting.key,
+            name=setting.name,
+            icon="mdi:cog-outline",
+            entity_category=EntityCategory.DIAGNOSTIC,
+            enabled_by_default=False,
+            state_class=None,
+        )
+        self._setting = setting
+
+    @property
+    def native_value(self) -> str | None:
+        """Preserve unknown values instead of treating them as disabled."""
+        return self._setting.state(self._pool_object[self._attribute_key])

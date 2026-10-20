@@ -18,6 +18,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from pyintellicenter import (
     BODY_TYPE,
     CHEM_TYPE,
+    CIRCGRP_TYPE,
     HEATER_ATTR,
     HTMODE_ATTR,
     SCHED_TYPE,
@@ -39,7 +40,8 @@ from . import (
     is_user_circuit,
     protocol_on_off,
 )
-from .const import CHLORINATOR_SUBTYPE, DNTSTP_ATTR, MANHT_ATTR
+from .advanced_settings import MANOVR_ATTR, manual_priority_supported
+from .const import CHLORINATOR_SUBTYPE, DNTSTP_ATTR, DOMAIN, MANHT_ATTR
 from .coordinator import IntelliCenterCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -54,6 +56,10 @@ def _build_entities(
     """Build switch entities for the given candidate pool objects."""
     switches: list[SwitchEntity] = []
     for pool_obj in candidates:
+        if pool_obj.objtype != CIRCGRP_TYPE and manual_priority_supported(
+            pool_obj[MANOVR_ATTR]
+        ):
+            switches.append(ManualPrioritySwitch(coordinator, pool_obj))
         if pool_obj.objtype == BODY_TYPE:
             switches.append(PoolBody(coordinator, pool_obj))
         elif (
@@ -194,6 +200,76 @@ class PoolBody(PoolCircuit):
         """Initialize a Pool body from the underlying circuit."""
         super().__init__(coordinator, pool_object)
         self._extra_state_attrs = {VOL_ATTR, HEATER_ATTR, HTMODE_ATTR}
+
+
+class ManualPrioritySwitch(PoolEntity, SwitchEntity):
+    """Manual operation priority on its panel-advertised owner."""
+
+    _attr_device_class = SwitchDeviceClass.SWITCH
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_icon = "mdi:hand-back-right"
+
+    def __init__(
+        self,
+        coordinator: IntelliCenterCoordinator,
+        pool_object: PoolObject,
+    ) -> None:
+        """Initialize a separate MANOVR identity without changing Manual Heat."""
+        super().__init__(
+            coordinator,
+            pool_object,
+            attribute_key=MANOVR_ATTR,
+            name="Manual operation priority",
+        )
+
+    def _supported_owner(self) -> PoolObject | None:
+        """Require one unambiguous, currently recognized owner in the live model."""
+        owners = [
+            obj
+            for obj in self.coordinator.model
+            if obj.objtype != CIRCGRP_TYPE
+            and manual_priority_supported(obj[MANOVR_ATTR])
+        ]
+        if len(owners) != 1 or owners[0].objnam != self._pool_object.objnam:
+            return None
+        return owners[0]
+
+    @property
+    def available(self) -> bool:
+        """Disable writes after disconnect, loss of support, or ambiguous ownership."""
+        return super().available and self._supported_owner() is not None
+
+    @property
+    def is_on(self) -> bool | None:
+        """Report only panel state; a write acknowledgement is not readback."""
+        owner = self._supported_owner()
+        return protocol_on_off(owner[MANOVR_ATTR]) if owner is not None else None
+
+    def coordinator_update_dependencies(self) -> dict[str, set[str] | None]:
+        """Re-evaluate ownership when another advertised owner changes."""
+        return {
+            obj.objnam: {MANOVR_ATTR}
+            for obj in self.coordinator.model
+            if MANOVR_ATTR in obj.attribute_keys
+            and obj.objnam != self._pool_object.objnam
+        }
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Enable manual operation priority."""
+        await self._async_set_priority(STATUS_ON)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Disable manual operation priority."""
+        await self._async_set_priority(STATUS_OFF)
+
+    async def _async_set_priority(self, value: str) -> None:
+        """Await the write and propagate protocol failures without changing state."""
+        if not self.available:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="command_failed",
+            )
+        await self._async_execute_changes({MANOVR_ATTR: value})
 
 
 class ManualHeatSwitch(PoolEntity, SwitchEntity):

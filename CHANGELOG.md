@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.12.0] - 2026-10-22
+
+### Changed
+
+- Promote the 3.12 beta series to stable and pin pyintellicenter 0.3.0, the
+  stable release of the soaked 0.3.0b1 protocol implementation.
+- Production evidence spans October 20 at 18:46 UTC through October 22 at
+  17:21 UTC on Home Assistant Yellow / HA 2026.10.2, including two scheduled
+  circulation cycles and an intervening HA restart. All 70 enabled entities
+  remain present; the two previously unknown covers remain unknown. Pool/spa
+  setpoints and the separation of selected heater operation from actual
+  heating status are preserved. See [production evidence](docs/PRODUCTION_SOAK_3.12.0.md)
+  for counter boundaries, observations, and limitations.
+- Includes guarded manual priority, optional read-only advanced-setting
+  diagnostics, explicit unknown restriction dependencies, and the heater
+  activity display fixes described in the beta entries below.
+- Firmware installation, group commissioning, unverified calibration, and
+  broader light actions remain disabled pending device evidence. The soak
+  does not validate active heating, forced reconnects, service-mode/MANOVR
+  writes, calibration, firmware installation, or commissioning.
+
+
 ## [3.12.0b2] - 2026-10-20
 
 ### Added
@@ -447,7 +469,10 @@ See the [Credits](README.md#credits) section of the README for full attributions
 
 ---
 
-[Unreleased]: https://github.com/joyfulhouse/intellicenter/compare/v3.7.0...HEAD
+[Unreleased]: https://github.com/joyfulhouse/intellicenter/compare/v3.12.0...HEAD
+[3.12.0]: https://github.com/joyfulhouse/intellicenter/compare/v3.11.1...v3.12.0
+[3.12.0b2]: https://github.com/joyfulhouse/intellicenter/compare/v3.12.0b1...v3.12.0b2
+[3.12.0b1]: https://github.com/joyfulhouse/intellicenter/compare/v3.11.1...v3.12.0b1
 [3.7.0]: https://github.com/joyfulhouse/intellicenter/compare/v3.6.6...v3.7.0
 [3.6.6]: https://github.com/joyfulhouse/intellicenter/compare/v3.6.5...v3.6.6
 [3.6.5]: https://github.com/joyfulhouse/intellicenter/compare/v3.6.4...v3.6.5

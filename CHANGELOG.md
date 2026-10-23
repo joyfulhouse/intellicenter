@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Pin published pyintellicenter 0.3.1 for diagnostic password masking and
+  rejected-payload redaction, preserving raw protocol values and capability gates.
 - Restriction context now explicitly reports unverified field freshness while
   connected, including after partial updates and reconnects, independently of
   measured equipment state.

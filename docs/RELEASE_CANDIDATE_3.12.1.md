@@ -24,7 +24,7 @@ the owner replaced it with real-model cases and passed the corrected suite.
 Integration resolved only adjacent changelog entries; runtime files did not
 conflict. No new protocol contract or equipment command is introduced.
 
-The companion library candidate is 0.3.1, based on
+The companion library is published as 0.3.1, based on
 `a44f96bfebd9b970517e4bf1b3c2a30a69ee0b76` plus
 [PR #114](https://github.com/joyfulhouse/pyintellicenter/pull/114), source commit
 `dfa9d5aa4931492b661150b041d8d446915331d5`. It omits rejected payloads from
@@ -39,18 +39,26 @@ device capability or public protocol API justifies a minor-version release.
 
 ## Dependency and release checkpoint
 
-The integration candidate currently retains the exact published
-`pyintellicenter==0.3.0` pin consistently in manifest, pyproject and lockfile.
-Its runtime changes require no new library API. This candidate therefore does
-not yet distribute the companion library's diagnostic security correction.
+The user approved library merge/publication. Library PRs #114/#115 are merged;
+[v0.3.1](https://github.com/joyfulhouse/pyintellicenter/releases/tag/v0.3.1)
+targets `acdb82c62e5941f37b9e076db6df8fb8bbb9cf5d`. Publication workflow
+[40011916610](https://github.com/joyfulhouse/pyintellicenter/actions/runs/40011916610)
+passed build, TestPyPI and PyPI jobs. Downloaded PyPI distributions match both
+their registry SHA-256 digests and the release-workflow artifacts byte for byte.
+The wheel's exported version and package metadata both report 0.3.1.
 
-Before distributing the combined release, obtain explicit authorization for
-library merge/publication, verify the published 0.3.1 distribution, update all
-three integration dependency declarations together, and rerun required checks
-against that published package. A temporary development install or local wheel
-does not satisfy this final gate. No unpublished package hashes are fabricated.
-Integration merge/publication and production deployment remain separate
-authorization checkpoints.
+The integration now pins published `pyintellicenter==0.3.1` consistently in
+manifest, pyproject and lockfile. Regenerating the lock changed only this package
+and its exact requirement; no unrelated dependencies were upgraded. Registry
+artifact digests are:
+
+- Wheel: `00e2d0f7f6b49d60dcf6bdccdd8b726aa9b87b998d5e2a65d7e602b9fd5ad85e`
+- Source distribution: `8220d3e245eda82c633dc86697ba8107580cf45dd945de781be01ebe951da6db`
+
+Final validation uses a fresh frozen environment resolved from the registry,
+with installed library sources compared against the downloaded published wheel.
+Integration merge/publication and production deployment still require separate
+authorization; the library approval did not authorize either action.
 
 ## Evidence limits
 
@@ -79,9 +87,16 @@ Feature checks: heater 1,075 tests / 96% coverage; restriction freshness 1,013 /
 96%; library access/redaction 1,099 / 92%. All feature lint/format and strict
 mypy checks pass; integration Bandit has no medium/high findings.
 
-The combined 3.12.1 candidate passes 1,076 tests with 96% coverage on Python
-3.14.8 against published pyintellicenter 0.3.0. Ruff lint/format and strict mypy
-pass, and Bandit reports no medium/high findings (one low finding). Feature
-PRs #196/#197 pass CI, HACS and Hassfest. Companion library PR #114 passes CI
-on Python 3.13 and 3.14. Candidate PR CI and the final published-0.3.1 dependency
-gate remain separately recorded in the release PR and beads.
+The final combined 3.12.1 candidate passes 1,076 tests with 96% coverage on
+Python 3.14.8 against the published pyintellicenter 0.3.1 distribution in a fresh
+frozen registry environment. All 33 installed library source files match the
+verified published wheel, with no editable/direct-URL installation metadata.
+Ruff lint/format and strict mypy pass, and Bandit reports no medium/high findings
+(one low finding). Earlier 0.3.0 and local-0.3.1-wheel compatibility checks also
+passed; final readiness uses the published-package results.
+
+Feature PRs #196/#197 pass CI, HACS and Hassfest. Library release PR #115 passes
+CI on Python 3.13 and 3.14; its publication workflow passes all jobs. Updated
+integration candidate PR CI is recorded in the release PR and beads. The next
+checkpoint is explicit approval of integration merge/publication; production
+deployment remains separately unapproved.

@@ -1001,7 +1001,7 @@ async def test_heater_sensor_heating(
     pool_object_heater_sensor: PoolObject,
     mock_coordinator: MagicMock,
 ) -> None:
-    """Test heater sensor when actively heating."""
+    """Selected heater plus body activity does not confirm physical firing."""
 
     # Create mock pool body that is using this heater
     pool_body = PoolObject(
@@ -1023,7 +1023,7 @@ async def test_heater_sensor_heating(
         pool_object_heater_sensor,
     )
 
-    assert sensor.is_on is True
+    assert sensor.is_on is None
     assert sensor._attr_device_class == BinarySensorDeviceClass.HEAT
 
 
@@ -1049,6 +1049,7 @@ async def test_heater_sensor_not_heating(
     mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_body)
     mock_coordinator.model.get_by_type.return_value = [pool_body]
 
+    pool_object_heater_sensor.update({"BODY": "POOL1"})
     sensor = HeaterBinarySensor(
         mock_coordinator,
         pool_object_heater_sensor,
@@ -1079,6 +1080,7 @@ async def test_heater_sensor_body_off(
     mock_coordinator.model.__getitem__ = MagicMock(return_value=pool_body)
     mock_coordinator.model.get_by_type.return_value = [pool_body]
 
+    pool_object_heater_sensor.update({"BODY": "POOL1"})
     sensor = HeaterBinarySensor(
         mock_coordinator,
         pool_object_heater_sensor,
@@ -1092,13 +1094,13 @@ async def test_heater_sensor_body_off(
     [{}, {"HEATER": "HTR02"}],
     ids=["missing-heater", "different-heater"],
 )
-async def test_heater_sensor_ignores_unselected_body(
+async def test_heater_sensor_unselected_body_activity_is_unknown(
     hass: HomeAssistant,
     pool_object_heater_sensor: PoolObject,
     mock_coordinator: MagicMock,
     heater_attrs: dict[str, str],
 ) -> None:
-    """Test heater sensor when the body has no heater or a different heater."""
+    """Associated body activity is ambiguous even with another source selected."""
 
     pool_body = PoolObject(
         "POOL1",
@@ -1119,7 +1121,7 @@ async def test_heater_sensor_ignores_unselected_body(
         pool_object_heater_sensor,
     )
 
-    assert sensor.is_on is False
+    assert sensor.is_on is None
 
 
 async def test_heater_sensor_is_updated_body_changes(
@@ -1199,8 +1201,8 @@ async def test_heater_sensor_multiple_bodies(
 
     sensor = HeaterBinarySensor(mock_coordinator, heater)
 
-    # Should be on because pool is heating
-    assert sensor.is_on is True
+    # Body heating does not identify the physical source
+    assert sensor.is_on is None
 
     # Should update on either body's changes
     assert sensor.isUpdated({"POOL1": {HTMODE_ATTR: "0"}}) is True
@@ -1211,7 +1213,7 @@ async def test_heater_sensor_detects_body_outside_heater_body_list(
     hass: HomeAssistant,
     mock_coordinator: MagicMock,
 ) -> None:
-    """Regression: a body's HEATER is authoritative over the heater's BODY list."""
+    """A selecting body outside BODY still contributes activity uncertainty."""
     heater = PoolObject(
         "H0001",
         {
@@ -1251,7 +1253,7 @@ async def test_heater_sensor_detects_body_outside_heater_body_list(
 
     sensor = HeaterBinarySensor(mock_coordinator, heater)
 
-    assert sensor.is_on is True
+    assert sensor.is_on is None
     assert sensor.isUpdated({"B1202": {HTMODE_ATTR: "0"}}) is True
 
 
@@ -1339,7 +1341,7 @@ async def test_heater_sensor_unknown_htmode_is_not_heating(
     mock_coordinator.model.get_by_type.return_value = [pool_body]
 
     sensor = HeaterBinarySensor(mock_coordinator, pool_object_heater_sensor)
-    assert sensor.is_on is False
+    assert sensor.is_on is None
 
 
 # -------------------------------------------------------------------------------------
@@ -1439,3 +1441,149 @@ async def test_system_mode_binary_sensor_state_updates(
     assert sensor.isUpdated(updates) is True
     pool_object_system_mode.update(updates["_5451"])
     assert sensor.is_on is True
+
+
+def _set_heater_test_model(coordinator: MagicMock, objects: list[PoolObject]) -> None:
+    """Exercise actual type lookup and live model updates in heater regressions."""
+    model = PoolModel()
+    for obj in objects:
+        model.add_object(
+            obj.objnam, {**obj.properties, "OBJTYP": obj.objtype, "SUBTYP": obj.subtype}
+        )
+    coordinator.model = model
+
+
+@pytest.mark.parametrize(
+    "subtype,selected",
+    [
+        ("GAS", "HTR01"),
+        ("GAS", "HTR02"),
+        ("GAS", None),
+        ("HCOMBO", "NULL"),
+        ("SOLAR", "HTR01"),
+        ("ULTRA", "HTR01"),
+    ],
+)
+@pytest.mark.parametrize("activity", [None, "", "bad", "-1", "1.0", "\uff11", "1", "2"])
+async def test_heater_activity_does_not_confirm_physical_source(
+    mock_coordinator: MagicMock,
+    subtype: str,
+    selected: str | None,
+    activity: str | None,
+) -> None:
+    """Absent, malformed, heating and cooling activity cannot confirm firing."""
+    heater = PoolObject(
+        "HTR01",
+        {"OBJTYP": HEATER_TYPE, "SUBTYP": subtype, "BODY": "POOL1", "COOL": "ON"},
+    )
+    body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "STATUS": "ON",
+            "HEATER": selected,
+            "HTMODE": activity,
+            "MODE": "3",
+            "HTSRC": "HTR01",
+        },
+    )
+    _set_heater_test_model(mock_coordinator, [heater, body])
+    sensor = HeaterBinarySensor(mock_coordinator, heater)
+    assert sensor.is_on is None
+    assert sensor.unique_id == f"{mock_coordinator.config_entry.entry_id}_HTR01"
+
+
+@pytest.mark.parametrize("activity", ["0", "00", "000"])
+async def test_combo_idle_with_null_heater(
+    mock_coordinator: MagicMock, activity: str
+) -> None:
+    """HCOMBO uses MODE with HEATER=NULL; zero activity still establishes idle."""
+    heater = PoolObject(
+        "HTR01", {"OBJTYP": HEATER_TYPE, "SUBTYP": "HCOMBO", "BODY": "POOL1"}
+    )
+    body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "STATUS": "ON",
+            "HEATER": "NULL",
+            "MODE": "3",
+            "HTMODE": activity,
+        },
+    )
+    _set_heater_test_model(mock_coordinator, [heater, body])
+    assert HeaterBinarySensor(mock_coordinator, heater).is_on is False
+
+
+async def test_physical_source_changes_remain_unknown(
+    mock_coordinator: MagicMock,
+) -> None:
+    """Source/preference changes cannot latch a previous physical firing claim."""
+    heaters = [
+        PoolObject(name, {"OBJTYP": HEATER_TYPE, "BODY": "POOL1"})
+        for name in ("HTR01", "HTR02")
+    ]
+    body = PoolObject("POOL1", {"OBJTYP": BODY_TYPE, "STATUS": "ON", "HTMODE": "1"})
+    _set_heater_test_model(mock_coordinator, [*heaters, body])
+    body = mock_coordinator.model["POOL1"]
+    assert body is not None
+    sensors = [HeaterBinarySensor(mock_coordinator, heater) for heater in heaters]
+    for selected, source, mode in [
+        ("HTR01", "HTR01", "1"),
+        ("HTR01", "HTR02", "12"),
+        ("HTR02", "HTR02", "1"),
+        ("NULL", "00000", "3"),
+    ]:
+        update = {"HEATER": selected, "HTSRC": source, "MODE": mode}
+        body.update(update)
+        for sensor in sensors:
+            assert sensor.isUpdated({"POOL1": update})
+            assert sensor.is_on is None
+    body.update({"HTMODE": "0"})
+    assert all(sensor.is_on is False for sensor in sensors)
+
+
+@pytest.mark.parametrize("bodies", [[], ["POOL1"]])
+async def test_missing_associated_body_activity_is_unknown(
+    mock_coordinator: MagicMock, bodies: list[str]
+) -> None:
+    """Partial discovery cannot establish inactivity for every served body."""
+    heater = PoolObject("HTR01", {"OBJTYP": HEATER_TYPE, "BODY": "POOL1 SPA01"})
+    _set_heater_test_model(
+        mock_coordinator,
+        [
+            heater,
+            *[
+                PoolObject(name, {"OBJTYP": BODY_TYPE, "STATUS": "OFF"})
+                for name in bodies
+            ],
+        ],
+    )
+    assert HeaterBinarySensor(mock_coordinator, heater).is_on is None
+
+
+@pytest.mark.parametrize("status", [None, "", "unexpected"])
+async def test_physical_heater_unknown_body_status(
+    mock_coordinator: MagicMock, status: str | None
+) -> None:
+    """Zero activity cannot establish idle when body status is not known."""
+    heater = PoolObject("HTR01", {"OBJTYP": HEATER_TYPE, "BODY": "POOL1"})
+    body = PoolObject("POOL1", {"OBJTYP": BODY_TYPE, "STATUS": status, "HTMODE": "0"})
+    _set_heater_test_model(mock_coordinator, [heater, body])
+    assert HeaterBinarySensor(mock_coordinator, heater).is_on is None
+
+
+@pytest.mark.parametrize("association", [None, 3, [], {}, "", "   "])
+async def test_heater_malformed_body_association_is_unknown(
+    mock_coordinator: MagicMock, association: object
+) -> None:
+    """Malformed association cannot raise or prove physical inactivity."""
+    heater = PoolObject("HTR01", {"OBJTYP": HEATER_TYPE, "BODY": association})
+    body = PoolObject(
+        "POOL1", {"OBJTYP": BODY_TYPE, "STATUS": "ON", "HEATER": "HTR01", "HTMODE": "0"}
+    )
+    _set_heater_test_model(mock_coordinator, [heater, body])
+    sensor = HeaterBinarySensor(mock_coordinator, heater)
+    assert sensor._bodies == set()
+    assert sensor.is_on is None
+    assert "POOL1" in sensor.coordinator_update_dependencies()

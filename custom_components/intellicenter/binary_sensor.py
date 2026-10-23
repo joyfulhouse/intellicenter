@@ -432,7 +432,11 @@ class FirmwareUpdateBinarySensor(PoolEntity, BinarySensorEntity):
 class HeaterBinarySensor(PoolEntity, BinarySensorEntity):
     """Representation of a Heater binary sensor.
 
-    Tracks whether a heater is actively heating any body of water.
+    Report known inactivity without inferring physical source activity.
+
+    Body HTMODE describes activity, while HEATER selects a source. Neither
+    confirms that this physical heater is firing. Active or incomplete body
+    telemetry therefore remains unknown pending hardware source evidence.
     """
 
     _attr_device_class = BinarySensorDeviceClass.HEAT
@@ -463,7 +467,7 @@ class HeaterBinarySensor(PoolEntity, BinarySensorEntity):
         to a different body keeps reporting correctly without a reload.
         """
         body_attr = self._pool_object[BODY_ATTR]
-        return set(body_attr.split(" ")) if body_attr else set()
+        return set(body_attr.split()) if isinstance(body_attr, str) else set()
 
     def coordinator_update_dependencies(self) -> dict[str, set[str] | None]:
         """Route updates from every body this heater can serve."""
@@ -475,17 +479,37 @@ class HeaterBinarySensor(PoolEntity, BinarySensorEntity):
         }
 
     @property
-    def is_on(self) -> bool:
-        """Return true if the heater is actively heating."""
-        for body in self.coordinator.model.get_by_type(BODY_TYPE):
+    def is_on(self) -> bool | None:
+        """Return off only when every relevant body reports no activity.
+
+        Include both the live BODY association and bodies selecting this heater:
+        HCOMBO can use HEATER=NULL, and shared heaters can be selected outside
+        their configured BODY list. Selection never confirms physical firing.
+        """
+        if not self._bodies:
+            return None
+        bodies = {
+            body.objnam: body
+            for body in self.coordinator.model.get_by_type(BODY_TYPE)
+            if body.objnam in self._bodies
+            or body[HEATER_ATTR] == self._pool_object.objnam
+        }
+        if not bodies or self._bodies - bodies.keys():
+            return None
+        for body in bodies.values():
+            status = protocol_on_off(body[STATUS_ATTR])
+            if status is False:
+                continue
+            if status is None:
+                return None
+            htmode = body[HTMODE_ATTR]
             if (
-                body[STATUS_ATTR] == STATUS_ON
-                and body[HEATER_ATTR] == self._pool_object.objnam
-                # A missing HTMODE means "unknown", not "heating": None != "0"
-                # is True, so an explicit not-in check is required.
-                and body[HTMODE_ATTR] not in (None, "0")
+                not isinstance(htmode, str)
+                or not htmode.isascii()
+                or not htmode.isdecimal()
+                or htmode.strip("0")
             ):
-                return True
+                return None
         return False
 
     def isUpdated(self, updates: dict[str, dict[str, Any]]) -> bool:

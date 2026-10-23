@@ -64,8 +64,11 @@ During disconnection, cached observations are omitted and the assessment reports
 `connection_unavailable`. On connection, the assessment uses the library's model
 and subscription lifecycle. The library exposes no per-field age or snapshot
 completeness marker: silently stale fields on an otherwise connected panel cannot
-be distinguished from unchanged values. This is a remaining freshness evidence
-and library API gate, not a claim that every connected field is fresh.
+be distinguished from unchanged values. Connected assessments therefore include
+`field_freshness_unverified` in `unknown_dependencies`, even when cached values
+supply an active reason. This is a remaining freshness evidence and library API
+gate, not a claim that every connected field is fresh. A notification for one
+field does not certify the freshness of other fields or the complete snapshot.
 
 ## Evidence and remaining gates
 

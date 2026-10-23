@@ -286,6 +286,7 @@ async def test_disconnect_removal_and_reconnect(hass, coordinator):
     stale = assessment(coordinator)
     assert not stale.reasons
     assert not stale.covers
+    assert "field_freshness_unverified" not in codes(stale.unknown_dependencies)
     assert "connection_unavailable" in codes(stale.unknown_dependencies)
     coordinator.model.remove_object("CV1")
     coordinator.async_set_updated_data({"CV1": None})
@@ -296,6 +297,10 @@ async def test_disconnect_removal_and_reconnect(hass, coordinator):
     coordinator.async_set_connection_state(True)
     current = entity.extra_state_attributes["restriction_context"]
     assert current["reasons"] == []
+    assert any(
+        item["code"] == "field_freshness_unverified"
+        for item in current["unknown_dependencies"]
+    )
     assert [cover["objnam"] for cover in current["covers"]] == ["CV2"]
     assert any(
         item["code"] == "cover_position_unknown"
@@ -406,3 +411,21 @@ def test_context_serialization_is_detached(coordinator):
     assert codes(result.reasons) == {"freeze_protection_context"}
     assert result.unknown_dependencies
     assert RestrictionIndex(coordinator.model).assess("C1", connected=True) == result
+
+
+def test_connected_cached_fields_keep_freshness_explicit(coordinator):
+    """A partial push cannot certify the age of unchanged cached fields."""
+    circuit = add(coordinator, "C1", OBJTYP="CIRCUIT", STATUS="ON", FREEZE="ON")
+    before = assessment(coordinator)
+    assert before.state == "active"
+    assert "field_freshness_unverified" in codes(before.unknown_dependencies)
+    circuit.update({"STATUS": "OFF"})
+    coordinator.async_set_updated_data({"C1": {"STATUS": "OFF"}})
+    after = assessment(coordinator)
+    assert after.state == "unknown"
+    assert not after.reasons
+    assert "field_freshness_unverified" in codes(after.unknown_dependencies)
+    assert circuit["FREEZE"] == "ON"
+    disconnected = coordinator.restrictions.assess("C1", connected=False)
+    assert "connection_unavailable" in codes(disconnected.unknown_dependencies)
+    assert not disconnected.reasons

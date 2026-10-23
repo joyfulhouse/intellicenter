@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   connected, including after partial updates and reconnects, independently of
   measured equipment state.
 
+### Fixed
+
+- Physical heater diagnostics now return unknown for active or incomplete body
+  telemetry instead of treating selected sources, HCOMBO modes, or cooling as
+  confirmed physical heating. Known inactivity remains off; entity IDs are
+  preserved. Source attribution still requires hardware captures; see
+  [heater evidence limits](docs/heater-activity-attribution.md).
+
 ## [3.12.0] - 2026-10-22
 
 ### Changed

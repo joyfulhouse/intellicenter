@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   preserved. Source attribution still requires hardware captures; see
   [heater evidence limits](docs/heater-activity-attribution.md).
 
+### Changed
+
+- Restriction context now explicitly reports unverified field freshness while
+  connected, including after partial updates and reconnects, independently of
+  measured equipment state.
+
 ## [3.12.0] - 2026-10-22
 
 ### Changed

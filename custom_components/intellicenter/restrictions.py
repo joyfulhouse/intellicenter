@@ -227,6 +227,8 @@ class RestrictionIndex:
         if not connected:
             unknowns.add(ContextFact("connection_unavailable", objnam, "connection"))
             return RestrictionContext((), tuple(sorted(unknowns)), ())
+        # The model has no field timestamps or snapshot-completeness marker.
+        unknowns.add(ContextFact("field_freshness_unverified", objnam, "model"))
         topology = self._topology(objnam)
         unknowns.update(topology.unknowns)
         reasons: set[ContextFact] = set()

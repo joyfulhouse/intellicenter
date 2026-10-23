@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Restriction context now explicitly reports unverified field freshness while
+  connected, including after partial updates and reconnects, independently of
+  measured equipment state.
+
 ## [3.12.0] - 2026-10-22
 
 ### Changed

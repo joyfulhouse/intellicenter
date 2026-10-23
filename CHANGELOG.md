@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.12.1] - 2026-10-23
+
+### Changed
+
+- Pin published pyintellicenter 0.3.1 for diagnostic password masking and
+  rejected-payload redaction, preserving raw protocol values and capability gates.
+- Restriction context now explicitly reports unverified field freshness while
+  connected, including after partial updates and reconnects, independently of
+  measured equipment state.
+
 ### Fixed
 
 - Physical heater diagnostics now return unknown for active or incomplete body
@@ -14,12 +24,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   confirmed physical heating. Known inactivity remains off; entity IDs are
   preserved. Source attribution still requires hardware captures; see
   [heater evidence limits](docs/heater-activity-attribution.md).
-
-### Changed
-
-- Restriction context now explicitly reports unverified field freshness while
-  connected, including after partial updates and reconnects, independently of
-  measured equipment state.
 
 ## [3.12.0] - 2026-10-22
 
@@ -483,7 +487,8 @@ See the [Credits](README.md#credits) section of the README for full attributions
 
 ---
 
-[Unreleased]: https://github.com/joyfulhouse/intellicenter/compare/v3.12.0...HEAD
+[Unreleased]: https://github.com/joyfulhouse/intellicenter/compare/v3.12.1...HEAD
+[3.12.1]: https://github.com/joyfulhouse/intellicenter/compare/v3.12.0...v3.12.1
 [3.12.0]: https://github.com/joyfulhouse/intellicenter/compare/v3.11.1...v3.12.0
 [3.12.0b2]: https://github.com/joyfulhouse/intellicenter/compare/v3.12.0b1...v3.12.0b2
 [3.12.0b1]: https://github.com/joyfulhouse/intellicenter/compare/v3.11.1...v3.12.0b1

@@ -57,8 +57,10 @@ artifact digests are:
 
 Final validation uses a fresh frozen environment resolved from the registry,
 with installed library sources compared against the downloaded published wheel.
-Integration merge/publication and production deployment still require separate
-authorization; the library approval did not authorize either action.
+The user subsequently approved integration feature/release merges and 3.12.1
+publication. Production deployment remains a separate, unapproved checkpoint.
+Final merge commits, release workflow and asset verification are recorded in
+the release PR and beads.
 
 ## Evidence limits
 
@@ -97,6 +99,6 @@ passed; final readiness uses the published-package results.
 
 Feature PRs #196/#197 pass CI, HACS and Hassfest. Library release PR #115 passes
 CI on Python 3.13 and 3.14; its publication workflow passes all jobs. Updated
-integration candidate PR CI is recorded in the release PR and beads. The next
-checkpoint is explicit approval of integration merge/publication; production
-deployment remains separately unapproved.
+integration candidate PR CI is recorded in the release PR and beads. Integration
+merge/publication is approved; production deployment remains separately
+unapproved.

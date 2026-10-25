@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- Document panel alert-preference configuration dependencies, critical/unknown
+  flag preservation, verified readback, and offline/entity lifecycle requirements
+  (#188, pyintellicenter #102). Preference controls remain unavailable.
+
 ## [3.12.1] - 2026-10-23
 
 ### Changed

@@ -158,6 +158,10 @@ delay. Setup and reconnect perform no configuration writes.
 Clock, delay, and solar-relay editing require further validation. See
 [advanced settings and evidence gates](docs/advanced-system-settings.md).
 
+Panel alert-preference controls await a validated library contract. Existing
+chemistry alert sensors report active faults independently of notification
+preferences. See [alert-preference requirements](docs/alert-preferences.md).
+
 ### Heater Mode and Activity
 
 The water heater's state is the selected operation (for example, **Gas Heater**

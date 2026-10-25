@@ -38,8 +38,9 @@ unknown and await source evidence.
 
 The current issue has no hardware captures. The 3.12.0 production soak observed
 no active heater cycle and explicitly excludes physical source attribution.
-The app audit on `origin/evidence-pr-189` is static evidence, not device
-validation. The library describes `HTSRC` as a source field but that comment
+The app audit in [PR #189](https://github.com/joyfulhouse/intellicenter/pull/189)
+is static evidence, not device validation. The library describes `HTSRC` as a
+source field but that comment
 does not establish its values or behavior through real transitions. This fix
 does not interpret `HTSRC`, add subscriptions, or claim flame confirmation.
 
@@ -48,6 +49,43 @@ routing cover every input to this diagnostic. Heater `BODY` structural changes
 already rebuild dependencies. No coordinator or protocol-library edits are
 needed. In particular, changing selected source reevaluates the diagnostic
 but cannot convert unknown body heating into a physical firing claim.
+
+### Follow-up evidence review (2026-10-25)
+
+The current repository histories, #183 and merged PR #197, the production
+soak report, and the app-analysis branches were reviewed again. No capture
+establishing physical-source transitions was found. Configured MCP resource
+and resource-template catalogs were empty; repository-memory recall was not
+exposed in this session. No live panel was contacted.
+
+Two existing leads are useful but insufficient:
+
+- [pyintellicenter #15 user snapshots](https://github.com/joyfulhouse/pyintellicenter/issues/15#issuecomment-3779171689)
+  contain `HTSRC=H0001`, `HEATER=H0001`, `HTMODE=4`, `MODE=5` and `STATUS=ON`
+  before and after setpoint edits. They establish that a panel returned those
+  fields together. They do not include source changes, timestamps, notify
+  frames, confirmed equipment subtype, or independent activity observations.
+  They cannot establish whether `HTSRC` is selected, requested or active source.
+- [pyintellicenter app analysis](https://github.com/joyfulhouse/pyintellicenter/blob/docs/pentair-apk-reverse-engineering/docs/PENTAIR_APP_LOCAL_PROTOCOL.md)
+  records body `HTSRC` in query/subscription templates (Hermes function 79341,
+  offset `0x0132ed4b`) and dashboard subscription builders (79647,
+  `0x0133c34a`). Heater templates also request `READY`, `STATUS`, `HTMODE`,
+  `HEATING` and `COOL`. Requesting these fields does not prove that a firmware
+  returns them, sends timely notifications, or assigns physical-source semantics.
+
+There is consequently no evidence-backed reason to extend production
+subscriptions or change the diagnostic predicate. The integration continues
+to use published pyintellicenter 0.3.1 without a library API change or release.
+Additional tests use synthetic model updates, not captured hardware fixtures.
+They cover all four HCOMBO selections and retained source fields while activity
+becomes active, missing, or idle.
+
+Source fields can remain stale across a partial update and must never turn an
+active or incomplete body into a positive physical-source claim. The model
+does not provide a per-field age guarantee for these body inputs; an unchanged
+cached `STATUS`/`HTMODE` value is not proof of a fresh measurement. Establishing
+freshness after reconnect or a dropped notification is part of the capture
+gate below, not a timeout inferred from synthetic tests.
 
 ## Remaining capture matrix
 

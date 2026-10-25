@@ -1587,3 +1587,51 @@ async def test_heater_malformed_body_association_is_unknown(
     assert sensor._bodies == set()
     assert sensor.is_on is None
     assert "POOL1" in sensor.coordinator_update_dependencies()
+
+
+@pytest.mark.parametrize("mode", ["7", "8", "9", "10"])
+async def test_combo_partial_activity_updates_with_retained_source(
+    mock_coordinator: MagicMock, mode: str
+) -> None:
+    """A retained source cannot resolve startup, cooling or missing activity.
+
+    These synthetic updates exercise partial model merges, not an asserted
+    wire mapping for HTSRC or nonzero HTMODE values.
+    """
+    heater = PoolObject(
+        "HTR01", {"OBJTYP": HEATER_TYPE, "SUBTYP": "HCOMBO", "BODY": "POOL1"}
+    )
+    body = PoolObject(
+        "POOL1",
+        {
+            "OBJTYP": BODY_TYPE,
+            "STATUS": "ON",
+            "HEATER": "NULL",
+            "MODE": mode,
+            "HTSRC": "HTR01",
+            "HTMODE": "0",
+        },
+    )
+    _set_heater_test_model(mock_coordinator, [heater, body])
+    body = mock_coordinator.model["POOL1"]
+    assert body is not None
+    sensor = HeaterBinarySensor(mock_coordinator, heater)
+    unique_id = sensor.unique_id
+    assert sensor.is_on is False
+
+    for activity, expected in [
+        ("1", None),
+        (None, None),
+        ("0", False),
+        ("2", None),
+        ("bad", None),
+        ("0", False),
+    ]:
+        update = {"HTMODE": activity}
+        body.update(update)
+        assert sensor.isUpdated({"POOL1": update})
+        assert "HTMODE" in sensor.coordinator_update_dependencies()["POOL1"]
+        assert body["HTSRC"] == "HTR01"
+        assert body["MODE"] == mode
+        assert sensor.is_on is expected
+        assert sensor.unique_id == unique_id

@@ -1,6 +1,6 @@
 """Test the Pentair IntelliCenter diagnostics."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, PropertyMock, patch
 
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
@@ -249,3 +249,72 @@ async def test_diagnostics_connection_state_disconnected(
     result = await async_get_config_entry_diagnostics(hass, entry)
 
     assert result["connection_state"]["connected"] is False
+
+
+@pytest.mark.parametrize("key", ["PASSWRD", "passwrd", "Password", "PASSCODE"])
+@pytest.mark.parametrize("has_coordinator", [True, False])
+async def test_diagnostics_redacts_permission_credentials(
+    hass: HomeAssistant,
+    key: str,
+    has_coordinator: bool,
+) -> None:
+    """Raw model and entry data must not bypass credential redaction."""
+    secret = "synthetic-access-secret"
+    nested = {"records": [{key: secret, "ENABLE": "ON"}]}
+    pool_model_for_diagnostics = PoolModel({"PERMIT": {"OBJTYP", key, "nested"}})
+    pool_model_for_diagnostics.add_object(
+        "PERMIT1", {"OBJTYP": "PERMIT", key: secret, "nested": nested}
+    )
+    entry = _create_mock_entry(
+        hass, pool_model_for_diagnostics, has_coordinator=has_coordinator
+    )
+    entry.data["nested"] = nested
+    entry.options[key] = secret
+
+    result = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert secret not in str(result)
+    assert result["entry"]["data"]["nested"]["records"][0][key] == "**REDACTED**"
+    assert entry.data["nested"]["records"][0][key] == secret
+    permit = pool_model_for_diagnostics["PERMIT1"]
+    assert permit is not None
+    assert permit.properties[key] == secret
+    if has_coordinator:
+        obj = next(o for o in result["objects"] if o["objnam"] == "PERMIT1")
+        assert obj["properties"][key] == "**REDACTED**"
+        assert obj["properties"]["nested"]["records"][0]["ENABLE"] == "ON"
+
+
+@pytest.mark.parametrize("value", [None, "", "synthetic-access-secret"])
+async def test_diagnostics_masks_nested_empty_credentials(
+    hass: HomeAssistant,
+    pool_model_for_diagnostics: PoolModel,
+    value: str | None,
+) -> None:
+    """Empty credentials are masked too, including within tuple containers."""
+    entry = _create_mock_entry(hass, pool_model_for_diagnostics)
+    entry.options["records"] = ({"PassCode": value},)
+
+    result = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert result["entry"]["options"]["records"] == [{"PassCode": "**REDACTED**"}]
+    assert entry.options["records"] == ({"PassCode": value},)
+
+
+async def test_diagnostics_omits_sensitive_exception_text(
+    hass: HomeAssistant,
+    pool_model_for_diagnostics: PoolModel,
+) -> None:
+    """An unstructured failure message cannot be safely scrubbed by key."""
+    entry = _create_mock_entry(hass, pool_model_for_diagnostics)
+    with patch.object(
+        type(entry.runtime_data),
+        "system_info",
+        new_callable=PropertyMock,
+        side_effect=ValueError("synthetic-access-secret"),
+        create=True,
+    ):
+        result = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert result["error"] == "Error collecting diagnostics"
+    assert "synthetic-access-secret" not in str(result)

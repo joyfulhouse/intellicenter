@@ -283,6 +283,9 @@ automation:
 
 ### Color Sync for a GloBrite Light Group
 
+Group editing and equipment commissioning remain gated on device evidence;
+see [the commissioning requirements](docs/GROUP_COMMISSIONING.md).
+
 Use the `intellicenter.color_sync` action with the complete light-group entity:
 
 ```yaml

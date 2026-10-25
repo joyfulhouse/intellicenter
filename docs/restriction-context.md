@@ -62,13 +62,29 @@ edges later.
 
 During disconnection, cached observations are omitted and the assessment reports
 `connection_unavailable`. On connection, the assessment uses the library's model
-and subscription lifecycle. The library exposes no per-field age or snapshot
-completeness marker: silently stale fields on an otherwise connected panel cannot
+and subscription lifecycle. Published pyintellicenter 0.3.1 exposes no per-field
+age or snapshot completeness marker: silently stale fields on a connected panel cannot
 be distinguished from unchanged values. Connected assessments therefore include
 `field_freshness_unverified` in `unknown_dependencies`, even when cached values
 supply an active reason. This is a remaining freshness evidence and library API
 gate, not a claim that every connected field is fresh. A notification for one
 field does not certify the freshness of other fields or the complete snapshot.
+
+Downloaded diagnostics also include `restriction_field_receipts`. Its `supported`
+flag is false with pyintellicenter 0.3.1. When the optional controller
+`field_receipt(objnam, attribute)` API is available, `objects` maps dependency IDs
+to field receipt metadata or `null` for unobserved fields. Metadata includes local
+`age_seconds`, `connection_generation`, and `current_connection`. Unchanged received
+values refresh receipts; reconnect clears them even if old model values survive.
+Direct model edits and command acknowledgements do not create receipts. The
+diagnostic age is measured when downloading; entity attributes do not poll it.
+
+Receipt is independent of value validity and panel sampling time. Even an
+unsupported echo or malformed value may have a receipt. No age threshold,
+snapshot-completeness assertion, or overall all-clear is inferred; the existing
+`field_freshness_unverified` dependency remains. This optional API requires no
+unpublished dependency pin or release. Tests cover both the published library
+and the sibling source checkout.
 
 ## Evidence and remaining gates
 
@@ -97,6 +113,13 @@ Static evidence is Pentair Pool 4.2.21 / build 21615, package
   or controls. The assessment reports `purifier_context_unsupported` and creates
   no purifier entities.
 
+The purifier workstream's proposed association handoff is documented in
+[pyintellicenter PR #119](https://github.com/joyfulhouse/pyintellicenter/pull/119).
+It is not an exported API: subtype/state and body/pump/group references still need
+device evidence. This consumer keeps `purifier_context_unsupported` until that
+workstream delivers a validated API, including unresolved dependencies and
+independent communication/freshness information.
+
 Before confirming circuit-specific cover reasons, obtain sanitized authoritative
 snapshot/subscription evidence identifying assignment object types, parent/target
 references, empty/unassigned cases, and update/removal behavior on named firmware.
@@ -112,3 +135,37 @@ Tests use purpose-built model fixtures and the existing cover behavior contract;
 they do not represent invented device captures. Issue #187 remains open for these
 gates. No dependency version changes or concurrent #100/#104/#106 APIs are
 required by this read-only implementation.
+
+### Evidence review on 2026-10-25
+
+Reviewed current source/history and tests in both repositories, #187 and its
+tracker, merged #191/#196, analysis PRs #189 and pyintellicenter #108, and the
+purifier handoff #119. Historical
+[pyintellicenter #44](https://github.com/joyfulhouse/pyintellicenter/issues/44)
+includes real cover responses with independent `STATUS/POSIT` values and
+`PARENT=PNL01`; it does not identify cover-to-circuit assignment rows or prove
+inventory completeness. That panel parent cannot be treated as a circuit
+assignment. No additional configured MCP resource was available. Repository
+memory identity was available, but no recall tool was exposed in this sandbox.
+No live panel discovery or device action was performed.
+
+The exact remaining evidence is:
+
+1. Named-firmware discovery and read/subscription captures identifying assignment
+   object type, cover parent and target circuit references, including multiple
+   covers, verified empty inventory, malformed/unsupported fields and omissions.
+2. Correlated assignment addition, reassignment, removal/recreation and reconnect
+   snapshots/notifications, including group and pump dependency changes. Existing
+   authorized captures are preferred; assignment editing needs separate authority.
+3. Independent physical open/closed and enabled/disabled observations correlated
+   with `STATUS/POSIT/NORMAL`, retaining unknown on unsupported firmware.
+4. The validated purifier discovery/association API from pyintellicenter #103,
+   including raw unknown states and unresolved dependencies as proposed in #119.
+5. A panel sampling/completeness contract beyond local receipt timestamps, and
+   evidence distinguishing panel enforcement from app warnings before blocking
+   any command. An acknowledged write must be correlated with state and physical
+   behavior before claiming successful action.
+
+These gaps keep #187 open. The receipt increment supplies software provenance
+without presenting a synthetic assignment inventory or treating recent ingestion
+as validated device freshness.

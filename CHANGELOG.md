@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Optional field receipt metadata for restriction dependencies in downloaded
+  diagnostics, while retaining explicit freshness uncertainty and compatibility
+  with published pyintellicenter 0.3.1 (#187).
+
 ### Documentation
 
 - Document panel alert-preference configuration dependencies, critical/unknown

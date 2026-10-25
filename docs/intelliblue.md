@@ -43,7 +43,7 @@ duplicated by this workstream.
    does not validate a setting. No winterize/clean/regenerate action follows
    from a state label or command acknowledgement.
 
-The current evidence review found no panel captures in either repository,
+The current evidence review found no IntelliBlue panel captures in either repository,
 related issue comments or the open app-analysis PRs (#108/#189). No configured
 device resources were available in this sandbox and no live actions were taken.
 The full implementation remains blocked on those specific inputs, not on merge

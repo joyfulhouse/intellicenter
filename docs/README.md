@@ -18,6 +18,7 @@ Technical documentation for developers working on the Pentair IntelliCenter Home
 | [DEVELOPMENT.md](./DEVELOPMENT.md) | Development environment and workflow |
 | [TESTING.md](./TESTING.md) | Test suite layout and how to run it |
 | [advanced-system-settings.md](./advanced-system-settings.md) | Advanced settings, protocol scope, and remaining device evidence |
+| [stored-history.md](./stored-history.md) | Stored history evidence dependency and HA statistics ingestion assessment |
 | [VALIDATION.md](./VALIDATION.md) | Manual validation procedures |
 | [QUALITY_SCALE_COMPLIANCE.md](./QUALITY_SCALE_COMPLIANCE.md) | Home Assistant quality scale compliance |
 | [valve-control-implementation.md](./valve-control-implementation.md) | Valve control protocol notes and reference |

@@ -121,6 +121,45 @@ values are not hardware captures or proposed production bounds. There were no
 live panel commands, commissioning, firmware operations or LAN probes in this
 session.
 
+### Evidence intake and activation review
+
+The follow-up review for #185 found the staged implementation already merged
+in [#192](https://github.com/joyfulhouse/intellicenter/pull/192). The issue's
+unchecked implementation criteria do not mean that another control implementation
+is needed. The remaining activation dependency is genuine device evidence.
+The app reports in #189 and pyintellicenter #108 are static evidence; the
+production soak report explicitly records that calibration controls are disabled.
+Neither provides calibration writes, offset boundaries or persistence captures.
+
+Provide a sanitized evidence bundle with the following index. Keep timestamps,
+request/response correlation and stable pseudonyms for object identities so
+reviewers can distinguish observations from stale responses. Remove addresses,
+credentials and personal names without removing topology or firmware information.
+
+| Record | Required contents |
+|---|---|
+| Provenance | Firmware, panel/hardware topology, capture method, date, separately authorized action scope and reference thermometer accuracy. |
+| Channel map | SENSE objnam/subtype, associated body or explicit unknown association, STATUS/PROBE/SOURCE/CALIB, both dual-body channels where claimed. Never infer body from list order. |
+| Offset matrix | Per firmware/subtype/MODE, independently established minimum/maximum/step; negative/zero/positive/boundary results and rejected values. Target slider limits are insufficient. |
+| Unit sequence | Ordered MODE and sensor observations before/after C/F transitions, with reference readings and independently verified CALIB encoding. |
+| Write sequence | Before-state, requested offset, acknowledgement, separate authoritative notification or targeted readback, after-state and reference measurement. |
+| Persistence | Fresh observations after reconnect; restart observations only when a restart is separately authorized. Record untested persistence explicitly. |
+| Probe health | Healthy and disconnected/error observations, sentinel classification and behavior on recovery. |
+
+This is an evidence specification, not authorization to perform boundary writes,
+disconnect probes, change panel units or restart equipment. Existing captures
+can satisfy it; any new physical actions need applicable explicit authorization.
+Do not record a successful physical calibration merely because CALIB readback
+matches. Record the independent reference measurement as well.
+
+Once evidence is supplied, link the original capture and add a sanitized fixture
+with its provenance, then review the exact profile keys and the supported
+topologies. Unverified firmware/subtype/MODE combinations remain excluded. If
+device evidence requires fractional offsets or different health semantics,
+adapt and test the staged implementation before activating that profile rather
+than coercing the capture into its current integer contract. Keep #185 open
+until the hardware-backed acceptance criteria are satisfied.
+
 No pyintellicenter changes or dependency bumps are required. Tests install this
 session's sibling library worktree. The code uses existing model, discovery and
 command APIs and adds no settings owned by #186 or topology/assignment writers

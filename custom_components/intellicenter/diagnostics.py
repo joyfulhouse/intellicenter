@@ -6,6 +6,7 @@ Sensitive data like IP addresses are automatically redacted.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
@@ -29,6 +30,23 @@ TO_REDACT = {
     # leaks the exact value the PROPNAME entries above are hiding.
     "title",
 }
+
+
+def _redact_credentials(value: Any) -> Any:
+    """Mask permission credentials regardless of key casing or empty values."""
+    if isinstance(value, Mapping):
+        return {
+            key: (
+                "**REDACTED**"
+                if isinstance(key, str)
+                and key.casefold() in {"passwrd", "password", "passcode"}
+                else _redact_credentials(item)
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_redact_credentials(item) for item in value]
+    return value
 
 
 async def async_get_config_entry_diagnostics(
@@ -63,7 +81,9 @@ async def async_get_config_entry_diagnostics(
         )
         if coordinator is None:
             diagnostics_data["error"] = "Coordinator not found"
-            return dict(async_redact_data(diagnostics_data, TO_REDACT))
+            return dict(
+                async_redact_data(_redact_credentials(diagnostics_data), TO_REDACT)
+            )
 
         controller = coordinator.controller
 
@@ -114,9 +134,12 @@ async def async_get_config_entry_diagnostics(
             if supports_restriction_context(obj)
         }
 
-    except Exception as err:
-        diagnostics_data["error"] = f"Error collecting diagnostics: {err}"
+    except Exception:
+        # Exception messages may contain raw permission responses or credentials.
+        diagnostics_data["error"] = "Error collecting diagnostics"
 
     # Redact sensitive information before returning
-    result: dict[str, Any] = async_redact_data(diagnostics_data, TO_REDACT)
+    result: dict[str, Any] = async_redact_data(
+        _redact_credentials(diagnostics_data), TO_REDACT
+    )
     return result

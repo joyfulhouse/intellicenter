@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   flag preservation, verified readback, and offline/entity lifecycle requirements
   (#188, pyintellicenter #102). Preference controls remain unavailable.
 
+### Fixed
+
+- Redact local permission credentials recursively in Home Assistant diagnostics,
+  including mixed-case keys and the unloaded-entry path; omit potentially
+  sensitive exception text. Raw controller/model values remain unchanged.
+
 ## [3.12.1] - 2026-10-23
 
 ### Changed

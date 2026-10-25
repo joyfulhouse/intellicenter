@@ -1,8 +1,12 @@
 # Advanced System Settings
 
 References [#186](https://github.com/joyfulhouse/intellicenter/issues/186).
-This delivers Stage 1: manual operation priority and read-only configuration
-visibility. Clock, persistent-delay, and solar-relay writes remain deferred.
+Stage 1 software was delivered in [#190](https://github.com/joyfulhouse/intellicenter/pull/190)
+and its reconnect fix in [#193](https://github.com/joyfulhouse/intellicenter/pull/193):
+manual operation priority and read-only configuration visibility. This is a
+partial delivery, not device validation. #186 was reopened on 2026-10-25 because
+its remaining acceptance criteria still require device evidence.
+Clock, persistent-delay, and solar-relay writes remain deferred.
 There is no Cancel Delays action.
 
 ## Entities and Targets
@@ -93,10 +97,52 @@ reconciliation. Functions 83020/83136 gate these controls with a comparison
 involving `OCP_VERSION_2029`; the identifier does not establish an inclusive
 minimum version. Do not guess what removes or remaps a heater.
 
+## Evidence Intake and Staged Acceptance
+
+The 2026-10-25 review found no correlated advanced-setting device transactions
+in the owning issues, merged feature PRs, repository fixtures, or available
+app-analysis branches. The [production soak](PRODUCTION_SOAK_3.12.0.md)
+expressly excludes MANOVR writes and forced disconnects. Its disabled diagnostic
+sensors and connection counters do not validate these settings. The static app
+builders and library attribute comments do not fill those gaps.
+
+Provide sanitized, timestamped request/response/NotifyList sequences with stable
+object aliases, object types, firmware versions, transport, and single/shared/
+dual-body topology. Preserve attribute values, ordering, errors and correlations;
+remove credentials, addresses, personal data and device identifiers. Record the
+panel/app setting independently before and after an authorized edit. Each device
+mutation and any disruptive reconnect experiment needs applicable explicit
+authorization; this handoff does not authorize running them.
+
+| Stage | Required correlated evidence | Acceptance boundary |
+| --- | --- | --- |
+| MANOVR validation | Actual owner ID/type and canonical initial read; authorized ON/OFF changes; independent subsequent read/notification; rejection/timeout and reconnect with present/omitted state | Confirm owner selection and freshness on the identified firmware; acknowledgements alone do not demonstrate priority behavior or equipment actuation |
+| Clock ownership/schema | Inventory both SYSTIM objects and SYSTEM; SOURCE values and manual/network interlocks; raw DAY/TIME/MIN requests and reads across midnight/date/year boundaries | Resolve source owner separately from data owner, date convention and seconds; never substitute TIME for MIN based only on names |
+| Offset/DST | Actual TIMZON target and units; positive/negative and fractional offsets, including 30/45-minute cases where supported; DLSTIM ON/OFF through spring/fall transitions and repeated/skipped local time | No host timezone conversion, inferred IANA mapping, or automatic offset rewrite; unsupported cases remain unavailable |
+| Persistent delays | Separate VALVE and HEATING edits/readback on identified firmware/topology; observed pump behavior during relevant valve movement/heater cooldown | Enable each flag only for validated profiles; do not expose activity, durations, or Cancel Delays from these flags |
+| Solar relays | SASHP/SASHP2 independently on applicable single/shared/dual-body layouts, heater/body associations before/after, unsupported layouts and version boundary observations | Refresh configuration and reconcile affected objects after writes; no version threshold inferred from OCP_VERSION_2029, no guessed heater removal/remapping |
+
+Clock saves span distinct owners and must not be treated as atomic. Before a
+writer is implemented, capture partial rejection, timeout after send, connection
+loss, and cancellation between object writes. The implementation must identify
+which writes were attempted, stop further dependent writes after failure, mark
+uncertain fields unknown, and independently reread every affected owner and
+association. Preserve observed partial state and report incomplete application;
+do not replay, roll back, retry a source takeover, or claim success from an ACK.
+If reread fails, keep controls unavailable until fresh state reconciles them.
+Test these paths with synthetic fixtures clearly labeled as such, then validate
+the protocol behavior with correlated device evidence before enabling profiles.
+
+The library's [advanced configuration evidence contract](https://github.com/joyfulhouse/pyintellicenter/blob/main/docs/ADVANCED_CONFIGURATION.md)
+records the shared schema questions. There is no new typed clock/delay/solar
+writer or library release dependency. Existing offline tests validate software
+guards, not the physical semantics required to finish #186.
+
 ## Coordination
 
-The sibling pyintellicenter worktree is used unchanged for tests at 0.2.3. No
-secondary PR or dependency bump is needed. Calibration helpers/numbers (#185)
+The original Stage 1 tests used the unchanged pyintellicenter 0.2.3 worktree.
+The current integration pins published pyintellicenter 0.3.1; this evidence
+handoff requires no dependency bump or package publication. Calibration helpers/numbers (#185)
 and the latest main heater activity behavior (#184) are untouched. Sensor
 additions are confined to a separate class and builder block; the coordinator
 adds subscriptions, deferred MANOVR retry, and invalidation of these settings.

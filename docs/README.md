@@ -25,6 +25,7 @@ Technical documentation for developers working on the Pentair IntelliCenter Home
 | [QUALITY_SCALE_COMPLIANCE.md](./QUALITY_SCALE_COMPLIANCE.md) | Home Assistant quality scale compliance |
 | [valve-control-implementation.md](./valve-control-implementation.md) | Valve control protocol notes and reference |
 | [info.md](./info.md) | HACS info panel content |
+| [firmware-lifecycle.md](./firmware-lifecycle.md) | Firmware installation evidence, HA entity acceptance criteria and release dependencies |
 | [../CHANGELOG.md](../CHANGELOG.md) | Version history and release notes |
 
 > Internal design notes, session logs, and process artifacts live in

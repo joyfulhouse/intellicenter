@@ -133,6 +133,24 @@ async def async_get_config_entry_diagnostics(
             for obj in coordinator.model
             if supports_restriction_context(obj)
         }
+        # Optional until the library receipt API is published. Ages belong in
+        # downloaded diagnostics, not entity attributes that would need polling.
+        receipt_reader = getattr(controller, "field_receipt", None)
+        receipt_objects: dict[str, dict[str, Any]] = {}
+        if callable(receipt_reader):
+            for target in diagnostics_data["restriction_contexts"]:
+                for objnam, attributes in coordinator.restrictions.dependencies(
+                    target
+                ).items():
+                    if objnam not in receipt_objects:
+                        receipt_objects[objnam] = {
+                            attribute: receipt_reader(objnam, attribute)
+                            for attribute in sorted(attributes or ())
+                        }
+        diagnostics_data["restriction_field_receipts"] = {
+            "supported": callable(receipt_reader),
+            "objects": receipt_objects,
+        }
 
     except Exception:
         # Exception messages may contain raw permission responses or credentials.

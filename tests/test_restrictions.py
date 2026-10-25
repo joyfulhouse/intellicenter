@@ -429,3 +429,58 @@ def test_connected_cached_fields_keep_freshness_explicit(coordinator):
     disconnected = coordinator.restrictions.assess("C1", connected=False)
     assert "connection_unavailable" in codes(disconnected.unknown_dependencies)
     assert not disconnected.reasons
+
+
+async def test_receipt_diagnostics_optional_api(hass, coordinator):
+    """Published 0.3.1 works; a future library supplies receipt metadata only."""
+    import json
+
+    add(coordinator, "C1", OBJTYP="CIRCUIT", STATUS="ON", FREEZE="ON")
+    add(
+        coordinator,
+        "CV1",
+        OBJTYP="EXTINSTR",
+        SUBTYP="COVER",
+        STATUS="OFF",
+        POSIT="ON",
+        NORMAL="ON",
+    )
+    entry = MagicMock(spec=ConfigEntry)
+    entry.runtime_data = coordinator
+    entry.entry_id = "receipt_test"
+    entry.title = "Private Pool"
+    entry.data = {}
+    entry.options = {}
+    # Also works when tests run against a checkout with the new optional API.
+    with patch.object(coordinator.controller, "field_receipt", None, create=True):
+        unsupported = await async_get_config_entry_diagnostics(hass, entry)
+    assert unsupported["restriction_field_receipts"] == {
+        "supported": False,
+        "objects": {},
+    }
+    receipt = {
+        "age_seconds": 12.5,
+        "connection_generation": 2,
+        "current_connection": True,
+    }
+    reader = MagicMock(
+        side_effect=lambda objnam, key: (
+            receipt.copy() if (objnam, key) == ("C1", "STATUS") else None
+        )
+    )
+    with patch.object(coordinator.controller, "field_receipt", reader, create=True):
+        supported = await async_get_config_entry_diagnostics(hass, entry)
+    fields = supported["restriction_field_receipts"]
+    assert fields["supported"] is True
+    assert fields["objects"]["C1"]["STATUS"] == receipt
+    assert fields["objects"]["C1"]["FREEZE"] is None
+    assert fields["objects"]["CV1"]["POSIT"] is None
+    # Receipt metadata never certifies complete or physically current state.
+    assert supported["restriction_contexts"] == unsupported["restriction_contexts"]
+    assert "field_freshness_unverified" in {
+        fact["code"]
+        for fact in supported["restriction_contexts"]["C1"]["unknown_dependencies"]
+    }
+    assert assessment(coordinator).covers[0].position == "closed"
+    assert assessment(coordinator).covers[0].enabled is False
+    json.dumps(supported)

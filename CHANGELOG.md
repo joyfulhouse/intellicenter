@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- Document panel alert-preference configuration dependencies, critical/unknown
+  flag preservation, verified readback, and offline/entity lifecycle requirements
+  (#188, pyintellicenter #102). Preference controls remain unavailable.
+
 ### Fixed
 
 - Reconcile stale temperature aliases and IntelliChlor salt through periodic
@@ -16,15 +22,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Salt staleness has not been attributed to the same cause; see the
   [issue #212 RCA](https://github.com/joyfulhouse/intellicenter/issues/212#issuecomment-6422806614).
   Software tests do not validate physical firmware behavior.
-
-### Documentation
-
-- Document panel alert-preference configuration dependencies, critical/unknown
-  flag preservation, verified readback, and offline/entity lifecycle requirements
-  (#188, pyintellicenter #102). Preference controls remain unavailable.
-
-### Fixed
-
 - Redact local permission credentials recursively in Home Assistant diagnostics,
   including mixed-case keys and the unloaded-entry path; omit potentially
   sensitive exception text. Raw controller/model values remain unchanged.

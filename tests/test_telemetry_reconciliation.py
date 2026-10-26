@@ -27,10 +27,6 @@ from custom_components.intellicenter.water_heater import PoolWaterHeater
 
 SNAPSHOT = [
     {
-        "objnam": "SYS",
-        "params": {"OBJTYP": "SYSTEM", "SNAME": "System", "MODE": "ENGLISH"},
-    },
-    {
         "objnam": "AIR",
         "params": {"OBJTYP": SENSE_TYPE, "SNAME": "Air", "SOURCE": "70", "PROBE": "72"},
     },
@@ -125,8 +121,6 @@ class FakeConnection:
                     }
                 ]
             }
-        if "objectList" not in kwargs:
-            return {"objectList": SNAPSHOT}
         return {
             "objectList": AUTHORITATIVE_READBACK
             if self.authoritative
@@ -148,7 +142,7 @@ async def test_authoritative_readback_updates_ha_sensor_entities(
     coordinator = IntelliCenterCoordinator(hass, entry, host="192.0.2.212")
     air, water, body, chlorinator = (
         coordinator.model.add_object(item["objnam"], item["params"])
-        for item in SNAPSHOT[1:]
+        for item in SNAPSHOT
     )
     assert air and water and body and chlorinator
     climate = PoolClimate(coordinator, body, ["HTR01"])

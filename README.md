@@ -574,6 +574,7 @@ If entities show as unavailable after initial setup:
    - SOURCE and PROBE remain independent readings
    - Salt reconciliation is defensive; the cause of stale salt is unverified
    - Unit tests cover software propagation, not physical firmware behavior
+
 ### Enable Debug Logging
 
 For detailed troubleshooting, enable debug logging by adding to `configuration.yaml`:

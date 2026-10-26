@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 import logging
 from unittest.mock import AsyncMock, patch
@@ -106,6 +107,10 @@ async def test_authoritative_readback_updates_ha_sensor_entities(
     await platform.async_add_entities(entities)
 
     controller = coordinator.controller
+    controller._telemetry_reconcile_interval = 30
+    authoritative_readback = asyncio.Event()
+    use_authoritative_values = False
+    connections: list[object] = []
 
     class FakeConnection:
         """Provide protocol responses while retaining the real controller path."""
@@ -114,6 +119,7 @@ async def test_authoritative_readback_updates_ha_sensor_entities(
 
         def __init__(self, *_args: object, **_kwargs: object) -> None:
             self.notification_callback = None
+            connections.append(self)
 
         async def connect(self) -> None:
             self.connected = True
@@ -151,6 +157,16 @@ async def test_authoritative_readback_updates_ha_sensor_entities(
             if command == "RequestParamList":
                 return {"objectList": []}
             assert command == "GetParamList"
+            if not use_authoritative_values:
+                return {
+                    "objectList": [
+                        {"objnam": "AIR", "params": {"SOURCE": "70", "PROBE": "72"}},
+                        {"objnam": "WATER", "params": {"SOURCE": "80", "PROBE": "82"}},
+                        {"objnam": "POOL1", "params": {"TEMP": "80", "LSTTMP": "79"}},
+                        {"objnam": "ICHLOR1", "params": {"SALT": "3000"}},
+                    ]
+                }
+            authoritative_readback.set()
             return {
                 "objectList": [
                     {"objnam": "AIR", "params": {"SOURCE": "68", "PROBE": "69"}},
@@ -210,8 +226,22 @@ async def test_authoritative_readback_updates_ha_sensor_entities(
         with patch("pyintellicenter.controller.ICConnection", FakeConnection):
             await coordinator.async_start()
             assert coordinator.connected
-            controller._apply_updates([{"objnam": "AIR", "params": {"SOURCE": "68"}}])
-            await controller._reconcile_telemetry()
+            fake_connection = connections[-1]
+            assert controller._telemetry_task is not None
+            fake_connection.notification_callback(
+                {
+                    "command": "NotifyList",
+                    "objectList": [{"objnam": "AIR", "params": {"SOURCE": "68"}}],
+                }
+            )
+            assert air["SOURCE"] == "68"
+            assert air["PROBE"] == "72"
+            assert controller._telemetry_task is not None
+            use_authoritative_values = True
+            await asyncio.wait_for(authoritative_readback.wait(), timeout=35)
+            async with asyncio.timeout(2):
+                while air["PROBE"] != "69":
+                    await asyncio.sleep(0.01)
 
         assert [entity.native_value for entity in entities] == [
             68,
@@ -223,8 +253,6 @@ async def test_authoritative_readback_updates_ha_sensor_entities(
             3200,
         ]
         assert coordinator.connected
-        for entity in entities:
-            entity.async_write_ha_state()
         await hass.async_block_till_done()
         assert [hass.states.get(entity.entity_id).state for entity in entities] == [
             "20.0",

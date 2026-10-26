@@ -21,6 +21,23 @@ This document describes the technical architecture of the Pentair IntelliCenter 
 
 ## Overview
 
+### Authoritative telemetry reconciliation
+
+Push notifications remain the fast path for Home Assistant entity updates.
+Controller firmware can suppress later subscriptions for shared storage after
+notifying the first alias, leaving an entity stale on a healthy connection; see
+the [issue #212 RCA](https://github.com/joyfulhouse/intellicenter/issues/212#issuecomment-6422806614).
+With pyintellicenter 0.3.2, its default-on model-controller worker performs
+periodic authoritative readbacks for tracked SENSE SOURCE/PROBE, BODY TEMP/LSTTMP,
+and ICHLOR SALT, then applies results through the ordinary model update callback
+so the coordinator dispatches changed values to Home Assistant. The default
+interval is 60 seconds; supported bounds and request batching are documented in
+the library's [reconciliation design](https://github.com/joyfulhouse/pyintellicenter/blob/main/docs/ARCHITECTURE.md#authoritative-telemetry-reconciliation).
+SOURCE and PROBE are independently read and never copied between aliases. Salt
+reads are defensive, while the cause of any salt staleness remains unverified.
+Automated tests validate software propagation only and do not validate physical
+firmware behavior.
+
 The integration consists of two main packages:
 
 | Package | Repository | Description |

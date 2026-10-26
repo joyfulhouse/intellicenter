@@ -7,6 +7,7 @@ This document describes the technical architecture of the Pentair IntelliCenter 
 ## Table of Contents
 
 - [Overview](#overview)
+  - [Authoritative telemetry reconciliation](#authoritative-telemetry-reconciliation)
 - [System Architecture](#system-architecture)
 - [Package Structure](#package-structure)
 - [Protocol Layer](#protocol-layer)
@@ -32,7 +33,7 @@ periodic authoritative readbacks for tracked SENSE SOURCE/PROBE, BODY TEMP/LSTTM
 and ICHLOR SALT, then applies results through the ordinary model update callback
 so the coordinator dispatches changed values to Home Assistant. The default
 interval is 60 seconds; supported bounds and request batching are documented in
-the library's [reconciliation design](https://github.com/joyfulhouse/pyintellicenter/blob/main/docs/ARCHITECTURE.md#authoritative-telemetry-reconciliation).
+the library's [reconciliation design](https://github.com/joyfulhouse/pyintellicenter/blob/v0.3.2/docs/ARCHITECTURE.md#authoritative-telemetry-reconciliation).
 SOURCE and PROBE are independently read and never copied between aliases. Salt
 reads are defensive, while the cause of any salt staleness remains unverified.
 Automated tests validate software propagation only and do not validate physical

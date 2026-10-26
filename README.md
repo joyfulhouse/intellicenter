@@ -127,21 +127,6 @@ After setup, configure connection settings:
 
 ## Supported Equipment
 
-### Temperature and chemistry freshness
-
-IntelliCenter pushes keep entities responsive, but some controller firmware can
-notify only the first subscribed name for a shared temperature value. If an air
-or water reading appears frozen while the connection remains healthy, see the
-[issue #212 RCA](https://github.com/joyfulhouse/intellicenter/issues/212#issuecomment-6422806614).
-With pyintellicenter 0.3.2, a periodic authoritative readback reconciles SENSE
-SOURCE/PROBE, body TEMP/LSTTMP, and IntelliChlor SALT; the default interval is
-60 seconds. Read interval bounds and batching are defined in the library's
-[authoritative telemetry reconciliation design](https://github.com/joyfulhouse/pyintellicenter/blob/main/docs/ARCHITECTURE.md#authoritative-telemetry-reconciliation).
-SOURCE and PROBE remain separate readings. Salt reconciliation is defensive;
-the RCA has not verified salt staleness as the same firmware issue. Unit tests
-cover model and Home Assistant propagation, not physical firmware behavior.
-This integration behavior requires pyintellicenter 0.3.2 or later.
-
 | Category | Entity Type | Features |
 |----------|-------------|----------|
 | **Pool/Spa** | Switch, Sensors, Water Heater | On/off, temperature, heater control (incl. HCOMBO hybrid modes) |
@@ -578,6 +563,17 @@ If entities show as unavailable after initial setup:
    - Check the Supported Equipment section above
    - Open an issue on GitHub for unsupported equipment
 
+4. **Frozen temperature or salt readings**
+   - Some firmware notifies only the first subscribed name for a shared
+     temperature, so a reading can freeze on a healthy connection; see the
+     [issue #212 RCA](https://github.com/joyfulhouse/intellicenter/issues/212#issuecomment-6422806614)
+   - Requires pyintellicenter 0.3.2 or later, which periodically reads back SENSE
+     SOURCE/PROBE, body TEMP/LSTTMP, and IntelliChlor SALT (default every 60 seconds;
+     bounds and batching follow the library's
+     [reconciliation design](https://github.com/joyfulhouse/pyintellicenter/blob/v0.3.2/docs/ARCHITECTURE.md#authoritative-telemetry-reconciliation))
+   - SOURCE and PROBE remain independent readings
+   - Salt reconciliation is defensive; the cause of stale salt is unverified
+   - Unit tests cover software propagation, not physical firmware behavior
 ### Enable Debug Logging
 
 For detailed troubleshooting, enable debug logging by adding to `configuration.yaml`:

@@ -563,6 +563,18 @@ If entities show as unavailable after initial setup:
    - Check the Supported Equipment section above
    - Open an issue on GitHub for unsupported equipment
 
+4. **Frozen temperature or salt readings**
+   - Some firmware notifies only the first subscribed name for a shared
+     temperature, so a reading can freeze on a healthy connection; see the
+     [issue #212 RCA](https://github.com/joyfulhouse/intellicenter/issues/212#issuecomment-6422806614)
+   - Requires pyintellicenter 0.3.2 or later, which periodically reads back SENSE
+     SOURCE/PROBE, body TEMP/LSTTMP, and IntelliChlor SALT (default every 60 seconds;
+     bounds and batching follow the library's
+     [reconciliation design](https://github.com/joyfulhouse/pyintellicenter/blob/v0.3.2/docs/ARCHITECTURE.md#authoritative-telemetry-reconciliation))
+   - SOURCE and PROBE remain independent readings
+   - Salt reconciliation is defensive; the cause of stale salt is unverified
+   - Unit tests cover software propagation, not physical firmware behavior
+
 ### Enable Debug Logging
 
 For detailed troubleshooting, enable debug logging by adding to `configuration.yaml`:

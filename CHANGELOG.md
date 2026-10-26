@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Reconcile stale temperature aliases and IntelliChlor salt through periodic
+  authoritative readback with pyintellicenter 0.3.2. Push updates remain the
+  immediate path; the default reconciliation interval is 60 seconds (bounds
+  and batching follow the library design). SOURCE and PROBE remain independent.
+  Salt staleness has not been attributed to the same cause; see the
+  [issue #212 RCA](https://github.com/joyfulhouse/intellicenter/issues/212#issuecomment-6422806614).
+  Software tests do not validate physical firmware behavior.
 - Redact local permission credentials recursively in Home Assistant diagnostics,
   including mixed-case keys and the unloaded-entry path; omit potentially
   sensitive exception text. Raw controller/model values remain unchanged.

@@ -11,7 +11,7 @@
   "issue_tracker": "https://github.com/joyfulhouse/intellicenter/issues",
   "quality_scale": "platinum",
   "requirements": [
-    "pyintellicenter==0.3.1"
+    "pyintellicenter==0.3.2"
   ],
   "version": "3.12.1",
   "zeroconf": [

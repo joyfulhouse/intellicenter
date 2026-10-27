@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.12.2] - 2026-10-27
+
 ### Documentation
 
 - Document panel alert-preference configuration dependencies, critical/unknown
@@ -506,7 +508,8 @@ See the [Credits](README.md#credits) section of the README for full attributions
 
 ---
 
-[Unreleased]: https://github.com/joyfulhouse/intellicenter/compare/v3.12.1...HEAD
+[Unreleased]: https://github.com/joyfulhouse/intellicenter/compare/v3.12.2...HEAD
+[3.12.2]: https://github.com/joyfulhouse/intellicenter/compare/v3.12.1...v3.12.2
 [3.12.1]: https://github.com/joyfulhouse/intellicenter/compare/v3.12.0...v3.12.1
 [3.12.0]: https://github.com/joyfulhouse/intellicenter/compare/v3.11.1...v3.12.0
 [3.12.0b2]: https://github.com/joyfulhouse/intellicenter/compare/v3.12.0b1...v3.12.0b2

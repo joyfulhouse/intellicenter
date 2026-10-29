@@ -17,6 +17,7 @@ Technical documentation for developers working on the Pentair IntelliCenter Home
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | Technical architecture and design |
 | [DEVELOPMENT.md](./DEVELOPMENT.md) | Development environment and workflow |
 | [TESTING.md](./TESTING.md) | Test suite layout and how to run it |
+| [schedule-management.md](./schedule-management.md) | Panel schedule management dependencies and evidence requirements |
 | [advanced-system-settings.md](./advanced-system-settings.md) | Advanced settings, protocol scope, and remaining device evidence |
 | [stored-history.md](./stored-history.md) | Stored history evidence dependency and HA statistics ingestion assessment |
 | [intelliblue.md](./intelliblue.md) | Purifier delivery gates, existing diagnostics and library dependencies |
